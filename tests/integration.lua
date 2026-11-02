@@ -426,6 +426,49 @@ local ok, err = xpcall(function()
     input("<C-e>")
     wait("return #vim.api.nvim_list_wins() == 1")
   end)
+  test("snippet colors and code previews hide Markdown markers and refresh highlights", function()
+    lua([[
+      vim.bo.filetype='tex'
+      require('completion_tools').setup({sources={'test'},documentation={delay_ms=5},
+        providers={test={complete=function(_,cb) cb({items={
+          {label='ignore',kind=15,detail='\\ignore{value}',documentation={kind='markdown',
+            value='```latex\n\\input{中文}\n```\n\nUse `path`.'}},
+          {label='ignoreb',kind=15,documentation={kind='plaintext',value='Plain preview'}}
+        }}) end}}})
+    ]])
+    input("iign")
+    wait(
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false"
+    )
+    lua([[
+      assert(vim.api.nvim_get_hl(0,{name='CompletionToolsKindSnippet',link=false}).fg,'Snippet has no foreground')
+      local doc
+      for _,w in ipairs(vim.api.nvim_list_wins()) do
+        local b=vim.api.nvim_win_get_buf(w)
+        if vim.bo[b].filetype=='markdown' then doc=b end
+      end
+      local lines=vim.api.nvim_buf_get_lines(doc,0,-1,false)
+      assert(vim.deep_equal(lines,{'\\ignore{value}','','\\input{中文}','','Use path.'}),vim.inspect(lines))
+      local ns=vim.api.nvim_create_namespace('completion-tools-documentation')
+      local marks=vim.api.nvim_buf_get_extmarks(doc,ns,0,-1,{details=true})
+      assert(#marks>0,'Code highlighting missing')
+      local seen={}
+      for _,m in ipairs(marks) do seen[m[4].hl_group]=true end
+      assert(seen['CompletionToolsDocCode'] and seen['@function'])
+    ]])
+    input("<C-n>")
+    wait(
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do local b=vim.api.nvim_win_get_buf(w);if vim.bo[b].filetype=='markdown' then return vim.api.nvim_buf_get_lines(b,0,1,false)[1]=='Plain preview' end end;return false"
+    )
+    lua([[
+      for _,w in ipairs(vim.api.nvim_list_wins()) do
+        local b=vim.api.nvim_win_get_buf(w)
+        if vim.bo[b].filetype=='markdown' then
+          assert(#vim.api.nvim_buf_get_extmarks(b,vim.api.nvim_create_namespace('completion-tools-documentation'),0,-1,{})==0)
+        end
+      end
+    ]])
+  end)
   local function start_fixture(extra)
     lua(
       [[
@@ -549,6 +592,18 @@ local ok, err = xpcall(function()
       )
       input("ihe")
       wait("return require('completion-tools').is_menu_visible()")
+      wait(
+        "for _,w in ipairs(vim.api.nvim_list_wins()) do local b=vim.api.nvim_win_get_buf(w);if vim.bo[b].filetype=='markdown' then return vim.api.nvim_buf_get_lines(b,0,1,false)[1]:find('hello',1,true)~=nil end end;return false"
+      )
+      lua([[
+        assert(vim.api.nvim_get_hl(0,{name='CompletionToolsKindSnippet',link=false}).fg)
+        for _,w in ipairs(vim.api.nvim_list_wins()) do
+          local b=vim.api.nvim_win_get_buf(w)
+          if vim.bo[b].filetype=='markdown' then
+            for _,line in ipairs(vim.api.nvim_buf_get_lines(b,0,-1,false)) do assert(not line:find('```',1,true)) end
+          end
+        end
+      ]])
       input("<Tab>")
       wait("return vim.api.nvim_get_mode().mode == 's' and vim.api.nvim_get_current_line()=='hello world!'")
       input("user")

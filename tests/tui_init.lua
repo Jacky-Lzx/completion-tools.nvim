@@ -34,6 +34,32 @@ function _G.completion_tui_semantic()
   vim.api.nvim_set_hl(0, "@variable.parameter", { fg = "#61afef" })
   vim.api.nvim_set_hl(0, "CompletionToolsSelected", { bg = "#123456" })
 end
+function _G.completion_tui_snippet()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.bo.filetype = "tex"
+  require("completion-tools").setup({
+    sources = { "fixture" },
+    documentation = { delay_ms = 5 },
+    providers = {
+      fixture = {
+        complete = function(_, callback)
+          callback({
+            items = {
+              {
+                label = "ignore",
+                kind = 15,
+                detail = "\\ignore{value}",
+                documentation = { kind = "markdown", value = "```latex\n\\input{中文}\n```\n\nUse `path`." },
+              },
+            },
+          })
+        end,
+      },
+    },
+  })
+  vim.api.nvim_set_hl(0, "Special", { fg = "#c678dd" })
+  vim.api.nvim_set_hl(0, "@function", { fg = "#56b6c2" })
+end
 local timer = vim.uv.new_timer()
 timer:start(
   10,
@@ -45,6 +71,7 @@ timer:start(
       mode = vim.api.nvim_get_mode().mode,
       visible = cmp.is_menu_visible(),
       selected = (cmp.get_selected_item() or {}).label,
+      error = vim.v.errmsg,
     }
     local ctx = cmp.get_context()
     if ctx then
@@ -63,12 +90,22 @@ timer:start(
             data.menu_screen = data.menu_screen .. vim.fn.screenstring(at.row, col)
           end
           data.menu_attrs = {}
-          for _, word in ipairs({ "decode", "code", "string" }) do
+          for _, word in ipairs({ "decode", "code", "string", "ignore", "ore", "Snippet" }) do
             local first = line:find(word, 1, true)
             if first then
               local cell = vim.fn.strdisplaywidth(line:sub(1, first - 1))
               data.menu_attrs[word] = vim.fn.screenattr(at.row, at.col + cell)
             end
+          end
+        elseif vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "markdown" then
+          local geometry = vim.api.nvim_win_get_config(win)
+          local at = vim.fn.screenpos(win, 1, 1)
+          data.doc_screen = ""
+          for row = at.row, at.row + geometry.height - 1 do
+            for col = at.col, at.col + geometry.width - 1 do
+              data.doc_screen = data.doc_screen .. vim.fn.screenstring(row, col)
+            end
+            data.doc_screen = data.doc_screen .. "\n"
           end
         end
       end

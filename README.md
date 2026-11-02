@@ -299,7 +299,7 @@ setup 后也可 `cmp.register_source("name", source)` 替换或新增来源。
 接受后发送 `User CompletionToolsAccept`，`args.data` 包含 item、source、bufnr 和可选的
 client_id；事件中的 item 不含私有元数据。
 主题高亮组为 `CompletionToolsMenu`、`CompletionToolsBorder`、`CompletionToolsSelected`、
-`CompletionToolsMatch`、`CompletionToolsSource`、`CompletionToolsDoc`。
+`CompletionToolsMatch`、`CompletionToolsSource`、`CompletionToolsDoc`、`CompletionToolsDocCode`。
 
 运行 `:checkhealth completion-tools` 检查版本和多补全引擎冲突。
 
@@ -316,6 +316,13 @@ client_id；事件中的 item 不含私有元数据。
 使用独立 detail/description 列时可设 `label_details=false`，避免重复。
 `kind_icons=false` 隐藏图标，也可设 `kind_icons={ Function="ƒ", Variable="v" }` 覆盖部分图标。
 默认图标需要 Nerd Font。
+
+Snippet 的图标、名称和 kind 名称默认链接到 `Special`，也可用
+`CompletionToolsKindSnippet` 单独配色。文档预览隐藏 Markdown 代码围栏及行内代码的
+反引号，保留正文、代码缩进和高亮；布局按处理后的可见内容计算。
+`detail` 与 `kind="plaintext"` 文档保持字面内容，代码中的反引号不会被删除。
+代码块沿用菜单的词法/Tree-sitter 高亮配置，行内代码基础高亮组为 `CompletionToolsDocCode`
+（默认链接 `String`）；菜单的自定义高亮回调只用于真实候选。
 
 高亮独立实现，不依赖 Blink 或 colorful-menu。使用 kind 颜色作为名称基础色，
 内置词法规则区分类型、参数、关键字、字符串、数字及标点；可用时通过 Neovim 公共

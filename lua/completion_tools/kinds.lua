@@ -16,7 +16,7 @@ local definitions = {
   { "Value", "󰎠", "@constant" },
   { "Enum", "", "@type" },
   { "Keyword", "󰌋", "@keyword" },
-  { "Snippet", "", "@markup" },
+  { "Snippet", "", "Special" },
   { "Color", "󰏘", "Special" },
   { "File", "󰈙", "Directory" },
   { "Reference", "󰈇", "@variable" },

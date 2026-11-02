@@ -1,5 +1,6 @@
 local M = {}
 local ns = vim.api.nvim_create_namespace("completion-tools-menu")
+local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
 local geometry
 local render = require("completion_tools.render")
@@ -27,6 +28,7 @@ function M.highlights()
     CompletionToolsSelected = "PmenuSel",
     CompletionToolsSource = "Comment",
     CompletionToolsDoc = "NormalFloat",
+    CompletionToolsDocCode = "String",
   }) do
     vim.api.nvim_set_hl(0, name, { default = true, link = target })
   end
@@ -139,6 +141,7 @@ function M.render(items, selected, ctx, config)
     height = height,
     upwards = upwards,
     input_row = cursor.row - 1,
+    filetype = ctx.filetype,
   }
 end
 
@@ -146,20 +149,8 @@ function M.documentation(item, config)
   if not M.visible() or not geometry then
     return false
   end
-  local lines = {}
-  if item.detail and item.detail ~= "" then
-    lines[#lines + 1] = "```"
-    vim.list_extend(lines, vim.split(item.detail, "\n", { plain = true }))
-    vim.list_extend(lines, { "```", "" })
-  end
-  local documentation = item.documentation
-  local text = type(documentation) == "table" and documentation.value or documentation
-  if type(text) == "string" then
-    vim.list_extend(lines, vim.split(text, "\n", { plain = true }))
-  end
-  while lines[#lines] == "" do
-    lines[#lines] = nil
-  end
+  local documentation = require("completion_tools.documentation")
+  local lines, ranges = documentation.build(item, geometry.filetype)
   if #lines == 0 then
     M.hide_documentation()
     return false
@@ -196,6 +187,8 @@ function M.documentation(item, config)
   local row = math.max(top, math.min(geometry.row, bottom - height - 1))
   doc_buf = scratch(doc_buf, "markdown")
   vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
+  vim.api.nvim_buf_clear_namespace(doc_buf, doc_ns, 0, -1)
+  documentation.highlight(doc_buf, doc_ns, lines, ranges, config.menu.highlight)
   local wc = {
     relative = "editor",
     row = math.max(0, row),

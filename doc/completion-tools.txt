@@ -88,6 +88,13 @@ accepted buffer's changedtick has not changed since primary insertion.
 CompletionToolsMenu       CompletionToolsBorder     CompletionToolsSelected
 CompletionToolsMatch      CompletionToolsSource     CompletionToolsDoc
 CompletionToolsDeprecated CompletionToolsKind{LSP kind name}
+CompletionToolsDocCode
+
+Snippet icons/labels/kind names use CompletionToolsKindSnippet, linked to Special
+by default. Documentation hides Markdown code fences and inline-code backticks,
+preserving code text, indentation and syntax highlighting. Detail and plaintext
+documentation remain literal. Inline code uses CompletionToolsDocCode (String).
+Documentation reuses lexical/Tree-sitter options, without menu custom callbacks.
 
                                                        *completion-tools-menu*
 Default columns: { {"kind_icon"}, {"label", gap=1}, {"kind"} }.

@@ -16,6 +16,7 @@ root = Path(__file__).resolve().parent.parent
 with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
     state = Path(temporary) / "state.json"
     env = dict(os.environ, TERM="xterm-256color", COMPLETION_TUI_STATE=str(state),
+               XDG_CONFIG_HOME=temporary + "/config",
                XDG_STATE_HOME=temporary + "/state", XDG_CACHE_HOME=temporary + "/cache",
                NVIM_LOG_FILE=temporary + "/nvim.log")
     primary, secondary = pty.openpty()
@@ -41,7 +42,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
                 continue
             if predicate(latest):
                 return latest
-        raise AssertionError(f"{description}: {latest}, child exit={child.poll()}")
+        raise AssertionError(f"{description}: {latest}, child exit={child.poll()}, terminal tail={output[-1600:]!r}")
 
     try:
         wait(lambda s: s["mode"] == "n", "startup")
@@ -74,6 +75,20 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"\t!\x1b")
         wait(lambda s: s["line"] == "decode!" and s["mode"] == "n" and not s["visible"],
              "display-only signature acceptance")
+        os.write(primary, b":lua completion_tui_snippet()\r")
+        wait(lambda s: s["line"] == "" and s["mode"] == "n", "snippet fixture")
+        os.write(primary, b"iign")
+        snapshot = wait(lambda s: s["visible"] and "\\input" in s.get("doc_screen", ""),
+                        "snippet menu and code documentation")
+        assert "Snippet" in snapshot["menu_screen"], snapshot
+        attrs = snapshot["menu_attrs"]
+        assert attrs["ignore"] != attrs["ore"] == attrs["Snippet"], snapshot
+        assert "`" not in snapshot["doc_screen"] and "Use path." in snapshot["doc_screen"], snapshot
+        for rgb in (b"38;2;198;120;221", b"38;2;86;182;194"):
+            assert rgb in output, f"Missing snippet/documentation RGB highlight {rgb!r}"
+        os.write(primary, b"\t!\x1b")
+        wait(lambda s: s["line"] == "ignore!" and s["mode"] == "n" and not s["visible"],
+             "snippet candidate acceptance")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:
@@ -85,7 +100,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         if child.poll() is None:
             raise AssertionError(f"quit timed out: {state.read_text()}, terminal tail={output[-1800:]!r}")
         assert child.returncode == 0
-        print("tui: input visibility, kind columns, selected-row RGB colors, match emphasis and signature acceptance passed")
+        print("tui: input visibility, kind/snippet RGB colors, Markdown code preview, match emphasis and acceptance passed")
     finally:
         if child.poll() is None:
             child.terminate()
