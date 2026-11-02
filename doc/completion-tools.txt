@@ -39,6 +39,7 @@ snippet_backward()
 get_lsp_capabilities(base?)
 register_source(id, source)
 refresh_keymaps()         Reinstall mappings after lazy dependencies change them.
+refresh_cmdline()         Refresh an existing external command-line menu.
 dispose()                Release resources and restore owned keymaps.
 
                                                        *completion-tools-keys*
@@ -50,7 +51,8 @@ CTRL-Y       Accept the selected item.
 CTRL-E       Hide, or fall back.
 <CR>         Unchanged by default.
 
-keymap={} installs no mappings. Custom keymaps replace the defaults.
+keymap={} installs no insert/select mappings; cmdline.keymap={} disables command
+line mappings. Both custom keymaps replace their respective defaults.
 Actions can be method names, functions or "fallback".
 Buffer-local mappings take precedence over global plugin mappings.
 
@@ -58,7 +60,32 @@ Buffer-local mappings take precedence over global plugin mappings.
 Built-ins: lsp, path, buffer, snippets; optional Ex cmdline.
 Opt-in sources: dictionary, spell. Both are independent of Blink.
 snippets.preset="luasnip" enables the optional literal-trigger LuaSnip adapter.
-cmdline.enabled=true enables Ex completion, without accepting on <CR>.
+cmdline.enabled=true enables command/search completion; see below.
+
+                                                   *completion-tools-cmdline*
+cmdline = { enabled=false, auto_show=true, min_keyword_length=1,
+            types={":","/","?"} }
+
+Ex uses native getcompletion() (including custom user-command completions);
+search uses buffer words. Native order, wildcards and escaped paths are retained.
+Acceptance preserves modifiers, option prefixes, namespaces and trailing text.
+Empty command lines stay closed; empty arguments after a command may complete.
+
+Independent cmdline.keymap defaults:
+CTRL-Space opens; Up/Down and CTRL-P/N select without inserting; Tab accepts or
+opens; Shift-Tab selects backwards or opens. Enter retains native execution/
+search confirmation. Native wildmenu/popupmenu and unsupported input() prompts
+retain their existing keys. Shell commands and backtick expansion are excluded.
+auto_show=false uses manual triggers; types={":"} enables only Ex.
+Use both InsertEnter and CmdlineEnter lazy-loading events.
+
+cmdline.get_anchor(ctx) may return {row,col,height}, describing an external
+command-line's entire outer frame in zero-based screen cells, including borders.
+The menu avoids that frame and flips above when necessary. External renderers
+call refresh_cmdline() after geometry changes; idle menus never open from it.
+No renderer subscription or Blink adapter is required by the core.
+The native getcompletion API is synchronous: slow custom callbacks/filesystems
+can still block, as with native completion.
 
 Source functions use dot calls:
 >

@@ -57,11 +57,38 @@ function M.render(items, selected, ctx, config)
     return
   end
   local opts = config.menu
-  local screen, cursor
+  local screen, cursor, input_top, input_bottom, anchor_col
   if ctx.mode == "cmdline" then
+    local anchor
+    if config.cmdline.get_anchor then
+      local ok, value = pcall(config.cmdline.get_anchor, ctx)
+      if
+        ok
+        and type(value) == "table"
+        and type(value.row) == "number"
+        and type(value.col) == "number"
+        and type(value.height) == "number"
+        and value.row >= 0
+        and value.row % 1 == 0
+        and value.col % 1 == 0
+        and value.height % 1 == 0
+        and value.row < vim.o.lines
+        and value.height >= 1
+      then
+        anchor = value
+      end
+    end
+    if anchor then
+      input_top, input_bottom, anchor_col = anchor.row, anchor.row + anchor.height - 1, anchor.col
+    else
+      local rows =
+        math.max(1, vim.o.cmdheight, math.ceil((1 + vim.fn.strdisplaywidth(ctx.line)) / vim.o.columns))
+      input_top, input_bottom = math.max(0, vim.o.lines - rows), vim.o.lines - 1
+      anchor_col = (1 + vim.fn.strdisplaywidth(ctx.before:sub(1, ctx.start_col))) % vim.o.columns
+    end
     screen = {
-      row = vim.o.lines - math.max(vim.o.cmdheight, 1) + 1,
-      col = 2 + vim.fn.strdisplaywidth(ctx.before:sub(1, ctx.start_col)),
+      row = input_top + 1,
+      col = anchor_col + 1,
     }
     cursor = screen
   else
@@ -72,10 +99,11 @@ function M.render(items, selected, ctx, config)
       return
     end
   end
+  input_top, input_bottom = input_top or cursor.row - 1, input_bottom or cursor.row - 1
   -- Rows from screenpos are one-based; floating window rows are zero-based.
   -- Anchor vertically to the cursor, since the keyword can wrap onto earlier rows.
-  local below = vim.o.lines - math.max(vim.o.cmdheight, 1) - cursor.row - 2
-  local above = cursor.row - 3
+  local below = vim.o.lines - math.max(vim.o.cmdheight, 1) - input_bottom - 3
+  local above = input_top - 2
   local height = math.min(#items, opts.max_height, math.max(above, below))
   if height < 1 then
     M.hide()
@@ -85,7 +113,7 @@ function M.render(items, selected, ctx, config)
   local width = layout.width
   local upwards = below < height
   -- Both the contents and the bottom border must end before the input row.
-  local row = upwards and cursor.row - height - 3 or cursor.row
+  local row = upwards and input_top - height - 2 or input_bottom + 1
   local start_col = screen.col > 0 and screen.col or cursor.col
   local col = math.max(0, math.min(start_col - 1, vim.o.columns - width - 2))
   local target = selected or 1
@@ -141,6 +169,8 @@ function M.render(items, selected, ctx, config)
     height = height,
     upwards = upwards,
     input_row = cursor.row - 1,
+    input_top = input_top,
+    input_bottom = input_bottom,
     filetype = ctx.filetype,
   }
 end
@@ -173,9 +203,9 @@ function M.documentation(item, config)
   end
   local top, bottom = 0, vim.o.lines - math.max(vim.o.cmdheight, 1) - 1
   if geometry.upwards then
-    bottom = math.min(bottom, geometry.input_row - 1)
+    bottom = math.min(bottom, geometry.input_top - 1)
   else
-    top = geometry.input_row + 1
+    top = geometry.input_bottom + 1
   end
   -- A tall document must remain on the same side of the input as the menu.
   height = math.min(height, opts.max_height, bottom - top - 1)

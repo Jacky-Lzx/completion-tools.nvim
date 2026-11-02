@@ -72,7 +72,8 @@ TextEdit/InsertReplaceEdit、CompletionList.itemDefaults、额外文本编辑、
 全局映射的原有行为会作为 fallback；buffer-local 映射保留 Neovim 原本的优先级。
 再次 setup 或 dispose 会还原插件仍持有的映射，保留之后安装的映射。
 
-`keymap` 是整个映射表的替换；`keymap = {}` 表示不安装映射。
+`keymap` 是整个插入/选择模式映射表的替换；`keymap = {}` 表示不安装这些映射。
+命令行使用独立的 `cmdline.keymap`，不会继承插入模式的 Enter、pairs 或 snippet 动作。
 需要部分覆盖默认值时：
 
 ~~~lua
@@ -151,7 +152,7 @@ require("completion-tools").setup({
     sort = "match", preselect_current_word = true, suggest_when_correct = false,
   },
   snippets = { preset = "default", collection = {} },
-  cmdline = { enabled = false, min_keyword_length = 1 },
+  cmdline = { enabled = false, auto_show = true, min_keyword_length = 1, types = { ":", "/", "?" } },
 })
 ~~~
 
@@ -230,12 +231,59 @@ snippets = { preset = "luasnip" }
 
 ### 命令行
 
-`cmdline = { enabled = true }` 启用 `:` 的 Ex 补全，Tab 接受不会执行命令。
-Enter 保持执行命令的原有行为，`/` 和 `?` 继续使用 Neovim 自身的行为。
-shell 命令不进入此来源。
+`cmdline = { enabled = true }` 启用 `:`、`/` 和 `?` 的自动补全：
+`:` 使用原生 `getcompletion()`，支持命令名、选项/值、文件/目录、帮助、
+Lua 成员和用户命令声明的补全；搜索使用缓冲区单词来源。
+原生返回的顺序和匹配结果会保留，通配符与转义字符不会再次被通用匹配器过滤。
+文件路径会转义空格等特殊字符；替换保留命令修饰符、no/inv 前缀、Lua 名称空间与光标后的文本。
 
-此来源使用原生 `getcompletion()`，它是同步 API；很慢的自定义命令补全函数仍可能阻塞。
-浮窗按原生命令行位置摆放，尚未对外置 cmdline UI 的浮动位置做适配。
+命令行首次打开或只输入空白不会显示候选；键入有意义的命令后，空参数位置
+（如 `:set `）可显示该上下文的候选。选择候选不自动插入：
+
+| 命令行按键 | 行为 |
+| --- | --- |
+| Ctrl-Space | 手动打开 |
+| Up / Down、Ctrl-P / Ctrl-N | 上下选择；无菜单时保留原有历史行为 |
+| Tab | 接受；无菜单时请求补全；不执行命令 |
+| Shift-Tab | 上一项；无菜单时请求补全 |
+| Enter | 保持原有执行命令/确认搜索行为，不自动接受候选 |
+
+`cmdline.keymap` 整体替换默认命令行映射，`{}` 禁用这些映射；
+`cmdline.auto_show=false` 仅手动触发；`types={":"}` 可只启用 Ex 补全。
+原生 wildmenu/popupmenu 活跃时让回原生按键，退出命令行后关闭候选。
+`input()`、表达式寄存器等提示不在支持类型内，保留原有输入和补全。
+Shell 命令（包括修饰符后的 !、read/write ! 与 terminal）及文件名反引号展开不进入自动补全。
+
+此来源使用同步的原生 API；很慢的自定义命令补全函数或文件系统仍可能阻塞。
+使用 lazy.nvim 时同时声明 `event={"InsertEnter","CmdlineEnter"}`，才能在首次打开命令行时加载。
+
+外置命令行 UI 可通过 `cmdline.get_anchor(ctx)` 返回输入窗口的完整外框，
+`{row=0, col=0, height=3}`，坐标为从 0 开始的屏幕单元，height 包含边框。
+候选框避开整个外框，空间不足时翻到上方；未提供时按原生命令行布局摆放。
+以下 input-tools 集成只使用它的公开布局 API，不加载 Blink 适配器：
+
+~~~lua
+local cmdline = {
+  enabled = true,
+  get_anchor = function()
+    local input = package.loaded["input-tools"]
+    local box = input and input.get_layout()
+    if box and not box.vim_mode then
+      return { row = box.row, col = box.col, height = box.outer_height }
+    end
+  end,
+}
+require("completion-tools").setup({ cmdline = cmdline })
+vim.api.nvim_create_autocmd("User", {
+  pattern = { "InputToolsOpen", "InputToolsLayoutChanged", "InputToolsClose" },
+  callback = function()
+    local cmp = package.loaded["completion-tools"]
+    if cmp then cmp.refresh_cmdline() end
+  end,
+})
+~~~
+
+`refresh_cmdline()` 不会因布局事件打开空闲菜单；重定位时保留选择，并使过期候选不可接受。
 
 ## 自定义来源
 
@@ -305,6 +353,7 @@ setup 后也可 `cmp.register_source("name", source)` 替换或新增来源。
 - `snippet_forward()`、`snippet_backward()`。
 - `get_lsp_capabilities(base?)`。
 - `refresh_keymaps()`：依赖插件延迟安装映射后，重新安装补全映射并更新 fallback，不重置补全状态。
+- `refresh_cmdline()`：外置命令行 UI 布局更新后，刷新已经打开的候选框。
 - `dispose()`：关闭界面、取消工作、释放缓存并还原映射。
 
 动作成功返回 true，可组成按键链。新结果待返回时保留前一帧菜单，但不允许接受过期结果。
@@ -429,6 +478,7 @@ LSP kind 对应组（未知值用 `CompletionToolsKindUnknown`），默认链接
 REAL_LSP=1 ./tests/run.sh                 # 额外运行本机 lua-language-server
 LUASNIP_PATH=/path/to/LuaSnip ./tests/run.sh
 NVIM=/path/to/nvim-0.11/bin/nvim ./tests/run.sh
+INPUT_TOOLS_PATH=/path/to/input-tools.nvim ./tests/run.sh # 外置命令行、上下避让及缩放
 stylua --check lua tests
 
 BLINK_CMP_PATH=/path/to/blink.cmp ./tests/bench.sh

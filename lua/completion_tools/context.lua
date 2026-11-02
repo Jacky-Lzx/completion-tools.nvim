@@ -6,7 +6,8 @@ function M.get(config)
   if not cmdline and mode:sub(1, 1) ~= "i" then
     return
   end
-  if cmdline and (not config.cmdline.enabled or vim.fn.getcmdtype() ~= ":") then
+  local cmdtype = cmdline and vim.fn.getcmdtype() or nil
+  if cmdline and (not config.cmdline.enabled or not vim.tbl_contains(config.cmdline.types, cmdtype)) then
     return
   end
   local bufnr = vim.api.nvim_get_current_buf()
@@ -17,8 +18,12 @@ function M.get(config)
   local line = cmdline and vim.fn.getcmdline() or vim.api.nvim_get_current_line()
   local col = cmdline and vim.fn.getcmdpos() - 1 or cursor[2]
   local before = line:sub(1, col)
-  local prefix = vim.fn.matchstr(before, cmdline and [=[[^[:space:]]*$]=] or config.keyword_pattern)
-  return {
+  local details = cmdline and require("completion_tools.cmdline").describe(before, cmdtype)
+  if cmdline and not details then
+    return
+  end
+  local prefix = details and details.prefix or vim.fn.matchstr(before, config.keyword_pattern)
+  return vim.tbl_extend("force", {
     bufnr = bufnr,
     winid = vim.api.nvim_get_current_win(),
     mode = cmdline and "cmdline" or "insert",
@@ -30,7 +35,8 @@ function M.get(config)
     start_col = col - #prefix,
     tick = vim.api.nvim_buf_get_changedtick(bufnr),
     filetype = vim.bo[bufnr].filetype,
-  }
+    cmdtype = cmdtype,
+  }, details or {})
 end
 
 function M.same(a, b)
@@ -39,6 +45,7 @@ function M.same(a, b)
     and a.bufnr == b.bufnr
     and a.winid == b.winid
     and a.mode == b.mode
+    and a.cmdtype == b.cmdtype
     and a.filetype == b.filetype
     and a.row == b.row
     and a.col == b.col
@@ -52,6 +59,7 @@ function M.extends(old, new)
     and old.bufnr == new.bufnr
     and old.winid == new.winid
     and old.mode == new.mode
+    and old.cmdtype == new.cmdtype
     and old.filetype == new.filetype
     and old.row == new.row
     and old.start_col == new.start_col

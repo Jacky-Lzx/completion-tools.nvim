@@ -61,6 +61,15 @@ function _G.completion_tui_snippet()
   vim.api.nvim_set_hl(0, "Special", { fg = "#c678dd" })
   vim.api.nvim_set_hl(0, "@function", { fg = "#56b6c2" })
 end
+function _G.completion_tui_cmdline()
+  require("completion-tools").setup({ sources = {}, cmdline = { enabled = true } })
+  vim.api.nvim_create_user_command("CompletionTuiAlpha", function()
+    vim.g.completion_tui_executed = "alpha"
+  end, {})
+  vim.api.nvim_create_user_command("CompletionTuiAlpine", function()
+    vim.g.completion_tui_executed = "alpine"
+  end, {})
+end
 local timer = vim.uv.new_timer()
 timer:start(
   10,
@@ -73,11 +82,14 @@ timer:start(
       visible = cmp.is_menu_visible(),
       selected = (cmp.get_selected_item() or {}).label,
       error = vim.v.errmsg,
+      cmdline = vim.fn.getcmdline(),
+      executed = vim.g.completion_tui_executed,
     }
     local ctx = cmp.get_context()
     if ctx then
       data.prefix = ctx.prefix
-      data.input_row = vim.fn.screenpos(ctx.winid, ctx.row + 1, ctx.col + 1).row - 1
+      data.input_row = ctx.mode == "cmdline" and vim.o.lines - 1
+        or vim.fn.screenpos(ctx.winid, ctx.row + 1, ctx.col + 1).row - 1
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "completion-tools-menu" then
           local geometry = vim.api.nvim_win_get_config(win)

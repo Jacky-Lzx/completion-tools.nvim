@@ -92,6 +92,24 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"\t!\x1b")
         wait(lambda s: s["line"] == "ignore!" and s["mode"] == "n" and not s["visible"],
              "snippet candidate acceptance")
+        os.write(primary, b":lua completion_tui_cmdline()\r")
+        wait(lambda s: s["mode"] == "n", "command-line setup")
+        os.write(primary, b":")
+        snapshot = wait(lambda s: s["mode"] == "c" and s["cmdline"] == "", "idle command line")
+        assert not snapshot["visible"], snapshot
+        os.write(primary, b"CompletionTui")
+        snapshot = wait(lambda s: s["visible"] and s.get("selected") == "CompletionTuiAlpha",
+                        "terminal command menu")
+        assert snapshot["menu"]["row"] + snapshot["menu"]["height"] + 1 < snapshot["input_row"], snapshot
+        os.write(primary, b"\x0e")
+        snapshot = wait(lambda s: s.get("selected") == "CompletionTuiAlpine", "command selection")
+        assert snapshot["cmdline"] == "CompletionTui", snapshot
+        os.write(primary, b"\t")
+        snapshot = wait(lambda s: s["cmdline"] == "CompletionTuiAlpine", "command acceptance")
+        assert snapshot["mode"] == "c" and not snapshot.get("executed"), snapshot
+        os.write(primary, b"\r")
+        wait(lambda s: s["mode"] == "n" and s.get("executed") == "alpine" and not s["visible"],
+             "native Enter executes accepted command")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:
@@ -103,7 +121,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         if child.poll() is None:
             raise AssertionError(f"quit timed out: {state.read_text()}, terminal tail={output[-1800:]!r}")
         assert child.returncode == 0
-        print("tui: input visibility, kind/snippet RGB colors, Markdown code preview, match emphasis and acceptance passed")
+        print("tui: insert highlights/docs; native command-line placement, selection, Tab acceptance and Enter execution passed")
     finally:
         if child.poll() is None:
             child.terminate()

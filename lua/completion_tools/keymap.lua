@@ -42,6 +42,10 @@ local function fallback(mapping)
 end
 local function run(mapping)
   local cmp = require("completion_tools")
+  if mapping.mode == "c" and not cmp._cmdline_active() then
+    fallback(mapping)
+    return
+  end
   for _, action in ipairs(mapping.actions) do
     if action == "fallback" then
       fallback(mapping)
@@ -64,12 +68,12 @@ end
 
 function M.setup(config)
   M.dispose()
-  for key, actions in pairs(config.keymap) do
-    if actions ~= false then
-      if type(actions) == "string" then
-        actions = { actions }
-      end
-      for _, mode in ipairs(config.cmdline.enabled and { "i", "s", "c" } or { "i", "s" }) do
+  local function install(mode, keymap)
+    for key, actions in pairs(keymap) do
+      if actions ~= false then
+        if type(actions) == "string" then
+          actions = { actions }
+        end
         local mapping = { mode = mode, key = key, actions = actions, previous = global_mapping(key, mode) }
         mapping.callback = function()
           run(mapping)
@@ -80,6 +84,11 @@ function M.setup(config)
         installed[#installed + 1] = mapping
       end
     end
+  end
+  install("i", config.keymap)
+  install("s", config.keymap)
+  if config.cmdline.enabled then
+    install("c", config.cmdline.keymap)
   end
 end
 

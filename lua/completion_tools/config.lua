@@ -56,7 +56,21 @@ M.defaults = {
     suggest_when_correct = false,
   },
   snippets = { preset = "default", collection = {} },
-  cmdline = { enabled = false, min_keyword_length = 1 },
+  cmdline = {
+    enabled = false,
+    auto_show = true,
+    min_keyword_length = 1,
+    types = { ":", "/", "?" },
+    keymap = {
+      ["<C-Space>"] = { "show", "fallback" },
+      ["<Tab>"] = { "accept", "show", "fallback" },
+      ["<S-Tab>"] = { "select_prev", "show", "fallback" },
+      ["<C-n>"] = { "select_next", "fallback" },
+      ["<C-p>"] = { "select_prev", "fallback" },
+      ["<Up>"] = { "select_prev", "fallback" },
+      ["<Down>"] = { "select_next", "fallback" },
+    },
+  },
 }
 
 function M.validate(opts)
@@ -74,6 +88,13 @@ function M.validate(opts)
   end
   if opts.dictionary and opts.dictionary.files ~= nil then
     config.dictionary.files = opts.dictionary.files
+  end
+  if opts.cmdline then
+    for _, field in ipairs({ "keymap", "types" }) do
+      if opts.cmdline[field] ~= nil then
+        config.cmdline[field] = vim.deepcopy(opts.cmdline[field])
+      end
+    end
   end
   for _, name in ipairs({ "max_items", "min_keyword_length", "debounce_ms" }) do
     assert(type(config[name]) == "number" and config[name] >= 0, "completion-tools: invalid " .. name)
@@ -118,6 +139,23 @@ function M.validate(opts)
     end
   end
   local dict, spell = config.dictionary, config.spell
+  local cmdline = config.cmdline
+  assert(
+    type(cmdline.enabled) == "boolean" and type(cmdline.auto_show) == "boolean",
+    "completion-tools: invalid cmdline flags"
+  )
+  assert(integer(cmdline.min_keyword_length, 0), "completion-tools: invalid cmdline.min_keyword_length")
+  assert(
+    type(cmdline.keymap) == "table" and type(cmdline.types) == "table",
+    "completion-tools: invalid cmdline maps/types"
+  )
+  assert(
+    cmdline.get_anchor == nil or type(cmdline.get_anchor) == "function",
+    "completion-tools: invalid cmdline.get_anchor"
+  )
+  for _, cmdtype in ipairs(cmdline.types) do
+    assert(vim.tbl_contains({ ":", "/", "?" }, cmdtype), "completion-tools: unsupported cmdline type")
+  end
   assert(
     type(dict.files) == "table" or type(dict.files) == "function",
     "completion-tools: invalid dictionary.files"

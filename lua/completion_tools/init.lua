@@ -172,9 +172,12 @@ local function render()
 end
 
 local function source_ids(ctx, override)
+  if ctx.mode == "cmdline" then
+    return ctx.cmdtype == ":" and { "cmdline" } or { "buffer" }
+  end
   local configured = override or state.config.sources
   local ids = type(configured) == "function" and configured(ctx) or configured
-  return ctx.mode == "cmdline" and { "cmdline" } or ids
+  return ids
 end
 
 local function request(manual, override)
@@ -183,7 +186,7 @@ local function request(manual, override)
     return false
   end
   local ctx = current()
-  if not ctx or (ctx.mode == "insert" and vim.fn.pumvisible() == 1) then
+  if not ctx or vim.fn.pumvisible() == 1 or (ctx.mode == "cmdline" and vim.fn.wildmenumode() == 1) then
     M.hide()
     return false
   end
@@ -196,7 +199,7 @@ local function request(manual, override)
   end
   state.accepted = nil
   local ids = source_ids(ctx, override)
-  local triggered = false
+  local triggered = ctx.argument_trigger or false
   for _, id in ipairs(ids) do
     local provider = state.providers[id]
     if provider and provider.trigger and provider.trigger(ctx) then
@@ -434,11 +437,21 @@ function M.setup(opts)
     end,
   })
   if config.cmdline.enabled then
+    vim.api.nvim_create_autocmd("CmdlineEnter", {
+      group = group,
+      callback = function()
+        M.hide()
+        state.cache = {}
+        state.accepted = nil
+      end,
+    })
     vim.api.nvim_create_autocmd("CmdlineChanged", {
       group = group,
       callback = function()
-        if config.auto_show then
+        if config.cmdline.auto_show then
           queue()
+        else
+          M.hide()
         end
       end,
     })
@@ -462,12 +475,52 @@ function M.setup(opts)
       end
     end,
   })
-  vim.api.nvim_create_autocmd("VimResized", { group = group, callback = M.hide })
+  vim.api.nvim_create_autocmd("VimResized", {
+    group = group,
+    callback = function()
+      if state.context and state.context.mode == "cmdline" then
+        vim.schedule(M.refresh_cmdline)
+      else
+        M.hide()
+      end
+    end,
+  })
   vim.api.nvim_create_autocmd("VimLeavePre", { group = group, callback = M.dispose })
   require("completion_tools.keymap").setup(config)
   warmup(vim.api.nvim_get_current_buf())
   watch(vim.api.nvim_get_current_buf())
   return M
+end
+
+-- External command-line renderers can call this after their geometry settles.
+-- Only an existing completion session is refreshed; layout events cannot open
+-- an idle command line's menu.
+function M.refresh_cmdline()
+  if not state.context or state.context.mode ~= "cmdline" or not ui.visible() then
+    return false
+  end
+  local ctx = current()
+  if not ctx then
+    return M.hide()
+  end
+  ui.hide_documentation()
+  ui.render(state.items, state.selected, ctx, state.config)
+  if not context.same(ctx, state.context) then
+    if state.config.cmdline.auto_show then
+      queue()
+    else
+      M.hide()
+    end
+  end
+  return true
+end
+
+function M._cmdline_active()
+  return enabled()
+    and vim.api.nvim_get_mode().mode == "c"
+    and vim.fn.pumvisible() == 0
+    and vim.fn.wildmenumode() == 0
+    and current() ~= nil
 end
 
 function M.register_source(id, provider)
