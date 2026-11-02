@@ -65,6 +65,107 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line() == 'alphabet!'")
     eq("i", lua("return vim.api.nvim_get_mode().mode"))
   end)
+  test("entering insert and moving the cursor do not open automatic completion", function()
+    lua(
+      [[require('completion_tools').setup({sources={'test'},min_keyword_length=0,providers={test={
+      complete=function(_,cb) cb({items={{label='alpha'}}}) end
+    }}}); vim.api.nvim_buf_set_lines(0,0,-1,false,{'alpha','   '}); vim.api.nvim_win_set_cursor(0,{1,0})]]
+    )
+    input("A")
+    wait("return vim.api.nvim_get_mode().mode=='i'")
+    vim.wait(60)
+    assert(
+      not lua("return require('completion_tools').is_menu_visible()"),
+      "InsertEnter opened completion without an edit"
+    )
+    lua("vim.api.nvim_exec_autocmds('LspAttach',{buffer=0,data={client_id=999999}})")
+    vim.wait(60)
+    assert(
+      not lua("return require('completion_tools').is_menu_visible()"),
+      "LspAttach opened completion before typing"
+    )
+    input("<Left>")
+    vim.wait(60)
+    assert(not lua("return require('completion_tools').is_menu_visible()"))
+    input("<Esc>jA")
+    wait("return vim.api.nvim_get_mode().mode=='i' and vim.api.nvim_win_get_cursor(0)[1]==2")
+    input(" ")
+    vim.wait(60)
+    assert(
+      not lua("return require('completion_tools').is_menu_visible()"),
+      "Whitespace opened an unfiltered list"
+    )
+    input("<C-Space>")
+    wait("return require('completion_tools').is_menu_visible()")
+    input("<C-e>a")
+    wait(
+      "local c=require('completion_tools'); return c.get_context() and c.get_context().prefix=='a' and c.is_menu_visible()"
+    )
+    input("<BS>")
+    wait("return not require('completion_tools').is_menu_visible()")
+    vim.wait(60)
+    assert(not lua("return require('completion_tools').is_menu_visible()"))
+    lua([[require('completion_tools').register_source('test',{complete=function(_,cb)
+      vim.defer_fn(function() cb({items={{label='alpha'}}}) end,70)
+    end})]])
+    input("a")
+    vim.wait(10)
+    input("<BS>")
+    vim.wait(100)
+    assert(
+      not lua("return require('completion_tools').is_menu_visible()"),
+      "Late results reopened an empty query"
+    )
+  end)
+  test("upper menu and tall documentation leave the input screen row clear", function()
+    lua(
+      [[local items={};for i=1,25 do items[i]={label='alpha'..i,detail=string.rep('documentation\n',30)} end
+      require('completion_tools').setup({sources={'test'},menu={max_height=4},documentation={delay_ms=5},
+        providers={test={complete=function(_,cb) cb({items=items}) end}}})
+      local lines={};for i=1,80 do lines[i]='' end
+      vim.api.nvim_buf_set_lines(0,0,-1,false,lines);vim.api.nvim_win_set_cursor(0,{80,0});vim.cmd('normal! zb')]]
+    )
+    input("Aalpha")
+    wait(
+      "local c=require('completion_tools');return c.get_context() and c.get_context().prefix=='alpha' and c._can('accept')"
+    )
+    wait(
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false"
+    )
+    lua([[vim.cmd.redraw()
+      local ctx=require('completion_tools').get_context()
+      local cursor=vim.fn.screenpos(ctx.winid,ctx.row+1,ctx.col+1)
+      for _,win in ipairs(vim.api.nvim_list_wins()) do
+        local ft=vim.bo[vim.api.nvim_win_get_buf(win)].filetype
+        if ft=='completion-tools-menu' or ft=='markdown' then
+          local wc=vim.api.nvim_win_get_config(win)
+          assert(wc.row+wc.height+1<cursor.row-1,ft..' overlaps the input row: '..vim.inspect({window=wc,cursor=cursor}))
+        end
+      end
+      local start=vim.fn.screenpos(ctx.winid,ctx.row+1,1)
+      local text='';for col=start.col,start.col+4 do text=text..vim.fn.screenstring(cursor.row,col) end
+      assert(text=='alpha','input is obscured on the rendered screen: '..text)
+    ]])
+  end)
+  test("wrapped keywords anchor the menu below the cursor screen row", function()
+    lua([[long_word=string.rep('a',150); require('completion_tools').setup({sources={'test'},
+      providers={test={complete=function(_,cb) cb({items={{label=long_word..'Suffix'}}}) end}}})
+      vim.wo.wrap=true; vim.api.nvim_buf_set_lines(0,0,-1,false,{''})]])
+    input("i" .. string.rep("a", 150))
+    wait(
+      "local c=require('completion_tools');return c.get_context() and #c.get_context().prefix==150 and c._can('accept')"
+    )
+    lua([[local ctx=require('completion_tools').get_context()
+      local cursor=vim.fn.screenpos(ctx.winid,ctx.row+1,ctx.col+1)
+      assert(cursor.row>vim.fn.screenpos(ctx.winid,ctx.row+1,1).row,'fixture must wrap')
+      for _,win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='completion-tools-menu' then
+          local wc=vim.api.nvim_win_get_config(win)
+          assert(wc.row>cursor.row-1,'menu covers the wrapped cursor row')
+        end
+      end
+    ]])
+  end)
   test("fast typing never accepts an out-of-date candidate", function()
     lua(
       [[require('completion_tools').setup({ sources = {'slow'}, providers = { slow = { complete = function(ctx, cb) vim.defer_fn(function() cb({ items = {{label = ctx.prefix .. 'Suffix'}} }) end, ctx.prefix == 'a' and 80 or 15) end } } })]]
@@ -164,7 +265,7 @@ local ok, err = xpcall(function()
     lua(
       [[require('completion_tools').setup({ sources = {'test'}, providers = { test = { complete = function(ctx, cb) cb({ items = {{ label = 'foobar', _encoding = 'utf-16', textEdit = { newText = 'foobar', insert = {start={line=1,character=2}, ['end']={line=1,character=4}}, replace = {start={line=1,character=2}, ['end']={line=1,character=8}} }, additionalTextEdits = {{ range={start={line=0,character=0}, ['end']={line=0,character=0}}, newText='import thing\n' }} }} }) end } } }); vim.api.nvim_buf_set_lines(0,0,-1,false,{'header','😀foTAIL'}); vim.api.nvim_win_set_cursor(0,{2,6})]]
     )
-    input("i")
+    input("i<C-Space>")
     wait("return require('completion_tools').is_menu_visible()")
     input("<Tab>!")
     wait("return vim.api.nvim_get_current_line() == '😀foobar!'")
@@ -193,7 +294,7 @@ local ok, err = xpcall(function()
           {range={start={line=0,character=1},['end']={line=0,character=1}},newText='TAIL'}
         }}}})
     end}}}); vim.api.nvim_buf_set_lines(0,0,-1,false,{'f'})]])
-    input("A")
+    input("A<C-Space>")
     wait("return require('completion_tools').is_menu_visible()")
     input("oo")
     wait(
@@ -212,7 +313,7 @@ local ok, err = xpcall(function()
       cb({items={{label='snippet',insertTextFormat=2,textEdit={newText='say(${1:name})$0',range={start={line=0,character=0},['end']={line=0,character=2}}},
         additionalTextEdits={{range={start={line=0,character=0},['end']={line=0,character=0}},newText='import thing\n'}}}}})
     end}}}); vim.api.nvim_buf_set_lines(0,0,-1,false,{'sn'})]])
-    input("A")
+    input("A<C-Space>")
     wait("return require('completion_tools').is_menu_visible()")
     input("<Tab>")
     wait("return vim.api.nvim_get_mode().mode == 's'")
@@ -295,9 +396,9 @@ local ok, err = xpcall(function()
   end
   test("LSP protocol: trigger, UTF-16 defaults, cached ranges and late imports/command", function()
     lua([[fixture_trace={}; require("completion_tools").setup({sources={"lsp"}});
-      vim.api.nvim_buf_set_lines(0,0,-1,false,{"header","😀."}); vim.api.nvim_win_set_cursor(0,{2,4})]])
+      vim.api.nvim_buf_set_lines(0,0,-1,false,{"header","😀"}); vim.api.nvim_win_set_cursor(0,{2,0})]])
     start_fixture()
-    input("A")
+    input("A.")
     wait("return require('completion_tools').is_menu_visible()")
     assert(
       lua(

@@ -187,6 +187,10 @@ local function request(manual, override)
     M.hide()
     return false
   end
+  if not manual and not ctx.before:find("%S") then
+    M.hide()
+    return false
+  end
   if not manual and context.same(state.accepted, ctx) then
     return false
   end
@@ -348,6 +352,8 @@ function M.setup(opts)
   end
   M.dispose()
   state.config, state.disposed = config, false
+  -- setup may itself run inside Lazy's first InsertEnter callback.
+  state.edit_buf, state.edit_tick = vim.api.nvim_get_current_buf(), vim.api.nvim_buf_get_changedtick(0)
   timer, doc_timer = vim.uv.new_timer(), vim.uv.new_timer()
   for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline" }) do
     state.providers[id] = require("completion_tools.sources." .. id).new(config[id] or {}, function()
@@ -379,10 +385,20 @@ function M.setup(opts)
   end
   ui.highlights()
   group = vim.api.nvim_create_augroup("CompletionTools", { clear = true })
-  vim.api.nvim_create_autocmd({ "InsertEnter", "TextChangedI", "TextChangedP" }, {
+  vim.api.nvim_create_autocmd("InsertEnter", {
     group = group,
-    callback = function()
-      if config.auto_show then
+    callback = function(args)
+      M.hide()
+      state.edit_buf, state.edit_tick = args.buf, vim.api.nvim_buf_get_changedtick(args.buf)
+    end,
+  })
+  vim.api.nvim_create_autocmd({ "TextChangedI", "TextChangedP" }, {
+    group = group,
+    callback = function(args)
+      local tick = vim.api.nvim_buf_get_changedtick(args.buf)
+      local changed = state.edit_buf ~= args.buf or state.edit_tick ~= tick
+      state.edit_buf, state.edit_tick = args.buf, tick
+      if config.auto_show and changed then
         queue()
       end
     end,
@@ -390,8 +406,12 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("CursorMovedI", {
     group = group,
     callback = function()
-      if state.context and not context.same(state.context, current()) then
-        if config.auto_show then
+      if not state.context then
+        return
+      end
+      local ctx = current()
+      if not context.same(state.context, ctx) then
+        if config.auto_show and ctx and state.context.tick ~= ctx.tick then
           queue()
         else
           M.hide()
@@ -414,7 +434,7 @@ function M.setup(opts)
     end,
   })
   if config.cmdline.enabled then
-    vim.api.nvim_create_autocmd({ "CmdlineEnter", "CmdlineChanged" }, {
+    vim.api.nvim_create_autocmd("CmdlineChanged", {
       group = group,
       callback = function()
         if config.auto_show then
@@ -437,7 +457,7 @@ function M.setup(opts)
     group = group,
     callback = function(args)
       state.cache.lsp = nil
-      if args.buf == vim.api.nvim_get_current_buf() and config.auto_show then
+      if args.buf == vim.api.nvim_get_current_buf() and config.auto_show and state.context then
         queue()
       end
     end,

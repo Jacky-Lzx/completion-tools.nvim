@@ -65,6 +65,7 @@ TextEdit/InsertReplaceEdit、CompletionList.itemDefaults、额外文本编辑、
 | Enter | 保留已有行为 |
 
 默认预选第一项，不自动插入选择项。上下选择不会修改缓冲区。
+仅编辑文字后自动请求补全；进入插入模式、单独移动光标或空白输入不会自动打开候选框。Ctrl-Space 仍可手动打开。
 全局映射的原有行为会作为 fallback；buffer-local 映射保留 Neovim 原本的优先级。
 再次 setup 或 dispose 会还原插件仍持有的映射，保留之后安装的映射。
 

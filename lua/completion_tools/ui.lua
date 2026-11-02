@@ -68,21 +68,25 @@ function M.render(items, selected, ctx, config)
     return
   end
   local opts = config.menu
-  local screen
+  local screen, cursor
   if ctx.mode == "cmdline" then
     screen = {
       row = vim.o.lines - math.max(vim.o.cmdheight, 1) + 1,
       col = 2 + vim.fn.strdisplaywidth(ctx.before:sub(1, ctx.start_col)),
     }
+    cursor = screen
   else
     screen = vim.fn.screenpos(ctx.winid, ctx.row + 1, ctx.start_col + 1)
-    if screen.row == 0 then
+    cursor = ctx.start_col == ctx.col and screen or vim.fn.screenpos(ctx.winid, ctx.row + 1, ctx.col + 1)
+    if cursor.row == 0 then
       M.hide()
       return
     end
   end
-  local below = vim.o.lines - math.max(vim.o.cmdheight, 1) - screen.row - 2
-  local above = screen.row - 3
+  -- Rows from screenpos are one-based; floating window rows are zero-based.
+  -- Anchor vertically to the cursor, since the keyword can wrap onto earlier rows.
+  local below = vim.o.lines - math.max(vim.o.cmdheight, 1) - cursor.row - 2
+  local above = cursor.row - 3
   local height = math.min(#items, opts.max_height, math.max(above, below))
   if height < 1 then
     M.hide()
@@ -93,8 +97,11 @@ function M.render(items, selected, ctx, config)
     width = math.max(width, vim.fn.strdisplaywidth(clean(items[i].item.label)) + #items[i].source_id + 5)
   end
   width = math.min(width, opts.max_width, vim.o.columns - 4)
-  local row = below >= height and screen.row or screen.row - height - 2
-  local col = math.max(0, math.min(screen.col - 1, vim.o.columns - width - 2))
+  local upwards = below < height
+  -- Both the contents and the bottom border must end before the input row.
+  local row = upwards and cursor.row - height - 3 or cursor.row
+  local start_col = screen.col > 0 and screen.col or cursor.col
+  local col = math.max(0, math.min(start_col - 1, vim.o.columns - width - 2))
   local target = selected or 1
   if target < viewport then
     viewport = target
@@ -162,7 +169,14 @@ function M.render(items, selected, ctx, config)
   end
   vim.wo[win].cursorline = selected ~= nil
   vim.api.nvim_win_set_cursor(win, { math.max(1, target - viewport + 1), 0 })
-  geometry = { row = math.max(0, row), col = col, width = width, height = height }
+  geometry = {
+    row = math.max(0, row),
+    col = col,
+    width = width,
+    height = height,
+    upwards = upwards,
+    input_row = cursor.row - 1,
+  }
 end
 
 function M.documentation(item, config)
@@ -203,9 +217,20 @@ function M.documentation(item, config)
   for _, line in ipairs(lines) do
     height = height + math.max(1, math.ceil(vim.fn.strdisplaywidth(line) / width))
   end
-  height = math.min(height, opts.max_height, vim.o.lines - math.max(vim.o.cmdheight, 1) - 3)
+  local top, bottom = 0, vim.o.lines - math.max(vim.o.cmdheight, 1) - 1
+  if geometry.upwards then
+    bottom = math.min(bottom, geometry.input_row - 1)
+  else
+    top = geometry.input_row + 1
+  end
+  -- A tall document must remain on the same side of the input as the menu.
+  height = math.min(height, opts.max_height, bottom - top - 1)
+  if height < 1 then
+    M.hide_documentation()
+    return false
+  end
   local col = right >= width and geometry.col + geometry.width + 2 or geometry.col - width - 2
-  local row = math.min(geometry.row, vim.o.lines - math.max(vim.o.cmdheight, 1) - height - 2)
+  local row = math.max(top, math.min(geometry.row, bottom - height - 1))
   doc_buf = scratch(doc_buf, "markdown")
   vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
   local wc = {

@@ -40,13 +40,22 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
             except (FileNotFoundError, json.JSONDecodeError):
                 continue
             if predicate(latest):
-                return
+                return latest
         raise AssertionError(f"{description}: {latest}, child exit={child.poll()}")
 
     try:
         wait(lambda s: s["mode"] == "n", "startup")
-        os.write(primary, b"ial")
-        wait(lambda s: s["visible"] and s.get("selected") == "alpha", "terminal menu")
+        os.write(primary, b"i")
+        wait(lambda s: s["mode"] == "i", "enter insert")
+        idle_until = time.monotonic() + 0.1
+        while time.monotonic() < idle_until:
+            snapshot = wait(lambda s: s["mode"] == "i", "idle insert")
+            assert not snapshot["visible"], "Idle insert opened a menu"
+        os.write(primary, b"al")
+        snapshot = wait(lambda s: s["visible"] and s.get("selected") == "alpha" and s.get("prefix") == "al",
+                        "terminal menu")
+        assert snapshot["menu"]["row"] + snapshot["menu"]["height"] + 1 < snapshot["input_row"], snapshot
+        wait(lambda s: s.get("screen_word") == "al", "input row remains visible above the terminal menu")
         os.write(primary, b"\x0e\t!")
         wait(lambda s: s["line"] == "alphabet!" and s["mode"] == "i", "accept and continue typing")
         os.write(primary, b"\x1b")
@@ -63,7 +72,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         if child.poll() is None:
             raise AssertionError(f"quit timed out: {state.read_text()}, terminal tail={output[-1800:]!r}")
         assert child.returncode == 0
-        print("tui: real PTY menu, Ctrl-N, Tab acceptance, following input and Escape passed")
+        print("tui: idle insert stays closed; upper menu leaves input visible; selection, acceptance and Escape passed")
     finally:
         if child.poll() is None:
             child.terminate()
