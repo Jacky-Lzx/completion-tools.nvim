@@ -24,7 +24,7 @@ M.defaults = {
     min_width = 18,
     max_width = 72,
     border = "single",
-    columns = { { "kind_icon" }, { "label", gap = 1 }, { "kind" } },
+    columns = { { "kind_icon" }, { "label", gap = 1 }, { "kind" }, { "source" } },
     column_gap = 1,
     padding = 1,
     kind_icons = true,

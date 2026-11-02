@@ -47,7 +47,7 @@ test("column replacement, validation and grouping", function()
   local items = { entry({ label = "x" }) }
   local layout = render.prepare(items, cfg.menu, 80)
   local line = render.row(layout, 1, items[1], ctx, cfg.menu)
-  assert(line:find("x   lsp", 1, true))
+  assert(line:find("x   LSP", 1, true))
 end)
 test("stable columns, Unicode clipping and immutable CompletionItems", function()
   local items = {

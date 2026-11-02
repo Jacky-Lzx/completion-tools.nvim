@@ -2,6 +2,15 @@ local M = {}
 local text = require("completion_tools.text")
 local kinds = require("completion_tools.kinds")
 local highlight = require("completion_tools.highlight")
+local source_names = {
+  lsp = "LSP",
+  buffer = "Buffer",
+  path = "Path",
+  snippets = "Snippets",
+  cmdline = "Cmdline",
+  dictionary = "Dictionary",
+  spell = "Spell",
+}
 
 M.components = {
   kind_icon = true,
@@ -42,7 +51,7 @@ local function fields(entry, opts)
       opts.max_label_bytes
     ),
     kind = name,
-    source = text.clean(entry.source_id, opts.max_label_bytes),
+    source = text.clean(source_names[entry.source_id] or entry.source_id, opts.max_label_bytes),
     label_detail = detail,
     label_description = description,
     code = code,

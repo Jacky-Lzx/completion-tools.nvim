@@ -58,6 +58,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         assert snapshot["menu"]["row"] + snapshot["menu"]["height"] + 1 < snapshot["input_row"], snapshot
         wait(lambda s: s.get("screen_word") == "al", "input row remains visible above the terminal menu")
         attrs = snapshot["menu_attrs"]
+        assert "Text" in snapshot["menu_screen"] and "Buffer" in snapshot["menu_screen"], snapshot
         assert attrs["alpha"] != attrs["pha"] == attrs["Text"], snapshot
         assert b"38;2;160;160;160" in output, "Text candidates must use gray"
         os.write(primary, b"\x0e\t!")
