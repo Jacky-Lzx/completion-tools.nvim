@@ -113,6 +113,14 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"\t!\x1b")
         wait(lambda s: s["line"] == "ignore!" and s["mode"] == "n" and not s["visible"],
              "snippet candidate acceptance")
+        os.write(primary, b":lua completion_tui_dictionary()\r")
+        wait(lambda s: s["line"] == "" and s["mode"] == "n", "dictionary fixture")
+        os.write(primary, b"iAPP")
+        wait(lambda s: s.get("selected") == "APPLE" and "Meaning of apple." in s.get("doc_screen", ""),
+             "dictionary meaning rendered in the terminal")
+        os.write(primary, b"\t!\x1b")
+        wait(lambda s: s["line"] == "APPLE!" and s["mode"] == "n" and not s["visible"],
+             "dictionary meaning is display-only")
         os.write(primary, b":lua completion_tui_cmdline()\r")
         wait(lambda s: s["mode"] == "n", "command-line setup")
         os.write(primary, b":")
@@ -144,7 +152,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         if child.poll() is None:
             raise AssertionError(f"quit timed out: {state.read_text()}, terminal tail={output[-1800:]!r}")
         assert child.returncode == 0
-        print("tui: continuous typing/backspace retain menu and docs; highlights, command-line acceptance and execution passed")
+        print("tui: continuous typing/backspace retain menu and docs; highlights, dictionary meanings and command-line acceptance passed")
     finally:
         if child.poll() is None:
             child.terminate()

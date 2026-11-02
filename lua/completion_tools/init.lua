@@ -645,6 +645,7 @@ function M.accept()
       and not next(item.additionalTextEdits or {})
       and provider
       and provider.resolve
+      and provider.resolve_on_accept ~= false
     then
       local tick = vim.api.nvim_buf_get_changedtick(ctx.bufnr)
       local token = {}

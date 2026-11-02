@@ -99,6 +99,8 @@ complete callbacks receive {items, start_col?, reusable?, is_incomplete?, pendin
 start_col is a zero-based byte column; item TextEdits take precedence.
 LSP clients carry their negotiated encoding; custom edits default to UTF-8.
 resolve callbacks receive a CompletionItem.
+Set source.resolve_on_accept=false for documentation-only resolvers; the default
+also resolves after acceptance for delayed edits/commands.
 Entry fields: item, context, start_col, source_id.
 
 Callbacks may publish more than once. Stale results are ignored even if a
@@ -115,6 +117,14 @@ Add "dictionary" to sources, and configure dictionary.files (list or function).
 UTF-8, one word/phrase per line; CRLF/BOM and duplicate lines are supported.
 Defaults: min_keyword_length=3, max_items=10, matching="fuzzy", capitalize=true,
 max_bytes=16777216, max_words=500000, max_word_bytes=256, timeout_ms=5000.
+dictionary.documentation defaults to {enabled=true, command="wn", timeout_ms=1500}.
+Selected items resolve English WordNet meanings via {command, original_word, "-over"}
+asynchronously. command may be an executable path. No network or Blink dependency.
+Missing tools, unknown words and failures leave ordinary completion available.
+Original dictionary spelling is used even for capitalized display/insert text.
+Selection/input changes, acceptance, hide and disposal cancel obsolete queries.
+At most 128 successful/empty lookups are cached, each retaining up to 64 KiB text.
+Set enabled=false to disable meanings; WordNet does not supply Chinese translations.
 matching="prefix" uses prefix buckets; "fuzzy" scores subsequences.
 File changes invalidate the background index. Lists replace rather than merge.
 At most four indexes / 64 cached queries per index; warnings for missing files

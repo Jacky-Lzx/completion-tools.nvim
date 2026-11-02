@@ -757,6 +757,59 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line()=='uniqueReplacement'")
     lua("vim.fn.delete(dictionary_fixture)")
   end)
+  test("dictionary selection resolves meanings and cancels obsolete lookups on acceptance", function()
+    lua([[
+      dictionary_fixture=vim.fn.tempname(); dictionary_trace=vim.fn.tempname()
+      previous_dictionary_trace=vim.env.COMPLETION_DICTIONARY_TRACE
+      vim.env.COMPLETION_DICTIONARY_TRACE=dictionary_trace
+      vim.fn.writefile({'apple','appleSlow'},dictionary_fixture)
+      require('completion_tools').setup({sources={'dictionary'},documentation={delay_ms=5},
+        dictionary={files={dictionary_fixture},documentation={command=vim.fn.getcwd()..'/tests/dictionary_command.py'}}})
+    ]])
+    input("iapp")
+    wait(
+      [[local item=require('completion_tools').get_selected_item()
+      return item and item.documentation and item.documentation.value:find('Meaning of apple.',1,true)~=nil]]
+    )
+    wait([[for _,w in ipairs(vim.api.nvim_list_wins()) do
+      if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then
+        return table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w),0,-1,false),'\n'):find('Meaning of apple.',1,true)~=nil
+      end end;return false]])
+    input("<C-n>")
+    wait([[return vim.fn.filereadable(dictionary_trace)==1 and #vim.fn.readfile(dictionary_trace)==2]])
+    eq("appleSlow", lua("return require('completion_tools').get_selected_item().label"))
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line()=='appleSlow!'")
+    vim.wait(150)
+    eq(2, lua("return #vim.fn.readfile(dictionary_trace)"))
+    lua([[assert(not require('completion_tools').is_menu_visible())
+      for _,w in ipairs(vim.api.nvim_list_wins()) do
+        assert(vim.bo[vim.api.nvim_win_get_buf(w)].filetype~='markdown','stale definition reopened documentation')
+      end
+      vim.env.COMPLETION_DICTIONARY_TRACE=previous_dictionary_trace
+      vim.fn.delete(dictionary_fixture);vim.fn.delete(dictionary_trace)
+    ]])
+  end)
+  if vim.env.REAL_WORDNET == "1" then
+    test("real WordNet meanings render for capitalized dictionary candidates", function()
+      lua([[
+        dictionary_fixture=vim.fn.tempname();vim.fn.writefile({'apple'},dictionary_fixture)
+        require('completion_tools').setup({sources={'dictionary'},documentation={delay_ms=5},
+          dictionary={files={dictionary_fixture}}})
+      ]])
+      input("iAPP")
+      wait([[local item=require('completion_tools').get_selected_item()
+        return item and item.label=='APPLE' and item.documentation
+          and item.documentation.value:find('Overview of noun apple',1,true)~=nil]])
+      wait(
+        [[for _,w in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false]]
+      )
+      input("<Tab>!")
+      wait("return vim.api.nvim_get_current_line()=='APPLE!'")
+      lua("vim.fn.delete(dictionary_fixture)")
+    end)
+  end
   test("spell corrects transposed letters and accepts without copying filterText", function()
     lua([[
       vim.wo.spell=true;vim.bo.spelllang='en'

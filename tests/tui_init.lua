@@ -90,6 +90,25 @@ function _G.completion_tui_flicker()
     end,
   })
 end
+function _G.completion_tui_dictionary()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  local path = vim.fn.tempname()
+  vim.fn.writefile({ "apple" }, path)
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    once = true,
+    callback = function()
+      vim.fn.delete(path)
+    end,
+  })
+  require("completion-tools").setup({
+    sources = { "dictionary" },
+    documentation = { delay_ms = 5 },
+    dictionary = {
+      files = { path },
+      documentation = { command = vim.fn.getcwd() .. "/tests/dictionary_command.py" },
+    },
+  })
+end
 function _G.completion_tui_cmdline()
   require("completion-tools").setup({ sources = {}, cmdline = { enabled = true } })
   vim.api.nvim_create_user_command("CompletionTuiAlpha", function()

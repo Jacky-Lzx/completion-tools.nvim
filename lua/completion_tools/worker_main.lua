@@ -105,7 +105,7 @@ local function dictionary(request)
           word = word:gsub("^%l", string.upper)
         end
       end
-      items[#items + 1] = { label = word, kind = 1 }
+      items[#items + 1] = { label = word, kind = 1, data = { dictionary_word = candidate.word } }
     end
     local old = index.order[index.slot]
     if old then

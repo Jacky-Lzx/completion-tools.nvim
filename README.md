@@ -333,6 +333,7 @@ callback 可调用多次以发布增量结果，也可从 libuv 回调调用；
 引擎会处理调度和过期响应。reusable 只用于完整、稳定且不再 pending 的列表：
 允许同一上下文内继续输入时复用；回删、换行、其他行编辑、离开插入模式会使其失效。
 来源应及时响应取消并自行管理外部资源。
+`source.resolve_on_accept = false` 可将 resolve 限于文档查询，避免接受后再请求延迟编辑。
 
 `entry` 含有 `item`、`context`（产生该项时的上下文）、`start_col`、`source_id`。
 resolve 的 callback 返回一个补全项；execute 在同步完成主要文本编辑后调用。
@@ -391,6 +392,20 @@ require("completion-tools").setup({
 `matching="fuzzy"` 使用本插件的前缀/子序列评分取前 `max_items` 项；
 `"prefix"` 仅取前缀匹配，并用前三个字节的索引缩小搜索范围。
 默认随输入将全小写词转换为首字母大写或全大写；`capitalize=false` 保留原样。
+
+选中 Dict 候选后会异步调用本机 WordNet（`wn <原始单词> -over`），在文档窗口显示
+英文词义，保持词表中的原始大小写进行查询。无需 Blink，也不会查询网络。
+未安装 `wn` 或查不到词义时，词典补全照常工作。词表本身不包含释义，WordNet 不提供中文翻译。
+
+~~~lua
+dictionary = {
+  documentation = { enabled = true, command = "wn", timeout_ms = 1500 },
+}
+~~~
+
+`command` 可指定 WordNet 可执行文件路径；`enabled=false` 关闭词义查询。
+只解析选中的候选，切换候选、输入、接受或关闭菜单会取消旧查询；接受时只插入单词。
+每个词典来源缓存最多 128 个查询结果，每项最多保留 64 KiB 文本，setup/dispose 后释放。
 
 文件内容与查询缓存在后台；每次请求检查文件状态，修改后重新索引。
 同时保留最多四组文件索引、每组 64 个查询。文件总字节预算默认 16 MiB，

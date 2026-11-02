@@ -1,6 +1,7 @@
 local M = {}
 function M.new(opts)
   local worker = require("completion_tools.worker").new()
+  local documentation = require("completion_tools.dictionary_documentation").new(opts.documentation)
   local warn = require("completion_tools.worker").warnings("dictionary")
   return {
     score_offset = 5,
@@ -37,7 +38,12 @@ function M.new(opts)
         callback({ items = result.items or {} })
       end, 0, opts.timeout_ms)
     end,
-    dispose = worker.dispose,
+    resolve = documentation.resolve,
+    resolve_on_accept = false,
+    dispose = function()
+      worker.dispose()
+      documentation.dispose()
+    end,
   }
 end
 return M

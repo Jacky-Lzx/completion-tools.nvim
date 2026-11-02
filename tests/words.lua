@@ -34,6 +34,19 @@ local function complete(provider, query)
   )
   return result.items
 end
+local function resolve(provider, item)
+  local result
+  provider.resolve({ item = item, context = ctx(item.label) }, function(value)
+    result = value
+  end)
+  assert(
+    vim.wait(3000, function()
+      return result ~= nil
+    end, 5),
+    "dictionary definition timed out"
+  )
+  return result
+end
 local function labels(items)
   return vim.tbl_map(function(item)
     return item.label
@@ -104,6 +117,76 @@ local ok, err = xpcall(function()
     eq(1, #complete(limited, "alp"))
     assert(notifications[#notifications]:find("limit", 1, true))
   end)
+  local trace = file({})
+  local previous_trace = vim.env.COMPLETION_DICTIONARY_TRACE
+  vim.env.COMPLETION_DICTIONARY_TRACE = trace
+  local command = vim.fn.getcwd() .. "/tests/dictionary_command.py"
+  test("dictionary definitions are lazy, literal, cached and use the original word", function()
+    local dict =
+      source("dictionary", { files = { file({ "apple" }) }, documentation = { command = command } })
+    local item = complete(dict, "APP")[1]
+    eq("APPLE", item.label)
+    eq("apple", item.data.dictionary_word)
+    eq({}, vim.fn.readfile(trace))
+    local result = resolve(dict, item)
+    eq("APPLE", result.label)
+    eq("plaintext", result.documentation.kind)
+    assert(result.documentation.value:find("Meaning of apple.", 1, true))
+    assert(not item.documentation, "resolve mutated a cached completion item")
+    eq(result.documentation, resolve(dict, item).documentation)
+    local calls = vim.fn.readfile(trace)
+    eq(1, #calls)
+    eq("apple", vim.json.decode(calls[1]).word)
+    local literal = "word; `literal` $(literal)"
+    assert(resolve(dict, { label = literal }).documentation.value:find(literal, 1, true))
+  end)
+  test("dictionary definitions degrade quietly for missing tools, empty results and failures", function()
+    local item = { label = "apple" }
+    local before = #vim.fn.readfile(trace)
+    for _, options in ipairs({ { enabled = false }, { command = command .. ".missing" } }) do
+      eq(item, resolve(source("dictionary", { documentation = options }), item))
+    end
+    eq(before, #vim.fn.readfile(trace))
+    local dict = source("dictionary", { documentation = { command = command } })
+    for _, word in ipairs({ "empty", "failed" }) do
+      eq({ label = word }, resolve(dict, { label = word }))
+      eq({ label = word }, resolve(dict, { label = word }))
+    end
+    eq(before + 3, #vim.fn.readfile(trace)) -- Empty results cached; errors may retry.
+  end)
+  test("dictionary definitions cancel and reap obsolete, timed-out and disposed queries", function()
+    local dict = source("dictionary", { documentation = { command = command, timeout_ms = 80 } })
+    local before = #vim.fn.readfile(trace)
+    eq({ label = "timeout" }, resolve(dict, { label = "timeout" }))
+    eq({ label = "timeout" }, resolve(dict, { label = "timeout" }))
+    eq(before + 2, #vim.fn.readfile(trace))
+    for _, dispose in ipairs({ false, true }) do
+      local provider = source("dictionary", { documentation = { command = command, timeout_ms = 3000 } })
+      local called = false
+      local count = #vim.fn.readfile(trace)
+      local cancel = provider.resolve({ item = { label = "slow" } }, function()
+        called = true
+      end)
+      assert(vim.wait(1500, function()
+        return #vim.fn.readfile(trace) > count
+      end, 5))
+      local pid = vim.json.decode(vim.fn.readfile(trace)[count + 1]).pid
+      if dispose then
+        provider.dispose()
+      else
+        cancel()
+      end
+      assert(
+        vim.wait(1500, function()
+          return not vim.uv.kill(pid, 0)
+        end, 5),
+        "obsolete definition process survived"
+      )
+      vim.wait(30)
+      assert(not called, "cancelled definition callback was delivered")
+    end
+  end)
+  vim.env.COMPLETION_DICTIONARY_TRACE = previous_trace
   test("spell obeys window spell, minimum length and context gate", function()
     local spell = source("spell", { debounce_ms = 0 })
     vim.wo.spell = false
@@ -202,6 +285,9 @@ local ok, err = xpcall(function()
       { spell = { sort = "bad" } },
       { dictionary = { matching = "bad" } },
       { dictionary = { files = { false } } },
+      { dictionary = { documentation = { timeout_ms = 0 } } },
+      { dictionary = { documentation = { command = "" } } },
+      { dictionary = { documentation = { enabled = "yes" } } },
       { spell = { debounce_ms = -1 } },
     }) do
       assert(not pcall(config.validate, opts))

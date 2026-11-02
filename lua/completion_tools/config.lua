@@ -45,6 +45,7 @@ M.defaults = {
     max_words = 500000,
     max_word_bytes = 256,
     timeout_ms = 5000,
+    documentation = { enabled = true, command = "wn", timeout_ms = 1500 },
   },
   spell = {
     min_keyword_length = 2,
@@ -173,6 +174,14 @@ function M.validate(opts)
     "completion-tools: invalid dictionary.matching"
   )
   assert(type(dict.capitalize) == "boolean", "completion-tools: invalid dictionary.capitalize")
+  assert(
+    type(dict.documentation) == "table"
+      and type(dict.documentation.enabled) == "boolean"
+      and type(dict.documentation.command) == "string"
+      and dict.documentation.command ~= ""
+      and integer(dict.documentation.timeout_ms, 1),
+    "completion-tools: invalid dictionary.documentation"
+  )
   assert(integer(spell.debounce_ms, 0), "completion-tools: invalid spell.debounce_ms")
   assert(spell.sort == "match" or spell.sort == "suggestion", "completion-tools: invalid spell.sort")
   for _, field in ipairs({ "preselect_current_word", "suggest_when_correct" }) do
