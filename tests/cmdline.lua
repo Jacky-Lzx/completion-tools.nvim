@@ -87,6 +87,28 @@ local ok, err = xpcall(function()
     input("<Tab>")
     wait("return vim.fn.getcmdline()=='set noignorecase number'")
   end)
+  test("help tag colors stay uniform with only the query emphasized", function()
+    lua("require('completion_tools').setup({cmdline={enabled=true}})")
+    input(":help write-local-")
+    wait("return require('completion_tools').is_menu_visible()")
+    lua([[assert(require('completion_tools').get_context().completion_type=='help')
+      assert(require('completion_tools').get_selected_item().label=='write-local-help')
+      local seen={}
+      for _,w in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-menu' then
+          for _,mark in ipairs(vim.api.nvim_buf_get_extmarks(vim.api.nvim_win_get_buf(w),
+            vim.api.nvim_create_namespace('completion-tools-menu'),0,-1,{details=true})) do
+            local group=mark[4].hl_group
+            assert(group:sub(1,1)~='@','help tag picked up code syntax: '..group)
+            seen[group]=true
+          end
+        end
+      end
+      assert(seen.CompletionToolsKindReference and seen.CompletionToolsMatch)
+    ]])
+    input("<Tab>")
+    wait("return vim.fn.getcmdline()=='help write-local-help'")
+  end)
   test("Lua member completion retains its namespace", function()
     lua([[require('completion_tools').setup({cmdline={enabled=true},
       sources=function() error('Insert-only source selector ran in cmdline mode') end})]])

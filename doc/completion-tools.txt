@@ -84,6 +84,12 @@ command-line's entire outer frame in zero-based screen cells, including borders.
 The menu avoids that frame and flips above when necessary. External renderers
 call refresh_cmdline() after geometry changes; idle menus never open from it.
 No renderer subscription or Blink adapter is required by the core.
+Commands, help tags, options and paths use uniform kind coloring plus match
+emphasis. Words/punctuation in their names are not interpreted as source code.
+Lua and Vim expression/function completions use Lua/Vim syntax respectively,
+independent of the current buffer's filetype. Kind/source columns follow themes.
+Override CompletionToolsKindReference for help tags, or return scoped spans from
+menu.highlight.custom using ctx.mode=="cmdline" and ctx.completion_type.
 The native getcompletion API is synchronous: slow custom callbacks/filesystems
 can still block, as with native completion.
 

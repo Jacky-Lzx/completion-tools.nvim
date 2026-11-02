@@ -125,6 +125,55 @@ test("lexical fallback, deprecation and whole UTF-8 match spans", function()
   local marks = span_for(spans, "CompletionToolsMatch")
   eq("中文", line:sub(marks[1][1] + 1, marks[2][2]))
 end)
+test("command-line names are literal, keep matching and do not share syntax caches", function()
+  for _, label in ipairs({ "write-local-help", "<Help>", "vim.lsp.buf.signature_help.Opts" }) do
+    local e = { item = { label = label, kind = 18 }, source_id = "cmdline", start_col = 5 }
+    -- Prime the same text/kind in an Insert-mode context first.
+    highlight.get(label, #label, e, { mode = "insert", filetype = "lua" }, opts.highlight)
+    local context = { mode = "cmdline", completion_type = "help", filetype = "lua", before = "help help" }
+    eq(
+      { { 0, #label, "CompletionToolsKindReference", 110 } },
+      highlight.get(label, #label, e, context, opts.highlight)
+    )
+    local layout = render.prepare({ e }, opts, 120)
+    local _, spans = render.row(layout, 1, e, context, opts)
+    assert(#span_for(spans, "CompletionToolsMatch") > 0)
+    for _, span in ipairs(spans) do
+      assert(span[3]:sub(1, 1) ~= "@", "help tag was interpreted as code")
+    end
+    for _, kind in ipairs({ "file", "dir", "command", "option", "customlist" }) do
+      context.completion_type = kind
+      eq(
+        { { 0, #label, "CompletionToolsKindReference", 110 } },
+        highlight.get(label, #label, e, context, opts.highlight)
+      )
+    end
+  end
+end)
+test("command-line code uses its own language rather than the buffer filetype", function()
+  local e = entry({ label = 'foo(12, "x")', kind = 3 })
+  local menu = config.validate({}).menu
+  if pcall(vim.treesitter.language.add, "lua") then
+    local spans = highlight.get(
+      e.item.label,
+      3,
+      e,
+      { mode = "cmdline", completion_type = "lua", filetype = "tex" },
+      menu.highlight
+    )
+    assert(#span_for(spans, "@string.lua") > 0, "Lua command completion inherited the buffer language")
+  end
+  for _, kind in ipairs({ "lua", "expression", "function" }) do
+    local spans = highlight.get(
+      e.item.label,
+      3,
+      e,
+      { mode = "cmdline", completion_type = kind, filetype = "tex" },
+      opts.highlight
+    )
+    assert(#span_for(spans, "@string") > 0)
+  end
+end)
 test("custom spans are clipped and never contaminate cached built-in spans", function()
   local menu = config.validate({
     menu = {

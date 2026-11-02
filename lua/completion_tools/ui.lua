@@ -190,6 +190,11 @@ function M.render(items, selected, ctx, config)
   if moved and valid(doc_win) and doc_item then
     M.documentation(doc_item, config)
   end
+  if ctx.mode == "cmdline" then
+    -- Native command-line input can defer float painting until another key.
+    -- Flush the new colors and contents even when the user pauses typing.
+    vim.cmd.redraw()
+  end
 end
 
 -- Keep an old frame clear of the live input while its replacement is pending.

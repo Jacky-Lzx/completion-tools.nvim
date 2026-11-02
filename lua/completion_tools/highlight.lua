@@ -122,8 +122,21 @@ function M.get(text, label_bytes, entry, ctx, opts)
     return {}
   end
   local ft = ctx.filetype or ""
+  local literal = false
+  if ctx.mode == "cmdline" then
+    if ctx.completion_type == "lua" then
+      ft = "lua"
+    elseif ctx.completion_type == "expression" or ctx.completion_type == "function" then
+      ft = "vim"
+    else
+      -- Help tags, paths, options and commands are names, not source code.
+      -- Never interpret their punctuation/words using the current buffer's language.
+      ft, literal = "", true
+    end
+  end
   local key = table.concat({
     ft,
+    tostring(literal),
     tostring(entry.item.kind),
     tostring(label_bytes),
     tostring(opts.treesitter),
@@ -135,8 +148,8 @@ function M.get(text, label_bytes, entry, ctx, opts)
     spans = {}
     local _, _, group = kinds.get(entry.item.kind)
     local plain_text = label_bytes > 0 and (entry.item.kind == nil or entry.item.kind == 1)
-    add(spans, 0, plain_text and #text or math.min(label_bytes, #text), group, 110)
-    if not plain_text then
+    add(spans, 0, (plain_text or literal) and #text or math.min(label_bytes, #text), group, 110)
+    if not plain_text and not literal then
       -- Text candidates stay uniformly muted, even when words resemble code.
       -- Documentation passes label_bytes=0 and keeps its syntax highlighting.
       lexical(text, spans)

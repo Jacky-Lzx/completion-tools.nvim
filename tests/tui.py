@@ -123,6 +123,16 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
              "dictionary meaning is display-only")
         os.write(primary, b":lua completion_tui_cmdline()\r")
         wait(lambda s: s["mode"] == "n", "command-line setup")
+        os.write(primary, b":help CompletionTui")
+        snapshot = wait(lambda s: s.get("selected") == "CompletionTui-local-Help"
+                        and "CompletionTui-local-Help" in s.get("menu_screen", "")
+                        and s.get("menu_attrs", {}).get("local", 0) != 0,
+                        "literal help tag colors in the terminal")
+        attrs = snapshot["menu_attrs"]
+        assert attrs["local"] == attrs["-"] == attrs["Help"] == attrs["Reference"], snapshot
+        assert attrs["CompletionTui"] != attrs["local"], snapshot
+        os.write(primary, b"\x1b")
+        wait(lambda s: s["mode"] == "n" and not s["visible"], "help completion cleanup")
         os.write(primary, b":")
         snapshot = wait(lambda s: s["mode"] == "c" and s["cmdline"] == "", "idle command line")
         assert not snapshot["visible"], snapshot

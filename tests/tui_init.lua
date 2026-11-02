@@ -110,7 +110,20 @@ function _G.completion_tui_dictionary()
   })
 end
 function _G.completion_tui_cmdline()
+  vim.bo.filetype = "lua"
   require("completion-tools").setup({ sources = {}, cmdline = { enabled = true } })
+  local path = vim.fn.tempname()
+  vim.fn.mkdir(path .. "/doc", "p")
+  vim.fn.writefile({ "*CompletionTui-local-Help* command-line color fixture" }, path .. "/doc/fixture.txt")
+  vim.cmd("helptags " .. vim.fn.fnameescape(path .. "/doc"))
+  vim.opt.runtimepath:prepend(path)
+  vim.api.nvim_create_autocmd("VimLeavePre", {
+    once = true,
+    callback = function()
+      vim.fn.delete(path, "rf")
+    end,
+  })
+  vim.api.nvim_set_hl(0, "CompletionToolsKindReference", { fg = "#c0c0c0" })
   vim.api.nvim_create_user_command("CompletionTuiAlpha", function()
     vim.g.completion_tui_executed = "alpha"
   end, {})
@@ -168,6 +181,11 @@ timer:start(
             "ignore",
             "ore",
             "Snippet",
+            "CompletionTui",
+            "local",
+            "-",
+            "Help",
+            "Reference",
           }) do
             local first = line:find(word, 1, true)
             if first then

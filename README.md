@@ -285,6 +285,13 @@ vim.api.nvim_create_autocmd("User", {
 
 `refresh_cmdline()` 不会因布局事件打开空闲菜单；重定位时保留选择，并使过期候选不可接受。
 
+普通命令行候选（命令、帮助标签、选项、路径等）按 kind 整项着色，仅强调匹配字符，
+不会把标签中的 `local`、连字符或尖括号当作代码。Lua 和 Vim 表达式/函数补全仍使用
+对应语言的语法高亮，不继承当前编辑文件的语言。类型、来源列沿用主题高亮。
+若需进一步调整，可覆盖 `CompletionToolsKindReference`（帮助标签）等 kind 高亮组，
+或在 `menu.highlight.custom(entry, ctx, text)` 中按 `ctx.mode == "cmdline"` 与
+`ctx.completion_type` 添加仅作用于指定命令行候选的高亮范围。
+
 ## 自定义来源
 
 候选使用 LSP CompletionItem 的字段。下面的来源可和内置来源一起使用：
