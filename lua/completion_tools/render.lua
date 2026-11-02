@@ -8,7 +8,7 @@ local source_names = {
   path = "Path",
   snippets = "Snippets",
   cmdline = "Cmdline",
-  dictionary = "Dictionary",
+  dictionary = "Dict",
   spell = "Spell",
 }
 

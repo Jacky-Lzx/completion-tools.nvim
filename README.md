@@ -419,7 +419,7 @@ require("completion-tools").setup({
 默认布局为「kind 图标｜名称、签名与说明｜kind 名称｜来源」。`columns` 中每组可放多个组件，
 组间用 `column_gap`，组内用 `gap`（默认 1）分隔。支持 `kind_icon`、`label`、`kind`、
 `source`、`label_detail`、`label_description`；列列表整体替换，组件不可重复。
-来源列显示 LSP、Buffer、Path、Snippets、Cmdline、Dictionary 或 Spell；自定义来源保留其 ID。
+来源列显示 LSP、Buffer、Path、Snippets、Cmdline、Dict 或 Spell；自定义来源保留其 ID。
 列宽按保留的候选统一计算，滚动时对齐；窄窗口优先压缩名称，同时保留可读名称空间。
 文本按显示宽度截断，extmark 使用 UTF-8 字节范围。
 

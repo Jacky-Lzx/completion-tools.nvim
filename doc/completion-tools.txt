@@ -154,7 +154,7 @@ Documentation reuses lexical/Tree-sitter options, without menu custom callbacks.
                                                        *completion-tools-menu*
 Default columns: { {"kind_icon"}, {"label", gap=1}, {"kind"}, {"source"} }.
 Components: kind_icon, label, kind, source, label_detail, label_description.
-Source names: LSP, Buffer, Path, Snippets, Cmdline, Dictionary, Spell.
+Source names: LSP, Buffer, Path, Snippets, Cmdline, Dict, Spell.
 Custom sources retain their IDs.
 menu.columns replaces the entire column list. column_gap and padding default
 to 1. kind_icons=false hides icons; a name-to-icon table overrides defaults.
