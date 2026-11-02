@@ -197,11 +197,19 @@ menu.columns replaces the entire column list. column_gap and padding default
 to 1. kind_icons=false hides icons; a name-to-icon table overrides defaults.
 label_details=false separates the label from LSP detail/description fields.
 Display text never changes the accepted CompletionItem.
+With label_details=true, descriptions use an automatically aligned auxiliary
+column unless label_description is explicitly positioned in menu.columns.
+File/folder paths are muted location metadata, shortened relative to the current
+directory or home; clipping keeps the distinguishing end of the path. Metadata
+gives up excess width before candidate labels. Full detail, labelDetails.detail
+and labelDetails.description remain available in the wrapping documentation
+window (automatically, or with show_documentation); paths there are literal.
 
 Independent label highlighting uses kind groups, a lexical fallback and optional
 native Tree-sitter highlights queries. No colorful-menu or Blink dependency.
 menu.highlight: enabled=true, treesitter=true, max_bytes=1024, cache_size=512.
 Only visible rows are highlighted; plain words do not create parsers.
+File/folder candidates retain kind and match emphasis without code syntax colors.
 Missing parsers/queries and incomplete signatures keep the lexical fallback.
 menu.max_label_bytes=1024 bounds each displayed field. Default icons need a
 Nerd Font. Unknown kinds use CompletionToolsKindUnknown.

@@ -42,18 +42,36 @@ local function fields(entry, opts)
     detail = ""
   end
   local description = text.clean(details.description, opts.max_label_bytes)
-  local code = label .. (opts.label_details and detail or "")
+  local file = item.kind == 17 or item.kind == 19 or entry.source_id == "path"
+  if file then
+    -- File metadata is a location, not a signature in the buffer's language.
+    detail = vim.trim(detail)
+    local function path(value)
+      if value:sub(1, 1) == "/" or value:match("^~[/\\]") then
+        return vim.fn.fnamemodify(value, ":~:.")
+      end
+      return value
+    end
+    detail, description = path(detail), path(description)
+  end
+  local metadata = description
+  local separate_detail = false
+  for _, group in ipairs(opts.columns) do
+    separate_detail = separate_detail or vim.tbl_contains(group, "label_detail")
+  end
+  if file and opts.label_details and not separate_detail and detail ~= "" and detail ~= description then
+    metadata = detail .. (description ~= "" and "  " .. description or "")
+  end
+  local code = label .. (opts.label_details and not file and detail or "")
   code = text.clean(code, opts.max_label_bytes)
   return {
     kind_icon = text.clean(icon, 32),
-    label = text.clean(
-      code .. (opts.label_details and description ~= "" and "  " .. description or ""),
-      opts.max_label_bytes
-    ),
+    label = code,
     kind = name,
     source = text.clean(source_names[entry.source_id] or entry.source_id, opts.max_label_bytes),
     label_detail = detail,
-    label_description = description,
+    label_description = metadata,
+    file = file,
     code = code,
     label_bytes = #label,
     kind_group = group,
@@ -67,19 +85,33 @@ function M.prepare(items, opts, available)
   for i, entry in ipairs(items) do
     rows[i] = fields(entry, opts)
   end
+  local groups, explicit_description = {}, false
   for _, group in ipairs(opts.columns) do
+    explicit_description = explicit_description or vim.tbl_contains(group, "label_description")
+  end
+  for _, group in ipairs(opts.columns) do
+    groups[#groups + 1] = group
+    if opts.label_details and not explicit_description and vim.tbl_contains(group, "label") then
+      -- Reserve a real column for metadata, including in existing user layouts.
+      groups[#groups + 1] = { "label_description", gap = 2, automatic = true }
+    end
+  end
+  for _, group in ipairs(groups) do
     for j, name in ipairs(group) do
       if not (name == "kind_icon" and opts.kind_icons == false) then
         local width = 0
         for _, row in ipairs(rows) do
           width = math.max(width, vim.fn.strdisplaywidth(row[name]))
         end
-        columns[#columns + 1] = {
-          name = name,
-          width = width,
-          gap = #columns == 0 and 0 or (j == 1 and opts.column_gap or group.gap or 1),
-        }
-        seen[name] = columns[#columns]
+        if width > 0 or not group.automatic then
+          columns[#columns + 1] = {
+            name = name,
+            width = width,
+            gap = #columns == 0 and 0
+              or (group.automatic and 2 or j == 1 and opts.column_gap or group.gap or 1),
+          }
+          seen[name] = columns[#columns]
+        end
       end
     end
   end
@@ -91,6 +123,12 @@ function M.prepare(items, opts, available)
   end
   local width = math.min(limit, math.max(opts.min_width, natural))
   local excess = natural - width
+  -- Spend excess metadata width before truncating the candidate itself, while
+  -- retaining a small location hint whenever the terminal has room for both.
+  if seen.label_description and excess > 0 then
+    local take = math.min(excess, math.max(0, seen.label_description.width - 12))
+    seen.label_description.width, excess = seen.label_description.width - take, excess - take
+  end
   if seen.label and excess > 0 then
     local take = math.min(excess, math.max(0, seen.label.width - 8))
     seen.label.width, excess = seen.label.width - take, excess - take
@@ -108,7 +146,7 @@ function M.prepare(items, opts, available)
       columns[i].gap, excess = columns[i].gap - take, excess - take
     end
   end
-  -- Give spare space to the label, keeping the kind column aligned at the right.
+  -- Give spare space to the label, keeping auxiliary columns aligned at the right.
   if natural < width and seen.label then
     seen.label.width = seen.label.width + width - natural
   end
@@ -137,11 +175,19 @@ function M.row(layout, index, entry, ctx, opts)
   for _, column in ipairs(layout.columns) do
     line = line .. string.rep(" ", column.gap)
     local start = #line
-    local value, retained = text.truncate(row[column.name], column.width)
+    local truncate = row.file
+        and (column.name == "label_detail" or column.name == "label_description")
+        and text.truncate_path
+      or text.truncate
+    local value, retained = truncate(row[column.name], column.width)
     line = line .. value .. string.rep(" ", math.max(0, column.width - vim.fn.strdisplaywidth(value)))
     if column.name == "kind" or column.name == "kind_icon" then
       add(start, start + #value, row.kind_group)
-    elseif column.name == "source" or column.name == "label_description" then
+    elseif
+      column.name == "source"
+      or column.name == "label_description"
+      or (row.file and column.name == "label_detail")
+    then
       add(start, start + #value, "CompletionToolsSource")
     elseif column.name == "label" or column.name == "label_detail" then
       local code = column.name == "label" and row.code or row.label_detail
@@ -164,7 +210,6 @@ function M.row(layout, index, entry, ctx, opts)
         end
       end
       if column.name == "label" then
-        add(start + math.min(#code, retained), start + retained, "CompletionToolsSource")
         local query, pos = (ctx.before or ""):sub((entry.start_col or 0) + 1), 1
         -- Match whole UTF-8 characters, with byte positions for extmarks.
         for char in query:gmatch(text.characters) do

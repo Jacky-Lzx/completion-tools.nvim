@@ -7,6 +7,7 @@ import pty
 import re
 import select
 import shutil
+import signal
 import struct
 import subprocess
 import tempfile
@@ -158,6 +159,37 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"\t!\x1b")
         wait(lambda s: s["line"] == "ignore!" and s["mode"] == "n" and not s["visible"],
              "snippet candidate acceptance")
+        os.write(primary, b":lua completion_tui_files()\r")
+        wait(lambda s: s["line"] == "" and s["mode"] == "n", "file fixture")
+        os.write(primary, b"iTe")
+        path = "/Users/test/Research/Papers/Very_Long_Project/TeX/0_Abstract.tex"
+        snapshot = wait(lambda s: s.get("doc_lines") == [path]
+                        and "0_Abstract.tex" in s.get("menu_screen", ""), "file path detail")
+        assert "TeX/4_Experimental_Results.tex" in snapshot["menu_rows"][1], snapshot
+        assert "…" in snapshot["menu_screen"], snapshot
+        attrs = snapshot["menu_attrs"]
+        assert attrs["Abstract"] == attrs[".tex"], snapshot
+        assert snapshot["menu_source_attrs"][0] != attrs["Abstract"], snapshot
+        assert path in snapshot["doc_screen"].replace("\n", "").replace(" ", ""), snapshot
+        os.write(primary, b"\x0e")
+        path = "/Users/test/Research/Papers/Very_Long_Project/TeX/4_Experimental_Results.tex"
+        wait(lambda s: s.get("selected") == "TeX/4_Experimental_Results.tex"
+             and s.get("doc_lines") == [path], "labelDetails metadata remains complete after selection")
+        fcntl.ioctl(primary, termios.TIOCSWINSZ, struct.pack("HHHH", 36, 90, 0, 0))
+        child.send_signal(signal.SIGWINCH)
+        # Resizing intentionally dismisses completion; reopen at the new width.
+        wait(lambda s: s.get("columns") == 90 and not s["visible"], "terminal resized")
+        os.write(primary, b"\x00")
+        wait(lambda s: s.get("selected") == "TeX/0_Abstract.tex", "reopen after resize")
+        os.write(primary, b"\x0e")
+        wait(lambda s: s.get("columns") == 90 and s.get("doc_lines") == [path]
+             and "Results.tex" in s.get("menu_rows", [""])[1],
+             "narrow terminal keeps the distinguishing path suffix")
+        os.write(primary, b"\t!\x1b")
+        wait(lambda s: s["line"] == "TeX/4_Experimental_Results.tex!" and s["mode"] == "n",
+             "file metadata does not enter accepted text")
+        fcntl.ioctl(primary, termios.TIOCSWINSZ, struct.pack("HHHH", 36, 120, 0, 0))
+        child.send_signal(signal.SIGWINCH)
         os.write(primary, b":lua completion_tui_dictionary()\r")
         wait(lambda s: s["line"] == "" and s["mode"] == "n", "dictionary fixture")
         os.write(primary, b"iAPP")

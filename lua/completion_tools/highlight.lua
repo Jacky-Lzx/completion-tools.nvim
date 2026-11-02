@@ -122,7 +122,7 @@ function M.get(text, label_bytes, entry, ctx, opts)
     return {}
   end
   local ft = ctx.filetype or ""
-  local literal = false
+  local literal = entry.item.kind == 17 or entry.item.kind == 19 or entry.source_id == "path"
   if ctx.mode == "cmdline" then
     if ctx.completion_type == "lua" then
       ft = "lua"

@@ -108,6 +108,62 @@ test("separate details, disabled icons, controls and bounded text", function()
   local cleaned = require("completion_tools.text").clean(string.rep("中文", 10000), 64)
   assert(#cleaned <= 64 and vim.str_utfindex(cleaned) > 0)
 end)
+test("file metadata aligns, preserves names and path tails, and never becomes code", function()
+  local root = vim.fn.getcwd()
+  local items = {
+    entry({ label = "TeX/0_Abstract.tex", kind = 17, detail = root .. "/paper/TeX/0_Abstract.tex" }),
+    entry({
+      label = "TeX/4_Experimental_Results.tex",
+      kind = 17,
+      labelDetails = { description = root .. "/paper/TeX/4_Experimental_Results.tex" },
+    }),
+  }
+  local original = vim.deepcopy(items)
+  local menu = config.validate({ menu = { max_width = 160 } }).menu
+  local layout = render.prepare(items, menu, 160)
+  local previous
+  for i, e in ipairs(items) do
+    local line, spans = render.row(layout, i, e, { before = "Te", filetype = "tex" }, menu)
+    local at = assert(line:find("paper/TeX/", 1, true))
+    if previous then
+      eq(previous, at)
+    end
+    previous = at
+    assert(not line:find(root, 1, true), "path should be relative to the project")
+    assert(#span_for(spans, "CompletionToolsMatch") > 0)
+    for _, span in ipairs(spans) do
+      assert(span[3]:sub(1, 1) ~= "@", "file was highlighted as code")
+      if span[1] <= at - 1 and span[2] >= at then
+        eq("CompletionToolsSource", span[3])
+      end
+    end
+  end
+  layout = render.prepare(items, opts, 72)
+  local line = render.row(layout, 2, items[2], ctx, opts)
+  assert(line:find(items[2].item.label, 1, true), "metadata displaced the file name: " .. line)
+  assert(line:find("…", 1, true) and line:find("Results.tex", 1, true), line)
+  for width = 4, 100 do
+    layout = render.prepare(items, opts, width)
+    for i, e in ipairs(items) do
+      local rendered = render.row(layout, i, e, ctx, opts)
+      eq(layout.width, vim.fn.strdisplaywidth(rendered))
+    end
+  end
+  eq(original, items)
+end)
+test("path truncation keeps UTF-8 suffixes within display cells", function()
+  local text = require("completion_tools.text")
+  local value = "/目录/论文/章节😀.tex"
+  eq(value, text.truncate_path(value, 80))
+  for width = 1, 30 do
+    local suffix = text.truncate_path(value, width)
+    assert(vim.fn.strdisplaywidth(suffix) <= width)
+    assert(vim.str_utfindex(suffix) > 0)
+    if width >= 8 then
+      assert(suffix:sub(-4) == ".tex")
+    end
+  end
+end)
 test("lexical fallback, deprecation and whole UTF-8 match spans", function()
   local e = entry({
     label = "中文decode",

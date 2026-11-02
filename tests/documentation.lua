@@ -21,6 +21,24 @@ eq(
 )
 eq({ "unclosed code" }, doc.build({ documentation = "```lua\nunclosed code" }, "lua"))
 eq({}, doc.build({ documentation = "```lua\n```" }, "lua"))
+local path = "/Users/test/Research/Very_Long_Project/TeX/4_Experimental_Results.tex"
+local file_lines, file_ranges = doc.build({ kind = 17, detail = path }, "tex")
+eq({ path }, file_lines)
+eq({}, file_ranges)
+file_lines, file_ranges = doc.build({ kind = 17, labelDetails = { description = path } }, "tex")
+eq({ path }, file_lines)
+eq({}, file_ranges)
+eq(
+  { path },
+  doc.build({ kind = 17, detail = path, labelDetails = { detail = path, description = path } }, "tex")
+)
+eq(
+  { "(value: string)", "module", "", "Help." },
+  doc.build({
+    labelDetails = { detail = "(value: string)", description = "module" },
+    documentation = "Help.",
+  }, "lua")
+)
 eq({ "\\`literal\\`" }, doc.build({ documentation = "\\`literal\\`" }, "lua"))
 local function visible(value)
   local _, _, display = doc.build({ documentation = { kind = "markdown", value = value } }, "lua")

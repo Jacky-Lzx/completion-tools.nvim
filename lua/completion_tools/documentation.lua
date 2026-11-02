@@ -153,11 +153,27 @@ function M.build(item, filetype)
       filetype = ft,
     }
   end
-  if type(item.detail) == "string" and item.detail ~= "" then
-    for _, line in ipairs(vim.split(item.detail, "\n", { plain = true })) do
-      code(line, filetype)
+  local file = item.kind == 17 or item.kind == 19
+  local details = item.labelDetails or {}
+  local shown = {}
+  local function metadata(value, syntax)
+    if type(value) ~= "string" or value == "" or shown[value] then
+      return
+    end
+    shown[value] = true
+    for _, line in ipairs(vim.split(value, "\n", { plain = true })) do
+      if syntax then
+        code(line, filetype)
+      else
+        append(line)
+      end
     end
   end
+  if type(item.detail) == "string" and item.detail ~= "" then
+    metadata(item.detail, not file)
+  end
+  metadata(details.detail, not file)
+  metadata(details.description, false)
   local documentation = item.documentation
   local value = type(documentation) == "table" and documentation.value or documentation
   local markdown = type(documentation) ~= "table" or documentation.kind ~= "plaintext"

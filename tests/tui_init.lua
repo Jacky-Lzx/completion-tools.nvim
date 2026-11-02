@@ -64,6 +64,36 @@ function _G.completion_tui_snippet()
   vim.api.nvim_set_hl(0, "Special", { fg = "#c678dd" })
   vim.api.nvim_set_hl(0, "@function", { fg = "#56b6c2" })
 end
+function _G.completion_tui_files()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.bo.filetype = "tex"
+  require("completion-tools").setup({
+    sources = { "fixture" },
+    documentation = { delay_ms = 5 },
+    providers = {
+      fixture = {
+        complete = function(_, callback)
+          callback({
+            items = {
+              {
+                label = "TeX/0_Abstract.tex",
+                kind = 17,
+                detail = "/Users/test/Research/Papers/Very_Long_Project/TeX/0_Abstract.tex",
+              },
+              {
+                label = "TeX/4_Experimental_Results.tex",
+                kind = 17,
+                labelDetails = {
+                  description = "/Users/test/Research/Papers/Very_Long_Project/TeX/4_Experimental_Results.tex",
+                },
+              },
+            },
+          })
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_flicker()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.bo.filetype = "lua"
@@ -191,6 +221,7 @@ timer:start(
     local data = {
       line = vim.api.nvim_get_current_line(),
       mode = vim.api.nvim_get_mode().mode,
+      columns = vim.o.columns,
       visible = cmp.is_menu_visible(),
       selected = (cmp.get_selected_item() or {}).label,
       first = (cmp.get_items()[1] or {}).label,
@@ -219,6 +250,24 @@ timer:start(
           local line = vim.api.nvim_buf_get_lines(b, 0, 1, false)[1]
           local at = vim.fn.screenpos(win, 1, 1)
           data.menu_line = line
+          data.menu_rows = vim.api.nvim_buf_get_lines(b, 0, -1, false)
+          data.menu_source_attrs = {}
+          for _, mark in
+            ipairs(
+              vim.api.nvim_buf_get_extmarks(
+                b,
+                vim.api.nvim_create_namespace("completion-tools-menu"),
+                0,
+                -1,
+                { details = true }
+              )
+            )
+          do
+            if mark[2] == 0 and mark[4].hl_group == "CompletionToolsSource" then
+              local cell = vim.fn.strdisplaywidth(line:sub(1, mark[3]))
+              data.menu_source_attrs[#data.menu_source_attrs + 1] = vim.fn.screenattr(at.row, at.col + cell)
+            end
+          end
           data.menu_screen = ""
           for col = at.col, at.col + geometry.width - 1 do
             data.menu_screen = data.menu_screen .. vim.fn.screenstring(at.row, col)
@@ -239,6 +288,10 @@ timer:start(
             "-",
             "Help",
             "Reference",
+            "Users",
+            "Project",
+            "Abstract",
+            ".tex",
           }) do
             local first = line:find(word, 1, true)
             if first then
@@ -248,6 +301,7 @@ timer:start(
           end
         elseif vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "markdown" then
           data.doc_win = win
+          data.doc_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false)
           local geometry = vim.api.nvim_win_get_config(win)
           local at = vim.fn.screenpos(win, 1, 1)
           data.doc_screen = ""

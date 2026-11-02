@@ -31,4 +31,25 @@ function M.truncate(text, width)
   return result .. "…", #result
 end
 
+-- Paths are distinguished by their last components, not their shared prefix.
+function M.truncate_path(value, width)
+  if width <= 0 then
+    return "", 0
+  end
+  if vim.fn.strdisplaywidth(value) <= width then
+    return value, #value
+  end
+  local chars, suffix = {}, ""
+  for char in value:gmatch(M.characters) do
+    chars[#chars + 1] = char
+  end
+  for i = #chars, 1, -1 do
+    if vim.fn.strdisplaywidth(chars[i] .. suffix) > width - 1 then
+      break
+    end
+    suffix = chars[i] .. suffix
+  end
+  return "…" .. suffix, 0
+end
+
 return M
