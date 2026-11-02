@@ -731,6 +731,68 @@ local ok, err = xpcall(function()
       end
     ]])
   end)
+  test("Markdown documentation conceals delimiters and renders rules and nested emphasis", function()
+    lua([[
+      require('completion_tools').setup({sources={'test'},documentation={delay_ms=5,max_width=40},
+        providers={test={complete=function(_,cb) cb({items={{label='alpha',documentation={kind='markdown',
+          value='Overview\n\n---\n\n@*param* `url` — **Target** file.\n*outer **inner** text*'}}}}) end}}})
+    ]])
+    input("ial")
+    wait(
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false"
+    )
+    lua([[
+      vim.cmd.redraw()
+      local win
+      for _,w in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then win=w end
+      end
+      assert(vim.wo[win].conceallevel==2 and vim.wo[win].concealcursor=='nvic')
+      assert(vim.api.nvim_win_get_height(win)==6,'Unexpected document height')
+      local width=vim.api.nvim_win_get_width(win)
+      assert(width==vim.fn.strdisplaywidth('@*param* url — **Target** file.'),'Concealed prose may wrap early')
+      local at=vim.fn.screenpos(win,1,1)
+      local function screen(row)
+        local text=''
+        for col=at.col,at.col+width-1 do text=text..vim.fn.screenstring(at.row+row,col) end
+        return text:gsub('%s+$','')
+      end
+      assert(screen(2)==string.rep('─',width),screen(2))
+      assert(screen(4)=='@param url — Target file.',screen(4))
+      assert(screen(5)=='outer inner text',screen(5))
+      assert(vim.fn.screenattr(at.row+4,at.col)~=vim.fn.screenattr(at.row+4,at.col+1),'Italic style missing')
+      assert(vim.fn.screenattr(at.row+5,at.col)~=vim.fn.screenattr(at.row+5,at.col+6),'Nested bold style missing')
+      local raw=table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win),0,-1,false),'\n')
+      assert(raw:find('@*param*',1,true),'Expected conceal rather than destructive marker removal')
+    ]])
+  end)
+  test("concealed Markdown in a narrow preview wraps without clipping trailing text", function()
+    lua([[
+      require('completion_tools').setup({sources={'test'},documentation={delay_ms=5,max_width=12},
+        providers={test={complete=function(_,cb) cb({items={{label='alpha',documentation={kind='markdown',
+          value='**one two three four five six seven eight nine ten**'}}}}) end}}})
+    ]])
+    input("ial")
+    wait(
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false"
+    )
+    lua([[
+      vim.cmd.redraw()
+      for _,win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='markdown' then
+          local at=vim.fn.screenpos(win,1,1)
+          local height=vim.api.nvim_win_get_height(win)
+          assert(height==5,'Conceal wrap rows were undercounted')
+          local screen=''
+          for row=at.row,at.row+height-1 do
+            for col=at.col,at.col+11 do screen=screen..vim.fn.screenstring(row,col) end
+          end
+          assert(not screen:find('*',1,true),screen)
+          assert(screen:find('ten',1,true),'Trailing content clipped: '..screen)
+        end
+      end
+    ]])
+  end)
   local function start_fixture(extra)
     lua(
       [[

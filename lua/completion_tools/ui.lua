@@ -29,12 +29,16 @@ function M.highlights()
     CompletionToolsSource = "Comment",
     CompletionToolsDoc = "NormalFloat",
     CompletionToolsDocCode = "String",
+    CompletionToolsDocSeparator = "FloatBorder",
   }) do
     vim.api.nvim_set_hl(0, name, { default = true, link = target })
   end
   -- Foreground-only syntax groups preserve the selected row's PmenuSel background.
   vim.api.nvim_set_hl(0, "CompletionToolsMatch", { default = true, bold = true, underline = true })
   vim.api.nvim_set_hl(0, "CompletionToolsDeprecated", { default = true, strikethrough = true })
+  vim.api.nvim_set_hl(0, "CompletionToolsDocItalic", { default = true, italic = true })
+  vim.api.nvim_set_hl(0, "CompletionToolsDocBold", { default = true, bold = true })
+  vim.api.nvim_set_hl(0, "CompletionToolsDocBoldItalic", { default = true, bold = true, italic = true })
   require("completion_tools.kinds").highlights()
 end
 
@@ -223,15 +227,17 @@ function M.documentation(item, config)
     return false
   end
   local documentation = require("completion_tools.documentation")
-  local lines, ranges = documentation.build(item, geometry.filetype)
+  local lines, ranges, visible = documentation.build(item, geometry.filetype)
   if #lines == 0 then
     M.hide_documentation()
     return false
   end
   local opts = config.documentation
   local width = 12
-  for _, line in ipairs(lines) do
-    width = math.max(width, vim.fn.strdisplaywidth(line))
+  -- Conceal does not reflow wrapped buffer text. Reserve raw columns for prose;
+  -- virtual separators occupy exactly one row regardless of their Markdown length.
+  for row, line in ipairs(lines) do
+    width = math.max(width, visible[row] == "" and 0 or vim.fn.strdisplaywidth(line))
   end
   local right, left = vim.o.columns - geometry.col - geometry.width - 4, geometry.col - 2
   local available = math.max(right, left)
@@ -241,8 +247,9 @@ function M.documentation(item, config)
   end
   width = math.min(width, opts.max_width, available)
   local height = 0
-  for _, line in ipairs(lines) do
-    height = height + math.max(1, math.ceil(vim.fn.strdisplaywidth(line) / width))
+  for row, line in ipairs(lines) do
+    local cells = visible[row] == "" and 0 or vim.fn.strdisplaywidth(line)
+    height = height + math.max(1, math.ceil(cells / width))
   end
   local top, bottom = 0, vim.o.lines - math.max(vim.o.cmdheight, 1) - 1
   if geometry.upwards then
@@ -259,9 +266,10 @@ function M.documentation(item, config)
   local col = right >= width and geometry.col + geometry.width + 2 or geometry.col - width - 2
   local row = math.max(top, math.min(geometry.row, bottom - height - 1))
   doc_buf = scratch(doc_buf, "markdown")
+  vim.bo[doc_buf].syntax = ""
   vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
   vim.api.nvim_buf_clear_namespace(doc_buf, doc_ns, 0, -1)
-  documentation.highlight(doc_buf, doc_ns, lines, ranges, config.menu.highlight)
+  documentation.highlight(doc_buf, doc_ns, lines, ranges, config.menu.highlight, width)
   local wc = {
     relative = "editor",
     row = math.max(0, row),
@@ -280,6 +288,8 @@ function M.documentation(item, config)
     vim.wo[doc_win].winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsBorder"
     vim.wo[doc_win].wrap = true
   end
+  vim.wo[doc_win].conceallevel = 2
+  vim.wo[doc_win].concealcursor = "nvic"
   doc_item = item
   return true
 end

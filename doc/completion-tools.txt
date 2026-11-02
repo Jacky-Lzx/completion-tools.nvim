@@ -8,7 +8,8 @@ SETUP ~
 >
     require("completion-tools").setup()
 <
-See README.md for full configuration, source contracts and migration notes.
+See README.md for a quick start and doc/configuration.md for configuration,
+source contracts, examples and migration notes.
 Defaults are defined in lua/completion_tools/config.lua.
 
                                                        *completion-tools-lsp*
@@ -174,11 +175,17 @@ CompletionToolsMenu       CompletionToolsBorder     CompletionToolsSelected
 CompletionToolsMatch      CompletionToolsSource     CompletionToolsDoc
 CompletionToolsDeprecated CompletionToolsKind{LSP kind name}
 CompletionToolsDocCode
+CompletionToolsDocItalic   CompletionToolsDocBold     CompletionToolsDocBoldItalic
+CompletionToolsDocSeparator
 
 Snippet icons/labels/kind names use CompletionToolsKindSnippet, linked to Special
 by default. Documentation hides Markdown code fences and inline-code backticks,
 preserving code text, indentation and syntax highlighting. Detail and plaintext
 documentation remain literal. Inline code uses CompletionToolsDocCode (String).
+Prose emphasis uses local conceal for italic, bold and combined styles, with
+the corresponding DocItalic/DocBold/DocBoldItalic groups. Thematic rules (three
+or more dashes, asterisks or underscores) use full-width DocSeparator lines.
+Code spans/blocks remain literal. Sizing accounts for raw-column conceal wrapping.
 Documentation reuses lexical/Tree-sitter options, without menu custom callbacks.
 
                                                        *completion-tools-menu*

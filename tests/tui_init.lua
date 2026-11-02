@@ -50,7 +50,10 @@ function _G.completion_tui_snippet()
                 label = "ignore",
                 kind = 15,
                 detail = "\\ignore{value}",
-                documentation = { kind = "markdown", value = "```latex\n\\input{中文}\n```\n\nUse `path`." },
+                documentation = {
+                  kind = "markdown",
+                  value = "```latex\n\\input{中文}\n```\n\nUse `path`.\n\n---\n\n@*param* `path` — **Target** file.",
+                },
               },
             },
           })

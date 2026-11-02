@@ -4,6 +4,7 @@ import json
 import os
 from pathlib import Path
 import pty
+import re
 import select
 import shutil
 import struct
@@ -148,6 +149,10 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         attrs = snapshot["menu_attrs"]
         assert attrs["ignore"] != attrs["ore"] == attrs["Snippet"], snapshot
         assert "`" not in snapshot["doc_screen"] and "Use path." in snapshot["doc_screen"], snapshot
+        assert "*" not in snapshot["doc_screen"] and "---" not in snapshot["doc_screen"], snapshot
+        assert "@param path" in snapshot["doc_screen"] and "──" in snapshot["doc_screen"], snapshot
+        assert any(b"3" in codes.split(b";") for codes in re.findall(rb"\x1b\[([0-9;]*)m", output)), \
+            "Markdown italics were not emitted to the terminal"
         for rgb in (b"38;2;198;120;221", b"38;2;86;182;194"):
             assert rgb in output, f"Missing snippet/documentation RGB highlight {rgb!r}"
         os.write(primary, b"\t!\x1b")
