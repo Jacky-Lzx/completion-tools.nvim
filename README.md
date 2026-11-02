@@ -2,7 +2,7 @@
 
 面向 Neovim 0.11+ 的补全插件。纯 Lua，无编译步骤，无必需的第三方依赖。
 
-已实现 LSP、异步路径、缓冲区单词、snippet、浮动菜单、文档预览，以及可选的 Ex 命令行补全。使用增量单词索引、请求取消、完整 LSP 列表的前向复用和 top-k 排序，减少每次输入的工作量。
+已实现 LSP、异步路径、缓冲区单词、snippet、带 kind 图标与语法高亮的多列浮动菜单、文档预览，以及可选的 Ex 命令行补全。使用增量单词索引、请求取消、完整 LSP 列表的前向复用和 top-k 排序，减少每次输入的工作量。
 
 已用本机 blink.cmp v1.10.2 的 Rust 后端完成受控对照，覆盖 1,000、10,000、20,000 个候选，输入到菜单更新延迟达到同一毫秒量级。两者均使用简化菜单和相同候选集；这不是完整个人配置或所有语言服务器的性能保证。测量条件、原始数据和匹配能力差异见 [性能记录](doc/performance.md)。
 
@@ -115,7 +115,13 @@ require("completion-tools").setup({
     -- buffer = { score_offset = 0 },
     -- snippets = { score_offset = 30 },
   },
-  menu = { max_height = 12, min_width = 18, max_width = 72, border = "single" },
+  menu = {
+    max_height = 12, min_width = 18, max_width = 72, border = "single",
+    columns = { { "kind_icon" }, { "label", gap = 1 }, { "kind" } },
+    column_gap = 1, padding = 1,
+    kind_icons = true, label_details = true, max_label_bytes = 1024,
+    highlight = { enabled = true, treesitter = true, max_bytes = 1024, cache_size = 512 },
+  },
   documentation = {
     auto_show = true,
     delay_ms = 150,
@@ -297,6 +303,43 @@ client_id；事件中的 item 不含私有元数据。
 
 运行 `:checkhealth completion-tools` 检查版本和多补全引擎冲突。
 
+## 菜单布局与高亮
+
+默认布局为「kind 图标｜名称、签名与说明｜kind 名称」。`columns` 中每组可放多个组件，
+组间用 `column_gap`，组内用 `gap`（默认 1）分隔。支持 `kind_icon`、`label`、`kind`、
+`source`、`label_detail`、`label_description`；列列表整体替换，组件不可重复。
+列宽按保留的候选统一计算，滚动时对齐；窄窗口优先压缩名称，同时保留可读名称空间。
+文本按显示宽度截断，extmark 使用 UTF-8 字节范围。
+
+`label` 默认组合 LSP `labelDetails.detail` 与 `labelDetails.description`；
+缺少 detail 时可显示单行 `item.detail`。只改变展示，不修改用于接受的 CompletionItem。
+使用独立 detail/description 列时可设 `label_details=false`，避免重复。
+`kind_icons=false` 隐藏图标，也可设 `kind_icons={ Function="ƒ", Variable="v" }` 覆盖部分图标。
+默认图标需要 Nerd Font。
+
+高亮独立实现，不依赖 Blink 或 colorful-menu。使用 kind 颜色作为名称基础色，
+内置词法规则区分类型、参数、关键字、字符串、数字及标点；可用时通过 Neovim 公共
+Tree-sitter 接口读取当前语言的 highlights query。解析器或 query 缺失、签名不完整时
+保留词法回退；不安装解析器，不启用注入语言。它不是语言服务器的语义 token，
+也不包含 colorful-menu 针对特定服务器的签名改写。
+
+只对可见行计算高亮；普通标识符不创建解析器。文本默认限制为 1024 字节，
+Tree-sitter 输入上限为 `highlight.max_bytes`，缓存最多 `cache_size` 条纯文本范围，
+不保留解析器或语法树；重新 setup/dispose 清空缓存。
+`highlight.enabled=false` 关闭名称语法高亮；`treesitter=false` 仅用内置规则。
+匹配字符加粗并加下划线，弃用项加删除线；两者保留语法前景与选中背景。
+
+主题可设置 `CompletionToolsKindFunction`、`CompletionToolsKindVariable` 等全部 25 个
+LSP kind 对应组（未知值用 `CompletionToolsKindUnknown`），默认链接到标准 `@function`、
+`@type` 等组。其他组包括 `CompletionToolsMatch`、`CompletionToolsDeprecated`、
+`CompletionToolsSource`、`CompletionToolsMenu`、`CompletionToolsSelected`、
+`CompletionToolsBorder` 和 `CompletionToolsDoc`；ColorScheme 后会补建默认组，保留显式覆盖。
+
+可用 `menu.highlight.custom=function(entry, ctx, text)` 添加自定义高亮，返回
+`{ {start_byte, end_byte, "HighlightGroup", priority?}, ... }`，
+起点从 0 开始、终点不包含，默认 priority=190；范围会裁剪到可见文本并检查 UTF-8 边界。
+不要修改传入的候选对象。匹配强调 priority=200，弃用删除线为 210。
+
 ## 从 blink.cmp 迁移
 
 内置来源无需 blink.cmp。LSP 能力、LuaSnip、来源分数、Enter/Tab 行为可以按上文配置。
@@ -318,6 +361,7 @@ stylua --check lua tests
 
 BLINK_CMP_PATH=/path/to/blink.cmp ./tests/bench.sh
 BLINK_CMP_PATH=/path/to/blink.cmp ./tests/bench.sh bench_input
+./tests/bench.sh bench_menu              # 三列、高亮及原生 Lua query 的热渲染
 BENCH_SOURCE=buffer BLINK_CMP_PATH=/path/to/blink.cmp ./tests/bench.sh bench_input
 ~~~
 

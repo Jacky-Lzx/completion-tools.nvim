@@ -2,6 +2,7 @@ local M = {}
 local ns = vim.api.nvim_create_namespace("completion-tools-menu")
 local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
 local geometry
+local render = require("completion_tools.render")
 
 local function valid(id)
   return id and vim.api.nvim_win_is_valid(id)
@@ -19,34 +20,20 @@ local function scratch(id, filetype)
   vim.bo[id].bufhidden, vim.bo[id].filetype = "hide", filetype
   return id
 end
-local function clean(text)
-  return (text or ""):gsub("[%c]", " ")
-end
-local function truncate(text, width)
-  if vim.fn.strdisplaywidth(text) <= width then
-    return text
-  end
-  local result = ""
-  for char in text:gmatch("[%z\1-\127\194-\244][\128-\191]*") do
-    if vim.fn.strdisplaywidth(result .. char) > width - 1 then
-      break
-    end
-    result = result .. char
-  end
-  return result .. "…"
-end
-
 function M.highlights()
   for name, target in pairs({
     CompletionToolsMenu = "Pmenu",
     CompletionToolsBorder = "FloatBorder",
     CompletionToolsSelected = "PmenuSel",
-    CompletionToolsMatch = "Special",
     CompletionToolsSource = "Comment",
     CompletionToolsDoc = "NormalFloat",
   }) do
     vim.api.nvim_set_hl(0, name, { default = true, link = target })
   end
+  -- Foreground-only syntax groups preserve the selected row's PmenuSel background.
+  vim.api.nvim_set_hl(0, "CompletionToolsMatch", { default = true, bold = true, underline = true })
+  vim.api.nvim_set_hl(0, "CompletionToolsDeprecated", { default = true, strikethrough = true })
+  require("completion_tools.kinds").highlights()
 end
 
 function M.hide_documentation()
@@ -92,11 +79,8 @@ function M.render(items, selected, ctx, config)
     M.hide()
     return
   end
-  local width = opts.min_width
-  for i = 1, math.min(#items, opts.max_height) do
-    width = math.max(width, vim.fn.strdisplaywidth(clean(items[i].item.label)) + #items[i].source_id + 5)
-  end
-  width = math.min(width, opts.max_width, vim.o.columns - 4)
+  local layout = render.prepare(items, opts, vim.o.columns - 4)
+  local width = layout.width
   local upwards = below < height
   -- Both the contents and the bottom border must end before the input row.
   local row = upwards and cursor.row - height - 3 or cursor.row
@@ -112,40 +96,19 @@ function M.render(items, selected, ctx, config)
   viewport = math.max(1, math.min(viewport, #items - height + 1))
   local lines, spans = {}, {}
   for i = viewport, viewport + height - 1 do
-    local entry = items[i]
-    local source = "[" .. entry.source_id .. "]"
-    local label = truncate(clean(entry.item.label), math.max(1, width - #source - 3))
-    local padding = math.max(1, width - vim.fn.strdisplaywidth(label) - #source - 1)
-    lines[#lines + 1] = " " .. label .. string.rep(" ", padding) .. source
-    spans[#spans + 1] = { start = #lines[#lines] - #source, label = label, entry = entry }
+    local line, marks = render.row(layout, i, items[i], ctx, opts)
+    lines[#lines + 1], spans[#spans + 1] = line, marks
   end
   buf = scratch(buf, "completion-tools-menu")
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
   vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-  for i, span in ipairs(spans) do
-    vim.api.nvim_buf_set_extmark(buf, ns, i - 1, span.start, {
-      end_col = #lines[i],
-      hl_group = "CompletionToolsSource",
-    })
-    local query = ctx.before:sub(span.entry.start_col + 1):lower()
-    local pos = 1
-    for j = 1, #query do
-      local at = span.label:lower():find(query:sub(j, j), pos, true)
-      if not at then
-        break
-      end
-      -- Extmark columns must be on UTF-8 boundaries. Highlight ASCII matches;
-      -- leave non-ASCII byte sequences intact.
-      if query:byte(j) < 128 then
-        vim.api.nvim_buf_set_extmark(
-          buf,
-          ns,
-          i - 1,
-          at,
-          { end_col = at + 1, hl_group = "CompletionToolsMatch" }
-        )
-      end
-      pos = at + 1
+  for i, marks in ipairs(spans) do
+    for _, span in ipairs(marks) do
+      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, span[1], {
+        end_col = span[2],
+        hl_group = span[3],
+        priority = span[4],
+      })
     end
   end
   local window_config = {
@@ -266,6 +229,7 @@ end
 
 function M.dispose()
   M.hide()
+  require("completion_tools.highlight").clear()
   for _, id in ipairs({ buf or -1, doc_buf or -1 }) do
     if vim.api.nvim_buf_is_valid(id) then
       vim.api.nvim_buf_delete(id, { force = true })

@@ -53,6 +53,7 @@ for _, size in ipairs({ 1000, 10000, 20000 }) do
         end
         if engine == "completion_tools" then
           require("completion_tools").setup({sources={source=="buffer" and "buffer" or "bench"},keymap={},documentation={auto_show=false},
+            menu={columns={{"label"},{"source"}},label_details=false,highlight={enabled=false}},
             providers={bench={complete=function(_,cb) cb({items=items,reusable=true}) end}}})
           local ui = require("completion_tools.ui")
           local matcher = require("completion_tools.matcher")

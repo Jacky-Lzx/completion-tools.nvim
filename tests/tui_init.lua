@@ -7,6 +7,33 @@ vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
 vim.api.nvim_win_set_cursor(0, { 80, 0 })
 vim.cmd("normal! zb")
 require("completion-tools").setup({ sources = { "buffer" }, min_keyword_length = 0 })
+function _G.completion_tui_semantic()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  require("completion-tools").setup({
+    sources = { "fixture" },
+    documentation = { auto_show = false },
+    menu = { highlight = { treesitter = false } },
+    providers = {
+      fixture = {
+        complete = function(_, callback)
+          callback({
+            items = {
+              {
+                label = "decode",
+                kind = 3,
+                labelDetails = { detail = "(value: string): number", description = "模块" },
+              },
+            },
+          })
+        end,
+      },
+    },
+  })
+  vim.api.nvim_set_hl(0, "CompletionToolsKindFunction", { fg = "#ef4545" })
+  vim.api.nvim_set_hl(0, "@type.builtin", { fg = "#34d399" })
+  vim.api.nvim_set_hl(0, "@variable.parameter", { fg = "#61afef" })
+  vim.api.nvim_set_hl(0, "CompletionToolsSelected", { bg = "#123456" })
+end
 local timer = vim.uv.new_timer()
 timer:start(
   10,
@@ -27,6 +54,22 @@ timer:start(
         if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "completion-tools-menu" then
           local geometry = vim.api.nvim_win_get_config(win)
           data.menu = { row = geometry.row, height = geometry.height }
+          local b = vim.api.nvim_win_get_buf(win)
+          local line = vim.api.nvim_buf_get_lines(b, 0, 1, false)[1]
+          local at = vim.fn.screenpos(win, 1, 1)
+          data.menu_line = line
+          data.menu_screen = ""
+          for col = at.col, at.col + geometry.width - 1 do
+            data.menu_screen = data.menu_screen .. vim.fn.screenstring(at.row, col)
+          end
+          data.menu_attrs = {}
+          for _, word in ipairs({ "decode", "code", "string" }) do
+            local first = line:find(word, 1, true)
+            if first then
+              local cell = vim.fn.strdisplaywidth(line:sub(1, first - 1))
+              data.menu_attrs[word] = vim.fn.screenattr(at.row, at.col + cell)
+            end
+          end
         end
       end
       local start = vim.fn.screenpos(ctx.winid, ctx.row + 1, ctx.start_col + 1)

@@ -87,6 +87,29 @@ accepted buffer's changedtick has not changed since primary insertion.
                                                     *completion-tools-highlight*
 CompletionToolsMenu       CompletionToolsBorder     CompletionToolsSelected
 CompletionToolsMatch      CompletionToolsSource     CompletionToolsDoc
+CompletionToolsDeprecated CompletionToolsKind{LSP kind name}
+
+                                                       *completion-tools-menu*
+Default columns: { {"kind_icon"}, {"label", gap=1}, {"kind"} }.
+Components: kind_icon, label, kind, source, label_detail, label_description.
+menu.columns replaces the entire column list. column_gap and padding default
+to 1. kind_icons=false hides icons; a name-to-icon table overrides defaults.
+label_details=false separates the label from LSP detail/description fields.
+Display text never changes the accepted CompletionItem.
+
+Independent label highlighting uses kind groups, a lexical fallback and optional
+native Tree-sitter highlights queries. No colorful-menu or Blink dependency.
+menu.highlight: enabled=true, treesitter=true, max_bytes=1024, cache_size=512.
+Only visible rows are highlighted; plain words do not create parsers.
+Missing parsers/queries and incomplete signatures keep the lexical fallback.
+menu.max_label_bytes=1024 bounds each displayed field. Default icons need a
+Nerd Font. Unknown kinds use CompletionToolsKindUnknown.
+
+menu.highlight.custom(entry, ctx, text) may return extra spans:
+    { {start_byte, end_byte, "HighlightGroup", priority?}, ... }
+Ranges are zero-based/exclusive bytes; default priority is 190.
+Ranges are clipped and checked for UTF-8 boundaries. Do not mutate entries.
+Match emphasis (200) and deprecation (210) retain syntax/selection colors.
 
                                                          *completion-tools-health*
     :checkhealth completion-tools

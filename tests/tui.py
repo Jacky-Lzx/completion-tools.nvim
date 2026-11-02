@@ -61,6 +61,19 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"\x1b")
         wait(lambda s: not s["visible"] and s["mode"] == "n", "Escape cleanup")
         assert b"alpha" in output, "Menu text was not rendered to the terminal"
+        os.write(primary, b":lua completion_tui_semantic()\r")
+        wait(lambda s: s["line"] == "" and s["mode"] == "n", "semantic fixture")
+        os.write(primary, b"ide")
+        snapshot = wait(lambda s: s["visible"] and "decode(value: string): number" in s.get("menu_screen", ""),
+                        "semantic terminal menu")
+        assert "Function" in snapshot["menu_screen"], snapshot
+        attrs = snapshot["menu_attrs"]
+        assert attrs["decode"] != attrs["code"] != attrs["string"], snapshot
+        for rgb in (b"38;2;239;69;69", b"38;2;52;211;153", b"48;2;18;52;86"):
+            assert rgb in output, f"Missing terminal RGB highlight {rgb!r}"
+        os.write(primary, b"\t!\x1b")
+        wait(lambda s: s["line"] == "decode!" and s["mode"] == "n" and not s["visible"],
+             "display-only signature acceptance")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:
@@ -72,7 +85,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         if child.poll() is None:
             raise AssertionError(f"quit timed out: {state.read_text()}, terminal tail={output[-1800:]!r}")
         assert child.returncode == 0
-        print("tui: idle insert stays closed; upper menu leaves input visible; selection, acceptance and Escape passed")
+        print("tui: input visibility, kind columns, selected-row RGB colors, match emphasis and signature acceptance passed")
     finally:
         if child.poll() is None:
             child.terminate()

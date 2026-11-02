@@ -65,6 +65,58 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line() == 'alphabet!'")
     eq("i", lua("return vim.api.nvim_get_mode().mode"))
   end)
+  test("kind columns and independent syntax highlights survive colorscheme and acceptance", function()
+    lua([[
+      package.preload['colorful-menu']=function() error('unexpected colorful-menu dependency') end
+      require('completion_tools').setup({sources={'test'},documentation={auto_show=false},
+        menu={highlight={treesitter=false}},providers={test={complete=function(_,cb)
+          cb({items={{label='decode',kind=3,labelDetails={detail='(value: string): number',description='中文模块'}}}})
+        end}}})
+    ]])
+    input("ide")
+    wait("return require('completion_tools').is_menu_visible()")
+    lua([[
+      local w
+      for _,id in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(id)].filetype=='completion-tools-menu' then w=id end
+      end
+      local b=vim.api.nvim_win_get_buf(w)
+      local line=vim.api.nvim_buf_get_lines(b,0,1,false)[1]
+      assert(line:find('decode(value: string): number  中文模块',1,true),line)
+      assert(line:find('Function',1,true),line)
+      local seen={}
+      for _,mark in ipairs(vim.api.nvim_buf_get_extmarks(b,vim.api.nvim_create_namespace('completion-tools-menu'),0,-1,{details=true})) do
+        seen[mark[4].hl_group]=true
+      end
+      for _,name in ipairs({'CompletionToolsKindFunction','CompletionToolsMatch','@type.builtin','@variable.parameter','CompletionToolsSource'}) do
+        assert(seen[name],name..' missing')
+      end
+      vim.api.nvim_set_hl(0,'CompletionToolsKindFunction',{fg='#ef4545'})
+      vim.api.nvim_exec_autocmds('ColorScheme',{})
+      assert(vim.api.nvim_get_hl(0,{name='CompletionToolsKindFunction'}).fg==0xef4545,'overrode user highlight')
+      vim.cmd.redraw()
+      local p=vim.fn.screenpos(w,1,1)
+      local screen=''
+      for col=p.col,p.col+vim.api.nvim_win_get_width(w)-1 do screen=screen..vim.fn.screenstring(p.row,col) end
+      assert(screen:find('decode(value: string): number',1,true),screen)
+    ]])
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line() == 'decode!'")
+  end)
+  test("only visible menu rows are highlighted", function()
+    lua([[
+      visible_highlights={}
+      local items={}; for i=1,50 do items[i]={label=string.format('alpha%02d',i)} end
+      require('completion_tools').setup({sources={'test'},menu={max_height=2,highlight={custom=function(entry)
+        visible_highlights[#visible_highlights+1]=entry.item.label
+      end}},providers={test={complete=function(_,cb) cb({items=items}) end}}})
+    ]])
+    input("ial")
+    wait("return require('completion_tools').is_menu_visible()")
+    eq({ "alpha01", "alpha02" }, lua("return visible_highlights"))
+    lua("visible_highlights={}; require('completion_tools').select_next({count=5})")
+    eq({ "alpha05", "alpha06" }, lua("return visible_highlights"))
+  end)
   test("entering insert and moving the cursor do not open automatic completion", function()
     lua(
       [[require('completion_tools').setup({sources={'test'},min_keyword_length=0,providers={test={

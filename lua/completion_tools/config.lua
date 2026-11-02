@@ -19,7 +19,19 @@ M.defaults = {
     ["<Tab>"] = { "accept", "snippet_forward", "fallback" },
     ["<S-Tab>"] = { "snippet_backward", "fallback" },
   },
-  menu = { max_height = 12, min_width = 18, max_width = 72, border = "single" },
+  menu = {
+    max_height = 12,
+    min_width = 18,
+    max_width = 72,
+    border = "single",
+    columns = { { "kind_icon" }, { "label", gap = 1 }, { "kind" } },
+    column_gap = 1,
+    padding = 1,
+    kind_icons = true,
+    label_details = true,
+    max_label_bytes = 1024,
+    highlight = { enabled = true, treesitter = true, max_bytes = 1024, cache_size = 512 },
+  },
   documentation = { auto_show = true, delay_ms = 150, max_width = 72, max_height = 18, border = "single" },
   buffer = { max_bytes = 1024 * 1024, max_words = 20000, max_buffers = 8, batch_lines = 128, min_length = 3 },
   path = { max_entries = 10000, cache_ms = 1000, show_hidden = false },
@@ -36,6 +48,9 @@ function M.validate(opts)
   end
   if opts.keymap ~= nil then
     config.keymap = opts.keymap
+  end
+  if opts.menu and opts.menu.columns ~= nil then
+    config.menu.columns = vim.deepcopy(opts.menu.columns)
   end
   for _, name in ipairs({ "max_items", "min_keyword_length", "debounce_ms" }) do
     assert(type(config[name]) == "number" and config[name] >= 0, "completion-tools: invalid " .. name)
@@ -69,6 +84,46 @@ function M.validate(opts)
   assert(
     config.menu.min_width >= 1 and config.menu.min_width <= config.menu.max_width,
     "completion-tools: invalid menu.min_width"
+  )
+  local menu, components, seen = config.menu, require("completion_tools.render").components, {}
+  local function integer(value, minimum)
+    return type(value) == "number" and value >= minimum and value % 1 == 0
+  end
+  assert(type(menu.columns) == "table" and #menu.columns > 0, "completion-tools: empty menu.columns")
+  for _, column in ipairs(menu.columns) do
+    assert(type(column) == "table" and #column > 0, "completion-tools: invalid menu column")
+    assert(column.gap == nil or integer(column.gap, 0), "completion-tools: invalid column gap")
+    for _, name in ipairs(column) do
+      assert(components[name] and not seen[name], "completion-tools: unknown or repeated menu component")
+      seen[name] = true
+    end
+  end
+  for _, field in ipairs({ "column_gap", "padding" }) do
+    assert(integer(menu[field], 0), "completion-tools: invalid menu." .. field)
+  end
+  assert(integer(menu.max_label_bytes, 4), "completion-tools: invalid menu.max_label_bytes")
+  assert(
+    type(menu.kind_icons) == "boolean" or type(menu.kind_icons) == "table",
+    "completion-tools: invalid kind_icons"
+  )
+  if type(menu.kind_icons) == "table" then
+    for _, icon in pairs(menu.kind_icons) do
+      assert(type(icon) == "string", "completion-tools: kind icons must be strings")
+    end
+  end
+  assert(type(menu.label_details) == "boolean", "completion-tools: invalid label_details")
+  assert(type(menu.highlight) == "table", "completion-tools: invalid menu.highlight")
+  assert(
+    type(menu.highlight.enabled) == "boolean" and type(menu.highlight.treesitter) == "boolean",
+    "completion-tools: invalid highlight flags"
+  )
+  assert(
+    integer(menu.highlight.cache_size, 0) and integer(menu.highlight.max_bytes, 1),
+    "completion-tools: invalid highlight limits"
+  )
+  assert(
+    menu.highlight.custom == nil or type(menu.highlight.custom) == "function",
+    "completion-tools: invalid highlight callback"
   )
   assert(config.path.max_entries >= 1 and config.path.cache_ms >= 0, "completion-tools: invalid path limits")
   assert(config.documentation.delay_ms >= 0, "completion-tools: invalid documentation delay")
