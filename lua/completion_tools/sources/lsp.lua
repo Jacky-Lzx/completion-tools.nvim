@@ -63,7 +63,12 @@ function M.new()
         end
         is_incomplete = is_incomplete or incomplete[client.id] or false
       end
-      callback({ items = items, is_incomplete = is_incomplete, reusable = pending == 0 and not is_incomplete })
+      callback({
+        items = items,
+        pending = pending > 0,
+        is_incomplete = is_incomplete,
+        reusable = pending == 0 and not is_incomplete,
+      })
     end
     for _, client in ipairs(clients) do
       local params = vim.lsp.util.make_position_params(ctx.winid, client.offset_encoding)

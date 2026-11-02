@@ -2,7 +2,7 @@ local M = {}
 local ns = vim.api.nvim_create_namespace("completion-tools-menu")
 local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
-local geometry
+local geometry, doc_item
 local render = require("completion_tools.render")
 
 local function valid(id)
@@ -40,7 +40,7 @@ end
 
 function M.hide_documentation()
   close(doc_win)
-  doc_win = nil
+  doc_win, doc_item = nil, nil
 end
 function M.hide()
   close(win)
@@ -51,9 +51,8 @@ function M.visible()
   return valid(win) or false
 end
 
-function M.render(items, selected, ctx, config)
-  if #items == 0 or vim.o.columns < 8 or vim.o.lines < 6 then
-    M.hide()
+local function placement(count, width, ctx, config)
+  if vim.o.columns < 8 or vim.o.lines < 6 then
     return
   end
   local opts = config.menu
@@ -95,7 +94,6 @@ function M.render(items, selected, ctx, config)
     screen = vim.fn.screenpos(ctx.winid, ctx.row + 1, ctx.start_col + 1)
     cursor = ctx.start_col == ctx.col and screen or vim.fn.screenpos(ctx.winid, ctx.row + 1, ctx.col + 1)
     if cursor.row == 0 then
-      M.hide()
       return
     end
   end
@@ -104,18 +102,54 @@ function M.render(items, selected, ctx, config)
   -- Anchor vertically to the cursor, since the keyword can wrap onto earlier rows.
   local below = vim.o.lines - math.max(vim.o.cmdheight, 1) - input_bottom - 3
   local above = input_top - 2
-  local height = math.min(#items, opts.max_height, math.max(above, below))
+  local height = math.min(count, opts.max_height, math.max(above, below))
   if height < 1 then
-    M.hide()
     return
   end
-  local layout = render.prepare(items, opts, vim.o.columns - 4)
-  local width = layout.width
+  width = math.min(width, opts.max_width, vim.o.columns - 4)
   local upwards = below < height
   -- Both the contents and the bottom border must end before the input row.
   local row = upwards and input_top - height - 2 or input_bottom + 1
   local start_col = screen.col > 0 and screen.col or cursor.col
   local col = math.max(0, math.min(start_col - 1, vim.o.columns - width - 2))
+  local window_config = {
+    relative = "editor",
+    row = math.max(0, row),
+    col = col,
+    width = width,
+    height = height,
+    style = "minimal",
+    border = opts.border,
+    focusable = false,
+    zindex = 100,
+  }
+  local next_geometry = {
+    row = math.max(0, row),
+    col = col,
+    width = width,
+    height = height,
+    upwards = upwards,
+    input_row = cursor.row - 1,
+    input_top = input_top,
+    input_bottom = input_bottom,
+    filetype = ctx.filetype,
+  }
+  return window_config, next_geometry
+end
+
+function M.render(items, selected, ctx, config)
+  if #items == 0 or vim.o.columns < 8 or vim.o.lines < 6 then
+    M.hide()
+    return
+  end
+  local opts = config.menu
+  local layout = render.prepare(items, opts, vim.o.columns - 4)
+  local window_config, next_geometry = placement(#items, layout.width, ctx, config)
+  if not window_config then
+    M.hide()
+    return
+  end
+  local height = window_config.height
   local target = selected or 1
   if target < viewport then
     viewport = target
@@ -141,17 +175,6 @@ function M.render(items, selected, ctx, config)
       })
     end
   end
-  local window_config = {
-    relative = "editor",
-    row = math.max(0, row),
-    col = col,
-    width = width,
-    height = height,
-    style = "minimal",
-    border = opts.border,
-    focusable = false,
-    zindex = 100,
-  }
   if valid(win) then
     vim.api.nvim_win_set_config(win, window_config)
   else
@@ -162,17 +185,32 @@ function M.render(items, selected, ctx, config)
   end
   vim.wo[win].cursorline = selected ~= nil
   vim.api.nvim_win_set_cursor(win, { math.max(1, target - viewport + 1), 0 })
-  geometry = {
-    row = math.max(0, row),
-    col = col,
-    width = width,
-    height = height,
-    upwards = upwards,
-    input_row = cursor.row - 1,
-    input_top = input_top,
-    input_bottom = input_bottom,
-    filetype = ctx.filetype,
-  }
+  local moved = not vim.deep_equal(geometry, next_geometry)
+  geometry = next_geometry
+  if moved and valid(doc_win) and doc_item then
+    M.documentation(doc_item, config)
+  end
+end
+
+-- Keep an old frame clear of the live input while its replacement is pending.
+-- Moving the float does not rewrite candidate text, run matching, or create it.
+function M.reposition(ctx, config)
+  if not valid(win) or not geometry then
+    return false
+  end
+  local wc, next_geometry = placement(vim.api.nvim_buf_line_count(buf), geometry.width, ctx, config)
+  if not wc then
+    M.hide()
+    return false
+  end
+  if not vim.deep_equal(geometry, next_geometry) then
+    vim.api.nvim_win_set_config(win, wc)
+    geometry = next_geometry
+    if valid(doc_win) and doc_item then
+      M.documentation(doc_item, config)
+    end
+  end
+  return true
 end
 
 function M.documentation(item, config)
@@ -237,6 +275,7 @@ function M.documentation(item, config)
     vim.wo[doc_win].winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsBorder"
     vim.wo[doc_win].wrap = true
   end
+  doc_item = item
   return true
 end
 

@@ -324,12 +324,13 @@ source.dispose()                                  -- 可选
 ~~~
 
 `complete` 是普通函数，使用点调用，不隐式传 self。结果为
-`{ items = CompletionItem[], start_col?, reusable?, is_incomplete? }`。
+`{ items = CompletionItem[], start_col?, reusable?, is_incomplete?, pending? }`。
 start_col 为当前行从 0 开始的字节列，默认使用关键字起始列。
 TextEdit 范围优先于 start_col；自定义来源的范围默认 UTF-8，可设置项的 `_encoding`。
 
 callback 可调用多次以发布增量结果，也可从 libuv 回调调用；
-引擎会处理调度和过期响应。reusable 只用于完整且稳定的列表：
+尚有结果待返回时设置 `pending = true`，最后一次响应省略或设为 false。
+引擎会处理调度和过期响应。reusable 只用于完整、稳定且不再 pending 的列表：
 允许同一上下文内继续输入时复用；回删、换行、其他行编辑、离开插入模式会使其失效。
 来源应及时响应取消并自行管理外部资源。
 
@@ -356,7 +357,10 @@ setup 后也可 `cmp.register_source("name", source)` 替换或新增来源。
 - `refresh_cmdline()`：外置命令行 UI 布局更新后，刷新已经打开的候选框。
 - `dispose()`：关闭界面、取消工作、释放缓存并还原映射。
 
-动作成功返回 true，可组成按键链。新结果待返回时保留前一帧菜单，但不允许接受过期结果。
+动作成功返回 true，可组成按键链。同一关键字内继续输入或退格时，保留前一帧菜单，
+但不允许接受过期结果；快速来源的空结果不会在其他来源仍待返回时关闭菜单。
+有新匹配时立即更新，全部来源完成且没有匹配时关闭；清空输入或离开当前上下文时关闭旧菜单。
+等待期间菜单会跟随光标位置，同一选中候选的文档保持显示。
 
 接受后发送 `User CompletionToolsAccept`，`args.data` 包含 item、source、bufnr 和可选的
 client_id；事件中的 item 不含私有元数据。

@@ -95,7 +95,7 @@ Source functions use dot calls:
     trigger(ctx) -> boolean              -- optional
     dispose()                           -- optional
 <
-complete callbacks receive {items, start_col?, reusable?, is_incomplete?}.
+complete callbacks receive {items, start_col?, reusable?, is_incomplete?, pending?}.
 start_col is a zero-based byte column; item TextEdits take precedence.
 LSP clients carry their negotiated encoding; custom edits default to UTF-8.
 resolve callbacks receive a CompletionItem.
@@ -103,7 +103,12 @@ Entry fields: item, context, start_col, source_id.
 
 Callbacks may publish more than once. Stale results are ignored even if a
 provider does not honour cancellation. The provider owns external resources.
-Complete reusable lists can be filtered locally during forward typing.
+Set pending=true while more results are expected; omit or clear it on the final
+response. Only complete, non-pending reusable lists are cached for forward typing.
+During typing/backspace within one keyword, the previous menu remains visible
+until matching results arrive or all sources finish without matches. Stale items
+cannot be accepted. Empty input/context changes close the old menu immediately.
+The retained menu follows the cursor; documentation stays for the same selection.
 
                                                 *completion-tools-dictionary*
 Add "dictionary" to sources, and configure dictionary.files (list or function).

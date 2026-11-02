@@ -266,6 +266,127 @@ local ok, err = xpcall(function()
       "local c=require('completion_tools'); return c.get_selected_item() and c.get_selected_item().label == 'alResult'"
     )
   end)
+  test("empty fast sources do not blank a pending replacement", function()
+    lua([[
+      require('completion_tools').setup({sources={'fast','slow'},documentation={auto_show=false},providers={
+        fast={complete=function(_,cb) cb({items={{label='zzzz'}}}) end},
+        slow={complete=function(ctx,cb)
+          if ctx.prefix~='a' then cb({items={},pending=true}) end
+          vim.defer_fn(function()
+          cb({items=ctx.prefix=='alz' and {} or {{label=ctx.prefix..'Result'}}})
+        end,ctx.prefix=='a' and 5 or 160) end}
+      }})
+    ]])
+    input("ia")
+    wait("return require('completion_tools').is_menu_visible()")
+    local id = lua([[for _,w in ipairs(vim.api.nvim_list_wins()) do
+      if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-menu' then return w end end]])
+    lua(
+      [[menu_closed=0;vim.api.nvim_create_autocmd('WinClosed',{pattern=tostring(...),callback=function() menu_closed=menu_closed+1 end})]],
+      id
+    )
+    input("l")
+    wait(
+      "return require('completion_tools').get_context() and require('completion_tools').get_context().prefix=='al'"
+    )
+    vim.wait(30)
+    assert(
+      lua("local c=require('completion_tools');return c.is_menu_visible() and not c.accept()"),
+      "empty source blanked the last ready frame"
+    )
+    eq(0, lua("return menu_closed"))
+    wait("return require('completion_tools').get_selected_item().label=='alResult'")
+    eq(true, lua("return vim.api.nvim_win_is_valid(...)", id))
+    input("z")
+    wait(
+      "return require('completion_tools').get_context() and require('completion_tools').get_context().prefix=='alz'"
+    )
+    vim.wait(30)
+    assert(lua("return require('completion_tools').is_menu_visible()"))
+    wait("return not require('completion_tools').is_menu_visible()")
+    eq(1, lua("return menu_closed"))
+  end)
+  test("fresh matches remain usable while another source is pending", function()
+    lua([[slow_done=false;require('completion_tools').setup({sources={'fast','slow'},providers={
+      fast={complete=function(_,cb) cb({items={{label='alphaFast'}}}) end},
+      slow={complete=function(_,cb) vim.defer_fn(function() slow_done=true;cb({items={}}) end,300) end}
+    }})]])
+    input("ia")
+    wait("return require('completion_tools')._can('accept')")
+    assert(not lua("return slow_done"))
+    assert(lua("return require('completion_tools').accept()"))
+    wait("return vim.api.nvim_get_current_line()=='alphaFast'")
+    input("<Esc>")
+  end)
+  test("typing and backspace keep the same menu and selected-item documentation", function()
+    lua([[require('completion_tools').setup({sources={'slow'},documentation={delay_ms=120},providers={
+      slow={complete=function(ctx,cb) vim.defer_fn(function()
+        local items={{label='alphaLong',detail='function alphaLong()'}}
+        if ctx.prefix=='alp' then items[#items+1]={label='alphaLong'..string.rep('Extra',8)} end
+        cb({items=items})
+      end,90) end}
+    }})]])
+    input("ial")
+    wait(
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false"
+    )
+    local ids = lua([[local ids={};for _,w in ipairs(vim.api.nvim_list_wins()) do
+      local ft=vim.bo[vim.api.nvim_win_get_buf(w)].filetype
+      if ft=='markdown' or ft=='completion-tools-menu' then ids[#ids+1]=w end
+    end;return ids]])
+    for _, key in ipairs({ "p", "<BS>" }) do
+      input(key)
+      wait(
+        "return require('completion_tools').get_context() and not require('completion_tools')._can('accept')"
+      )
+      vim.wait(20)
+      for _, id in ipairs(ids) do
+        eq(true, lua("return vim.api.nvim_win_is_valid(...)", id))
+      end
+      wait("return require('completion_tools')._can('accept')")
+      vim.wait(20)
+      for _, id in ipairs(ids) do
+        eq(true, lua("return vim.api.nvim_win_is_valid(...)", id))
+      end
+      lua([[local menu,doc
+        for _,w in ipairs(vim.api.nvim_list_wins()) do
+          local ft=vim.bo[vim.api.nvim_win_get_buf(w)].filetype
+          if ft=='completion-tools-menu' then menu=vim.api.nvim_win_get_config(w)
+          elseif ft=='markdown' then doc=vim.api.nvim_win_get_config(w) end
+        end
+        assert(doc.col>=menu.col+menu.width+2 or doc.col+doc.width+2<=menu.col,
+          'retained documentation overlaps the resized menu')
+      ]])
+    end
+    eq("al", lua("return vim.api.nvim_get_current_line()"))
+  end)
+  test("a retained frame follows the cursor across a wrapped line", function()
+    lua(
+      [[vim.wo.wrap=true;require('completion_tools').setup({sources={'slow'},documentation={auto_show=false},providers={
+      slow={complete=function(ctx,cb) vim.defer_fn(function()
+        cb({items={{label=ctx.prefix..'Value'}}})
+      end,#ctx.prefix==119 and 5 or 160) end}
+    }})]]
+    )
+    input("i" .. string.rep("a", 119))
+    wait("return require('completion_tools').is_menu_visible()")
+    input("a")
+    wait(
+      "return require('completion_tools').get_context() and #require('completion_tools').get_context().prefix==120"
+    )
+    lua([[local ctx=require('completion_tools').get_context()
+      local cursor=vim.fn.screenpos(ctx.winid,ctx.row+1,ctx.col+1)
+      assert(cursor.row>1,'fixture must wrap')
+      local found=false
+      for _,w in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-menu' then
+          found=true;local wc=vim.api.nvim_win_get_config(w)
+          assert(wc.row>cursor.row-1,'old frame covers the wrapped input')
+        end
+      end
+      assert(found and not require('completion_tools').accept())
+    ]])
+  end)
   test("custom actions and non-expr fallback execute outside textlock", function()
     lua(
       [[vim.keymap.set('i','<CR>',function() vim.api.nvim_set_current_line(vim.api.nvim_get_current_line()..'!') end)

@@ -96,8 +96,12 @@ end
 
 local function documentation(force)
   cancel_doc()
-  ui.hide_documentation()
   local entry = selected_entry()
+  local previous = state.doc_entry
+  if not entry or not previous or entry.key ~= previous.key or entry.source_id ~= previous.source_id then
+    ui.hide_documentation()
+    state.doc_entry = nil
+  end
   if not entry then
     return
   end
@@ -105,7 +109,7 @@ local function documentation(force)
   local may_draw = force
   local function draw()
     if generation == state.generation and selected_entry() == entry and M.is_menu_visible() then
-      ui.documentation(entry.resolved or entry.item, state.config)
+      state.doc_entry = ui.documentation(entry.resolved or entry.item, state.config) and entry or nil
     end
   end
   local provider = state.providers[entry.source_id]
@@ -141,7 +145,7 @@ local function documentation(force)
   end
 end
 
-local function render()
+local function render(pending)
   local ctx = state.context
   if not ctx or not context.same(ctx, current()) then
     return
@@ -154,6 +158,13 @@ local function render()
   end
   local previous = selected_entry()
   local items = require("completion_tools.matcher").filter(groups, ctx, state.config.max_items)
+  -- An empty partial result is not a final "no matches". Keep the last ready
+  -- frame until a useful replacement or the last provider's response arrives.
+  if #items == 0 and pending and ui.visible() then
+    state.ready = false
+    return
+  end
+  state.ready = true
   state.items = items
   state.selected = state.config.preselect and #items > 0 and 1 or nil
   if previous then
@@ -218,16 +229,20 @@ local function request(manual, override)
   cancel_requests()
   cancel_doc()
   local previous_context = state.context
-  -- Preserve the last rendered frame until at least one replacement arrives.
+  -- Preserve the last rendered frame until matching results arrive or all
+  -- providers finish without matches.
   -- It remains unselectable until a result for the current context is ready.
   state.context, state.groups, state.source_ids = ctx, {}, ids
   state.manual = manual
   state.ready = false
-  if not context.extends(previous_context, ctx) then
+  if not context.continues(previous_context, ctx) then
     state.items, state.selected = {}, nil
+    state.doc_entry = nil
     ui.hide()
+  else
+    ui.reposition(ctx, state.config)
   end
-  local render_queued = false
+  local render_queued, pending = false, {}
   local function queue_render()
     if render_queued then
       return
@@ -236,8 +251,7 @@ local function request(manual, override)
     vim.schedule(function()
       render_queued = false
       if valid(generation, ctx) then
-        state.ready = true
-        render()
+        render(next(pending) ~= nil)
       end
     end)
   end
@@ -255,12 +269,14 @@ local function request(manual, override)
       end
       if active then
         started = true
+        pending[id] = true
         local old = state.cache[id]
         local function receive(response)
           if not valid(generation, ctx) then
             return
           end
           response = response or { items = {} }
+          pending[id] = response.pending == true or nil
           local items = response.items or response
           if provider_config.transform_items then
             items = provider_config.transform_items(ctx, items)
@@ -287,12 +303,13 @@ local function request(manual, override)
           state.cache[id] = {
             group = result,
             context = ctx,
-            reusable = response.reusable,
+            reusable = response.reusable and not response.pending,
             incomplete = response.is_incomplete,
           }
           queue_render()
         end
         if old and old.reusable and context.extends(old.context, ctx) then
+          pending[id] = nil
           state.groups[id] = old.group
           queue_render()
         else
@@ -313,7 +330,9 @@ local function request(manual, override)
               state.cancels[#state.cancels + 1] = cancel
             end
           else
+            pending[id] = nil
             report(id .. ": " .. tostring(cancel))
+            queue_render()
           end
         end
       end
@@ -335,6 +354,13 @@ local function queue()
   cancel_doc()
   state.ready = false
   stop_timer(timer)
+  local ctx = current()
+  if context.continues(state.context, ctx) then
+    ui.reposition(ctx, state.config)
+  else
+    ui.hide()
+    state.doc_entry = nil
+  end
   local generation = state.generation
   local function run()
     if generation == state.generation and not state.disposed then
@@ -553,6 +579,7 @@ function M.hide()
   cancel_doc()
   stop_timer(timer)
   state.items, state.selected, state.context, state.groups, state.ready = {}, nil, nil, {}, false
+  state.doc_entry = nil
   ui.hide()
   return visible
 end

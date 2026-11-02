@@ -53,6 +53,23 @@ function M.same(a, b)
     and a.tick == b.tick
 end
 
+-- Visual continuity only. Cache reuse deliberately keeps the stricter extends()
+-- check, since cached edits are not safe across arbitrary prefix replacements.
+function M.continues(old, new)
+  return old
+    and new
+    and new.prefix ~= ""
+    and old.bufnr == new.bufnr
+    and old.winid == new.winid
+    and old.mode == new.mode
+    and old.cmdtype == new.cmdtype
+    and old.filetype == new.filetype
+    and old.row == new.row
+    and old.start_col == new.start_col
+    and old.line:sub(1, old.start_col) == new.line:sub(1, new.start_col)
+    and old.line:sub(old.col + 1) == new.line:sub(new.col + 1)
+end
+
 function M.extends(old, new)
   return old
     and new

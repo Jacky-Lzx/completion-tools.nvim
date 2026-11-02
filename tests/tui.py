@@ -53,7 +53,8 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
             snapshot = wait(lambda s: s["mode"] == "i", "idle insert")
             assert not snapshot["visible"], "Idle insert opened a menu"
         os.write(primary, b"al")
-        snapshot = wait(lambda s: s["visible"] and s.get("selected") == "alpha" and s.get("prefix") == "al",
+        snapshot = wait(lambda s: s["visible"] and s.get("selected") == "alpha" and s.get("prefix") == "al"
+                        and "Buffer" in s.get("menu_screen", "") and "Text" in s.get("menu_screen", ""),
                         "terminal menu")
         assert snapshot["menu"]["row"] + snapshot["menu"]["height"] + 1 < snapshot["input_row"], snapshot
         wait(lambda s: s.get("screen_word") == "al", "input row remains visible above the terminal menu")
@@ -66,6 +67,25 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"\x1b")
         wait(lambda s: not s["visible"] and s["mode"] == "n", "Escape cleanup")
         assert b"alpha" in output, "Menu text was not rendered to the terminal"
+        os.write(primary, b":lua completion_tui_flicker()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "", "flicker fixture")
+        os.write(primary, b"ia")
+        snapshot = wait(lambda s: s.get("flicker") and s["flicker"]["samples"] > 0, "initial ready frame")
+        window = snapshot["menu"]["win"]
+        prefix = "a"
+        for char in "bcdef":
+            prefix += char
+            os.write(primary, char.encode())
+            snapshot = wait(lambda s: s.get("prefix") == prefix and not s["can_accept"], "pending replacement")
+            assert snapshot["visible"] and snapshot["menu"]["win"] == window, snapshot
+        wait(lambda s: s["can_accept"], "latest ready result")
+        os.write(primary, b"\x7f")
+        snapshot = wait(lambda s: s.get("prefix") == "abcde" and not s["can_accept"], "pending backspace")
+        snapshot = wait(lambda s: s["can_accept"], "ready after backspace")
+        stats = snapshot["flicker"]
+        assert stats["samples"] >= 6 and stats["hidden"] == stats["blank"] == stats["closed"] == 0, snapshot
+        os.write(primary, b"\x1b")
+        wait(lambda s: s["mode"] == "n" and not s["visible"], "flicker fixture cleanup")
         os.write(primary, b":lua completion_tui_semantic()\r")
         wait(lambda s: s["line"] == "" and s["mode"] == "n", "semantic fixture")
         os.write(primary, b"ide")
@@ -74,8 +94,8 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         assert "Function" in snapshot["menu_screen"], snapshot
         attrs = snapshot["menu_attrs"]
         assert attrs["decode"] != attrs["code"] != attrs["string"], snapshot
-        for rgb in (b"38;2;239;69;69", b"38;2;52;211;153", b"48;2;18;52;86"):
-            assert rgb in output, f"Missing terminal RGB highlight {rgb!r}"
+        rgb_colors = (b"38;2;239;69;69", b"38;2;52;211;153", b"48;2;18;52;86")
+        wait(lambda s: all(rgb in output for rgb in rgb_colors), "terminal RGB highlights flushed")
         os.write(primary, b"\t!\x1b")
         wait(lambda s: s["line"] == "decode!" and s["mode"] == "n" and not s["visible"],
              "display-only signature acceptance")
@@ -124,7 +144,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         if child.poll() is None:
             raise AssertionError(f"quit timed out: {state.read_text()}, terminal tail={output[-1800:]!r}")
         assert child.returncode == 0
-        print("tui: insert highlights/docs; native command-line placement, selection, Tab acceptance and Enter execution passed")
+        print("tui: continuous typing/backspace retain menu and docs; highlights, command-line acceptance and execution passed")
     finally:
         if child.poll() is None:
             child.terminate()

@@ -61,6 +61,35 @@ function _G.completion_tui_snippet()
   vim.api.nvim_set_hl(0, "Special", { fg = "#c678dd" })
   vim.api.nvim_set_hl(0, "@function", { fg = "#56b6c2" })
 end
+function _G.completion_tui_flicker()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.bo.filetype = "lua"
+  require("completion-tools").setup({
+    sources = { "fast", "slow" },
+    documentation = { delay_ms = 5 },
+    providers = {
+      fast = {
+        complete = function(_, cb)
+          cb({ items = { { label = "zzzz" } } })
+        end,
+      },
+      slow = {
+        complete = function(ctx, cb)
+          vim.defer_fn(function()
+            cb({ items = { { label = "abcdefghijResult", detail = "function abcdefghijResult()" } } })
+          end, ctx.prefix == "a" and 5 or 120)
+        end,
+      },
+    },
+  })
+  completion_flicker = { active = true, samples = 0, hidden = 0, blank = 0, closed = 0 }
+  vim.api.nvim_create_autocmd("InsertLeave", {
+    once = true,
+    callback = function()
+      completion_flicker.active = false
+    end,
+  })
+end
 function _G.completion_tui_cmdline()
   require("completion-tools").setup({ sources = {}, cmdline = { enabled = true } })
   vim.api.nvim_create_user_command("CompletionTuiAlpha", function()
@@ -84,6 +113,7 @@ timer:start(
       error = vim.v.errmsg,
       cmdline = vim.fn.getcmdline(),
       executed = vim.g.completion_tui_executed,
+      can_accept = cmp._can("accept") == true,
     }
     if data.mode == "c" then
       data.cmdline_screen = ""
@@ -99,7 +129,7 @@ timer:start(
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "completion-tools-menu" then
           local geometry = vim.api.nvim_win_get_config(win)
-          data.menu = { row = geometry.row, height = geometry.height }
+          data.menu = { row = geometry.row, height = geometry.height, win = win }
           local b = vim.api.nvim_win_get_buf(win)
           local line = vim.api.nvim_buf_get_lines(b, 0, 1, false)[1]
           local at = vim.fn.screenpos(win, 1, 1)
@@ -127,6 +157,7 @@ timer:start(
             end
           end
         elseif vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "markdown" then
+          data.doc_win = win
           local geometry = vim.api.nvim_win_get_config(win)
           local at = vim.fn.screenpos(win, 1, 1)
           data.doc_screen = ""
@@ -144,6 +175,35 @@ timer:start(
         data.screen_word = data.screen_word .. vim.fn.screenstring(data.input_row + 1, col)
       end
     end
+    if completion_flicker and completion_flicker.active then
+      local stats = completion_flicker
+      if
+        not stats.menu
+        and data.menu
+        and data.doc_win
+        and data.menu_screen:find("abcdefghijResult", 1, true)
+        and data.doc_screen:find("abcdefghijResult", 1, true)
+      then
+        stats.menu, stats.doc = data.menu.win, data.doc_win
+        vim.api.nvim_create_autocmd("WinClosed", {
+          pattern = { tostring(stats.menu), tostring(stats.doc) },
+          callback = function()
+            if stats.active and vim.api.nvim_get_mode().mode:sub(1, 1) == "i" then
+              stats.closed = stats.closed + 1
+            end
+          end,
+        })
+      end
+      if stats.menu then
+        stats.samples = stats.samples + 1
+        if not data.visible or not data.menu or data.menu.win ~= stats.menu or data.doc_win ~= stats.doc then
+          stats.hidden = stats.hidden + 1
+        elseif not data.menu_screen:find("abcdefghijResult", 1, true) then
+          stats.blank = stats.blank + 1
+        end
+      end
+    end
+    data.flicker = completion_flicker
     vim.fn.writefile({ vim.json.encode(data) }, vim.env.COMPLETION_TUI_STATE)
   end)
 )

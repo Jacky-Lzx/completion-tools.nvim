@@ -305,4 +305,35 @@ test("async path completion handles Unicode, hidden files and cancellation", fun
   source.dispose()
   vim.fn.delete(dir, "rf")
 end)
+test("LSP empty partial responses retain pending state across clients", function()
+  local original = vim.lsp.get_clients
+  local callbacks, published = {}, {}
+  local ok, err = xpcall(function()
+    local clients = {}
+    for i = 1, 2 do
+      clients[i] = { id = i, offset_encoding = "utf-8", server_capabilities = {} }
+      clients[i].request = function(_, _, _, callback)
+        callbacks[i] = callback
+        return true, i
+      end
+    end
+    vim.lsp.get_clients = function()
+      return clients
+    end
+    require("completion_tools.sources.lsp").new().complete({
+      bufnr = vim.api.nvim_get_current_buf(),
+      winid = vim.api.nvim_get_current_win(),
+      before = "a",
+    }, function(result)
+      published[#published + 1] = result
+    end)
+    callbacks[1](nil, {})
+    assert(published[1].pending and not published[1].reusable)
+    callbacks[2](nil, { { label = "alpha" } })
+    assert(not published[2].pending and published[2].reusable)
+    eq("alpha", published[2].items[1].label)
+  end, debug.traceback)
+  vim.lsp.get_clients = original
+  assert(ok, err)
+end)
 print(string.format("unit: %d passed", count))
