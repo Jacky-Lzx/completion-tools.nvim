@@ -7,6 +7,7 @@ vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
 vim.api.nvim_win_set_cursor(0, { 80, 0 })
 vim.cmd("normal! zb")
 require("completion-tools").setup({ sources = { "buffer" }, min_keyword_length = 0 })
+vim.api.nvim_set_hl(0, "Comment", { fg = "#a0a0a0" })
 function _G.completion_tui_semantic()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   require("completion-tools").setup({
@@ -90,7 +91,17 @@ timer:start(
             data.menu_screen = data.menu_screen .. vim.fn.screenstring(at.row, col)
           end
           data.menu_attrs = {}
-          for _, word in ipairs({ "decode", "code", "string", "ignore", "ore", "Snippet" }) do
+          for _, word in ipairs({
+            "alpha",
+            "pha",
+            "Text",
+            "decode",
+            "code",
+            "string",
+            "ignore",
+            "ore",
+            "Snippet",
+          }) do
             local first = line:find(word, 1, true)
             if first then
               local cell = vim.fn.strdisplaywidth(line:sub(1, first - 1))

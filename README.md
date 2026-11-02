@@ -317,6 +317,8 @@ client_id；事件中的 item 不含私有元数据。
 `kind_icons=false` 隐藏图标，也可设 `kind_icons={ Function="ƒ", Variable="v" }` 覆盖部分图标。
 默认图标需要 Nerd Font。
 
+Text 的图标、名称和 kind 名称统一使用灰色（`CompletionToolsKindText` 默认链接 `Comment`），
+不再按代码词法另行染色，匹配强调仍保留。
 Snippet 的图标、名称和 kind 名称默认链接到 `Special`，也可用
 `CompletionToolsKindSnippet` 单独配色。文档预览隐藏 Markdown 代码围栏及行内代码的
 反引号，保留正文、代码缩进和高亮；布局按处理后的可见内容计算。

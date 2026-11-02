@@ -2,7 +2,7 @@ local M = {}
 
 -- LSP CompletionItemKind values. Icons are measured in display cells by the layout.
 local definitions = {
-  { "Text", "󰉿", "@string" },
+  { "Text", "󰉿", "Comment" },
   { "Method", "󰆧", "@function.method" },
   { "Function", "󰊕", "@function" },
   { "Constructor", "", "@constructor" },

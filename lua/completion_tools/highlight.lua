@@ -134,13 +134,15 @@ function M.get(text, label_bytes, entry, ctx, opts)
   if not spans then
     spans = {}
     local _, _, group = kinds.get(entry.item.kind)
-    if entry.item.kind and entry.item.kind ~= 1 then
-      add(spans, 0, math.min(label_bytes, #text), group, 110)
-    end
-    -- Lexical highlighting also covers incomplete signatures that cannot be parsed.
-    lexical(text, spans)
-    if opts.treesitter and #text <= opts.max_bytes then
-      treesitter(text, ft, spans)
+    local plain_text = label_bytes > 0 and (entry.item.kind == nil or entry.item.kind == 1)
+    add(spans, 0, plain_text and #text or math.min(label_bytes, #text), group, 110)
+    if not plain_text then
+      -- Text candidates stay uniformly muted, even when words resemble code.
+      -- Documentation passes label_bytes=0 and keeps its syntax highlighting.
+      lexical(text, spans)
+      if opts.treesitter and #text <= opts.max_bytes then
+        treesitter(text, ft, spans)
+      end
     end
     if opts.cache_size > 0 then
       local old = order[next_slot]
