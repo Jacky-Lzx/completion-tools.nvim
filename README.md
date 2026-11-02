@@ -355,7 +355,8 @@ setup 后也可 `cmp.register_source("name", source)` 替换或新增来源。
 
 - `show({ sources = { ... } })`：手动补全，可临时选择来源。
 - `hide()`、`is_menu_visible()`。
-- `select_next({ count = 1 })`、`select_prev({ count = 1 })`。
+- `select_next({ count = 1, wrap = true })`、`select_prev({ count = 1, wrap = true })`。
+  翻页可用 `{ count = 5, wrap = false }`，越界时停在首尾，且仍返回 true 消费按键。
 - `accept()`：接受选中项；不满足当前上下文时返回 false。
 - `get_items()`、`get_selected_item()`、`get_context()`：读取状态，不要修改返回值。
 - `show_documentation()`、`scroll_documentation_up()`、`scroll_documentation_down()`。

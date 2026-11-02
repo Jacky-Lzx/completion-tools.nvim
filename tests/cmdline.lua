@@ -102,6 +102,37 @@ local ok, err = xpcall(function()
     )
     eq("FixtureAlpha", lua("return require('completion_tools').get_selected_item().label"))
   end)
+  test("Alt paging clamps at command-line candidate boundaries and consumes the keys", function()
+    lua([[paging_calls=0;paging_fallback=0
+      for i=1,8 do vim.api.nvim_create_user_command(string.format('FixturePaging%02d',i),function() end,{}) end
+      require('completion_tools').setup({cmdline={enabled=true,keymap={
+        ['<A-d>']={function(c) paging_calls=paging_calls+1;return c.select_next({count=5,wrap=false}) end,
+          function() paging_fallback=paging_fallback+1 end},
+        ['<A-u>']={function(c) paging_calls=paging_calls+1;return c.select_prev({count=5,wrap=false}) end,
+          function() paging_fallback=paging_fallback+1 end}
+      }}})]])
+    input(":FixturePaging")
+    wait("return require('completion_tools')._can('accept')")
+    for i, step in ipairs({
+      { "<A-d>", "FixturePaging06" },
+      { "<A-d>", "FixturePaging08" },
+      { "<A-d>", "FixturePaging08" },
+      { "<A-u>", "FixturePaging03" },
+      { "<A-u>", "FixturePaging01" },
+      { "<A-u>", "FixturePaging01" },
+    }) do
+      input(step[1])
+      wait(
+        "return paging_calls=="
+          .. i
+          .. " and require('completion_tools').get_selected_item().label=='"
+          .. step[2]
+          .. "'"
+      )
+    end
+    eq(0, lua("return paging_fallback"))
+    eq("FixturePaging", lua("return vim.fn.getcmdline()"))
+  end)
   test("native argument boundaries preserve modifiers, no/inv prefixes and suffix", function()
     lua("require('completion_tools').setup({cmdline={enabled=true}})")
     input(":silent! keepalt set noig")

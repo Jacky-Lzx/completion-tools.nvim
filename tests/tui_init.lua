@@ -112,6 +112,32 @@ function _G.completion_tui_selection()
     },
   })
 end
+function _G.completion_tui_paging()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  completion_paging_calls = 0
+  local function page(method)
+    return function(cmp)
+      completion_paging_calls = completion_paging_calls + 1
+      return cmp[method]({ count = 5, wrap = false })
+    end
+  end
+  local maps = { ["<A-d>"] = { page("select_next") }, ["<A-u>"] = { page("select_prev") } }
+  local items = {}
+  for i = 1, 8 do
+    items[i] = { label = string.format("alpha%02d", i) }
+    vim.api.nvim_create_user_command(string.format("CompletionPaging%02d", i), function() end, {})
+  end
+  require("completion-tools").setup({
+    sources = { "paging" },
+    keymap = maps,
+    cmdline = { enabled = true, keymap = maps },
+    providers = { paging = {
+      complete = function(_, cb)
+        cb({ items = items })
+      end,
+    } },
+  })
+end
 function _G.completion_tui_dictionary()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   local path = vim.fn.tempname()
@@ -165,6 +191,7 @@ timer:start(
       visible = cmp.is_menu_visible(),
       selected = (cmp.get_selected_item() or {}).label,
       first = (cmp.get_items()[1] or {}).label,
+      paging_calls = completion_paging_calls,
       error = vim.v.errmsg,
       cmdline = vim.fn.getcmdline(),
       executed = vim.g.completion_tui_executed,

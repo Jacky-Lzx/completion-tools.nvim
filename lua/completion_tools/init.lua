@@ -618,7 +618,12 @@ local function select(direction, opts)
   end
   local count = opts and opts.count or 1
   local index = state.selected or (direction == 1 and 0 or #state.items + 1)
-  state.selected = (index - 1 + direction * count) % #state.items + 1
+  local target = index + direction * count
+  if opts and opts.wrap == false then
+    state.selected = math.max(1, math.min(#state.items, target))
+  else
+    state.selected = (target - 1) % #state.items + 1
+  end
   state.selection_manual = true
   ui.render(state.items, state.selected, state.context, state.config)
   documentation(false)

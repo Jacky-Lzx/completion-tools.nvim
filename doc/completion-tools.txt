@@ -123,6 +123,9 @@ same-context refreshes. If it disappears, selection/docs are cleared and accept(
 returns false; later updates do not automatically reselect even if it reappears.
 Navigate again to choose an item. Typing/backspace reset to the configured
 preselect behavior; preselect=false continues to leave items unselected.
+select_next/select_prev accept {count=1, wrap=true}. Set wrap=false for paging:
+the selection stops at the first/last item and still returns true at the boundary
+so a mapped paging key is consumed rather than running its fallback action.
 
                                                 *completion-tools-dictionary*
 Add "dictionary" to sources, and configure dictionary.files (list or function).

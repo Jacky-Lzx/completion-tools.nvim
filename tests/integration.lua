@@ -117,6 +117,41 @@ local ok, err = xpcall(function()
     lua("visible_highlights={}; require('completion_tools').select_next({count=5})")
     eq({ "alpha05", "alpha06" }, lua("return visible_highlights"))
   end)
+  test("paging stops at both ends and consumes boundary keys while single steps wrap", function()
+    lua([[paging_fallback=0;paging_calls=0;local items={}
+      for i=1,8 do items[i]={label=string.format('alpha%02d',i)} end
+      require('completion_tools').setup({sources={'test'},keymap={
+        ['<A-d>']={function(c) paging_calls=paging_calls+1;return c.select_next({count=5,wrap=false}) end,
+          function() paging_fallback=paging_fallback+1 end},
+        ['<A-u>']={function(c) paging_calls=paging_calls+1;return c.select_prev({count=5,wrap=false}) end,
+          function() paging_fallback=paging_fallback+1 end},
+        ['<C-n>']={'select_next'},['<C-p>']={'select_prev'}},
+        providers={test={complete=function(_,cb) cb({items=items}) end}}})]])
+    input("ial")
+    wait("return require('completion_tools')._can('accept')")
+    local calls = 0
+    for _, step in ipairs({
+      { "<A-d>", "alpha06" },
+      { "<A-d>", "alpha08" },
+      { "<A-d>", "alpha08" },
+      { "<C-n>", "alpha01" },
+      { "<C-p>", "alpha08" },
+      { "<A-u>", "alpha03" },
+      { "<A-u>", "alpha01" },
+      { "<A-u>", "alpha01" },
+    }) do
+      input(step[1])
+      if step[1]:find("<A-", 1, true) then
+        calls = calls + 1
+        wait("return paging_calls==" .. calls)
+      end
+      wait("return require('completion_tools').get_selected_item().label=='" .. step[2] .. "'")
+    end
+    eq(0, lua("return paging_fallback"))
+    eq("al", lua("return vim.api.nvim_get_current_line()"))
+    lua([[assert(require('completion_tools').select_next({count=100,wrap=false}))
+      assert(require('completion_tools').get_selected_item().label=='alpha08')]])
+  end)
   test("entering insert and moving the cursor do not open automatic completion", function()
     lua(
       [[require('completion_tools').setup({sources={'test'},min_keyword_length=0,providers={test={

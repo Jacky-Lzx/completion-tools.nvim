@@ -111,6 +111,21 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
              "new query follows latest ranking")
         os.write(primary, b"\x1b")
         wait(lambda s: s["mode"] == "n" and not s["visible"], "selection fixture cleanup")
+        os.write(primary, b":lua completion_tui_paging()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "" and s.get("paging_calls") == 0,
+             "paging fixture")
+        calls = 0
+        for trigger, stem in ((b"ial", "alpha"), (b":CompletionPaging", "CompletionPaging")):
+            os.write(primary, trigger)
+            wait(lambda s: s.get("selected") == stem + "01", "initial paging candidate")
+            for key, index in ((b"\x1bd", 6), (b"\x1bd", 8), (b"\x1bd", 8),
+                               (b"\x1bu", 3), (b"\x1bu", 1), (b"\x1bu", 1)):
+                os.write(primary, key)
+                calls += 1
+                wait(lambda s: s.get("paging_calls") == calls and s.get("selected") == f"{stem}{index:02d}",
+                     "Alt paging stops at list boundaries")
+            os.write(primary, b"\x1b")
+            wait(lambda s: s["mode"] == "n" and not s["visible"], "paging cleanup")
         os.write(primary, b":lua completion_tui_semantic()\r")
         wait(lambda s: s["line"] == "" and s["mode"] == "n", "semantic fixture")
         os.write(primary, b"ide")
