@@ -38,6 +38,7 @@ snippet_forward()
 snippet_backward()
 get_lsp_capabilities(base?)
 register_source(id, source)
+refresh_keymaps()         Reinstall mappings after lazy dependencies change them.
 dispose()                Release resources and restore owned keymaps.
 
                                                        *completion-tools-keys*

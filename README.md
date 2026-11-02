@@ -284,6 +284,7 @@ setup 后也可 `cmp.register_source("name", source)` 替换或新增来源。
 - `show_documentation()`、`scroll_documentation_up()`、`scroll_documentation_down()`。
 - `snippet_forward()`、`snippet_backward()`。
 - `get_lsp_capabilities(base?)`。
+- `refresh_keymaps()`：依赖插件延迟安装映射后，重新安装补全映射并更新 fallback，不重置补全状态。
 - `dispose()`：关闭界面、取消工作、释放缓存并还原映射。
 
 动作成功返回 true，可组成按键链。新结果待返回时保留前一帧菜单，但不允许接受过期结果。

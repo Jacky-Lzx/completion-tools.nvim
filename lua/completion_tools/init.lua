@@ -466,6 +466,13 @@ function M.show(opts)
   stop_timer(timer)
   return request(true, opts and opts.sources)
 end
+function M.refresh_keymaps()
+  if state.disposed then
+    return false
+  end
+  require("completion_tools.keymap").setup(state.config)
+  return true
+end
 function M.hide()
   local visible = ui.visible()
   state.generation = state.generation + 1
