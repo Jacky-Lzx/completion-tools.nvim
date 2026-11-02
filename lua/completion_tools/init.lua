@@ -9,6 +9,7 @@ local state = {
   cancels = {},
   groups = {},
   selected = nil,
+  selection_manual = false,
   config = nil,
   context = nil,
   disposed = true,
@@ -166,14 +167,17 @@ local function render(pending)
   end
   state.ready = true
   state.items = items
-  state.selected = state.config.preselect and #items > 0 and 1 or nil
+  -- A vanished manual choice stays empty until navigation or another edit.
+  state.selected = not state.selection_manual and state.config.preselect and #items > 0 and 1 or nil
   if previous then
     for i, entry in ipairs(items) do
       if entry.source_id == previous.source_id and entry.key == previous.key then
         if entry.item == previous.item and entry.context == previous.context then
           entry.resolved = previous.resolved
         end
-        state.selected = i
+        if state.selection_manual then
+          state.selected = i
+        end
         break
       end
     end
@@ -229,6 +233,9 @@ local function request(manual, override)
   cancel_requests()
   cancel_doc()
   local previous_context = state.context
+  if not context.same(previous_context, ctx) then
+    state.selection_manual = false
+  end
   -- Preserve the last rendered frame until matching results arrive or all
   -- providers finish without matches.
   -- It remains unselectable until a result for the current context is ready.
@@ -237,6 +244,7 @@ local function request(manual, override)
   state.ready = false
   if not context.continues(previous_context, ctx) then
     state.items, state.selected = {}, nil
+    state.selection_manual = false
     state.doc_entry = nil
     ui.hide()
   else
@@ -355,6 +363,9 @@ local function queue()
   state.ready = false
   stop_timer(timer)
   local ctx = current()
+  if not context.same(state.context, ctx) then
+    state.selection_manual = false
+  end
   if context.continues(state.context, ctx) then
     ui.reposition(ctx, state.config)
   else
@@ -579,6 +590,7 @@ function M.hide()
   cancel_doc()
   stop_timer(timer)
   state.items, state.selected, state.context, state.groups, state.ready = {}, nil, nil, {}, false
+  state.selection_manual = false
   state.doc_entry = nil
   ui.hide()
   return visible
@@ -607,6 +619,7 @@ local function select(direction, opts)
   local count = opts and opts.count or 1
   local index = state.selected or (direction == 1 and 0 or #state.items + 1)
   state.selected = (index - 1 + direction * count) % #state.items + 1
+  state.selection_manual = true
   ui.render(state.items, state.selected, state.context, state.config)
   documentation(false)
   return true

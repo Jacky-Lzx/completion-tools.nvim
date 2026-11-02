@@ -90,6 +90,28 @@ function _G.completion_tui_flicker()
     end,
   })
 end
+function _G.completion_tui_selection()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  require("completion-tools").setup({
+    sources = { "fast", "slow" },
+    documentation = { auto_show = false },
+    providers = {
+      fast = {
+        complete = function(_, cb)
+          cb({ items = { { label = "alpha" }, { label = "alphaZ" } } })
+        end,
+      },
+      slow = {
+        score_offset = 1000,
+        complete = function(_, cb)
+          vim.defer_fn(function()
+            cb({ items = { { label = "alphaLsp" } } })
+          end, 250)
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_dictionary()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   local path = vim.fn.tempname()
@@ -142,6 +164,7 @@ timer:start(
       mode = vim.api.nvim_get_mode().mode,
       visible = cmp.is_menu_visible(),
       selected = (cmp.get_selected_item() or {}).label,
+      first = (cmp.get_items()[1] or {}).label,
       error = vim.v.errmsg,
       cmdline = vim.fn.getcmdline(),
       executed = vim.g.completion_tui_executed,

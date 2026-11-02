@@ -70,6 +70,38 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_mode().mode=='n' and executed=='alpine'")
     assert(not lua("return wrong_enter or require('completion_tools').is_menu_visible()"))
   end)
+  test("asynchronous updates follow automatic selection and clear missing manual selections", function()
+    lua([[cmd_reply=nil;require('completion_tools').setup({cmdline={enabled=true},providers={
+      cmdline={complete=function(ctx,cb)
+        cmd_reply=cb
+        cb({items={{label='FixtureAlpha',filterText=ctx.prefix,sortText='10'},
+          {label='FixtureAlpine',filterText=ctx.prefix,sortText='20'}}})
+      end}
+    }})]])
+    input(":FixtureAl")
+    wait("return require('completion_tools')._can('accept')")
+    eq("FixtureAlpha", lua("return require('completion_tools').get_selected_item().label"))
+    lua([[cmd_reply({items={{label='FixtureAlphaNew',filterText='FixtureAl',sortText='00'},
+      {label='FixtureAlpha',filterText='FixtureAl',sortText='10'},
+      {label='FixtureAlpine',filterText='FixtureAl',sortText='20'}}})]])
+    wait("return require('completion_tools').get_items()[1].label=='FixtureAlphaNew'")
+    eq("FixtureAlphaNew", lua("return require('completion_tools').get_selected_item().label"))
+    input("<Down>")
+    wait("return require('completion_tools').get_selected_item().label=='FixtureAlpha'")
+    lua([[cmd_reply({items={{label='FixtureAlphaNew',filterText='FixtureAl',sortText='00'},
+      {label='FixtureAlpine',filterText='FixtureAl',sortText='20'}}})]])
+    wait("return #require('completion_tools').get_items()==2")
+    lua([[local c=require('completion_tools')
+      assert(c.is_menu_visible() and c.get_selected_item()==nil and not c.accept())]])
+    input("<Up>")
+    wait("return require('completion_tools')._can('accept')")
+    eq("FixtureAlpine", lua("return require('completion_tools').get_selected_item().label"))
+    input("<BS>")
+    wait(
+      "return require('completion_tools').get_context().prefix=='FixtureA' and require('completion_tools')._can('accept')"
+    )
+    eq("FixtureAlpha", lua("return require('completion_tools').get_selected_item().label"))
+  end)
   test("native argument boundaries preserve modifiers, no/inv prefixes and suffix", function()
     lua("require('completion_tools').setup({cmdline={enabled=true}})")
     input(":silent! keepalt set noig")

@@ -370,6 +370,11 @@ setup 后也可 `cmp.register_source("name", source)` 替换或新增来源。
 有新匹配时立即更新，全部来源完成且没有匹配时关闭；清空输入或离开当前上下文时关闭旧菜单。
 等待期间菜单会跟随光标位置，同一选中候选的文档保持显示。
 
+默认预选始终跟随最新排序的第一项，因此较慢来源返回更高排名候选时会自动选中它。
+使用 `select_next` / `select_prev`（包括方向键、Ctrl-n/p 等映射）后，异步刷新按候选身份
+保留手动选择；若该候选消失则清空选择和文档，`accept()` 返回 false，后续刷新不会自动重选。
+再次导航可重新选择；继续输入或退格会恢复 `preselect` 配置，`preselect=false` 时仍不自动选择。
+
 接受后发送 `User CompletionToolsAccept`，`args.data` 包含 item、source、bufnr 和可选的
 client_id；事件中的 item 不含私有元数据。
 主题高亮组为 `CompletionToolsMenu`、`CompletionToolsBorder`、`CompletionToolsSelected`、

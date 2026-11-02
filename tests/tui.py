@@ -86,6 +86,31 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         assert stats["samples"] >= 6 and stats["hidden"] == stats["blank"] == stats["closed"] == 0, snapshot
         os.write(primary, b"\x1b")
         wait(lambda s: s["mode"] == "n" and not s["visible"], "flicker fixture cleanup")
+        os.write(primary, b":lua completion_tui_selection()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "", "selection fixture")
+        os.write(primary, b"ial")
+        snapshot = wait(lambda s: s.get("selected") == "alpha", "fast automatic selection")
+        window = snapshot["menu"]["win"]
+        snapshot = wait(lambda s: s.get("first") == "alphaLsp" and s.get("selected") == "alphaLsp",
+                        "automatic selection follows slow-source ranking")
+        assert snapshot["menu"]["win"] == window, snapshot
+        os.write(primary, b"\t!\x1b")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "alphaLsp!", "accept latest first candidate")
+        os.write(primary, b":lua completion_tui_selection()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "", "manual selection fixture")
+        os.write(primary, b"ial")
+        wait(lambda s: s.get("selected") == "alpha", "fast ready candidate")
+        os.write(primary, b"\x0e")
+        wait(lambda s: s.get("selected") == "alphaZ", "explicit candidate navigation")
+        wait(lambda s: s.get("first") == "alphaLsp" and s.get("selected") == "alphaZ",
+             "manual selection survives slow-source ranking")
+        os.write(primary, b"p")
+        wait(lambda s: s.get("prefix") == "alp" and s["can_accept"] and s.get("selected") == "alpha",
+             "typing resets manual selection")
+        wait(lambda s: s.get("first") == "alphaLsp" and s.get("selected") == "alphaLsp",
+             "new query follows latest ranking")
+        os.write(primary, b"\x1b")
+        wait(lambda s: s["mode"] == "n" and not s["visible"], "selection fixture cleanup")
         os.write(primary, b":lua completion_tui_semantic()\r")
         wait(lambda s: s["line"] == "" and s["mode"] == "n", "semantic fixture")
         os.write(primary, b"ide")
@@ -162,7 +187,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         if child.poll() is None:
             raise AssertionError(f"quit timed out: {state.read_text()}, terminal tail={output[-1800:]!r}")
         assert child.returncode == 0
-        print("tui: continuous typing/backspace retain menu and docs; highlights, dictionary meanings and command-line acceptance passed")
+        print("tui: async selection, continuous typing/backspace, highlights, dictionary meanings and command-line acceptance passed")
     finally:
         if child.poll() is None:
             child.terminate()

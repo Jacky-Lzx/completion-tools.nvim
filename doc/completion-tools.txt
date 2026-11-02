@@ -117,6 +117,12 @@ During typing/backspace within one keyword, the previous menu remains visible
 until matching results arrive or all sources finish without matches. Stale items
 cannot be accepted. Empty input/context changes close the old menu immediately.
 The retained menu follows the cursor; documentation stays for the same selection.
+Automatic preselection follows the first item of each updated ranking. Navigation
+via select_next/select_prev marks a manual selection, preserved by identity during
+same-context refreshes. If it disappears, selection/docs are cleared and accept()
+returns false; later updates do not automatically reselect even if it reappears.
+Navigate again to choose an item. Typing/backspace reset to the configured
+preselect behavior; preselect=false continues to leave items unselected.
 
                                                 *completion-tools-dictionary*
 Add "dictionary" to sources, and configure dictionary.files (list or function).

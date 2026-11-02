@@ -241,6 +241,112 @@ local ok, err = xpcall(function()
     vim.wait(100)
     assert(not lua("return require('completion_tools').is_menu_visible()"))
   end)
+  test("automatic selection follows the first item when a slower source returns", function()
+    lua([[slow_reply=nil;require('completion_tools').setup({sources={'fast','slow'},providers={
+      fast={complete=function(_,cb) cb({items={{label='alpha'},{label='alphaZ'}}}) end},
+      slow={score_offset=1000,complete=function(_,cb) slow_reply=cb end}
+    }})]])
+    input("ial")
+    wait("return require('completion_tools')._can('accept')")
+    eq("alpha", lua("return require('completion_tools').get_selected_item().label"))
+    lua("slow_reply({items={{label='alphaLsp'}}})")
+    wait("return require('completion_tools').get_items()[1].label=='alphaLsp'")
+    eq("alphaLsp", lua("return require('completion_tools').get_selected_item().label"))
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line()=='alphaLsp!'")
+  end)
+  for _, keys in ipairs({ "<C-n>", "<C-n><C-p>" }) do
+    test("manual navigation keeps the same candidate across slower-source reordering: " .. keys, function()
+      lua([[slow_reply=nil;require('completion_tools').setup({sources={'fast','slow'},providers={
+        fast={complete=function(_,cb) cb({items={{label='alpha'},{label='alphaZ'}}}) end},
+        slow={score_offset=1000,complete=function(_,cb) slow_reply=cb end}
+      }})]])
+      input("ial")
+      wait("return require('completion_tools')._can('accept')")
+      input(keys)
+      local expected = keys == "<C-n>" and "alphaZ" or "alpha"
+      wait("return require('completion_tools').get_selected_item().label=='" .. expected .. "'")
+      lua("require('completion_tools').show()") -- Same-context source refresh is not an edit.
+      wait("return require('completion_tools')._can('accept')")
+      eq(expected, lua("return require('completion_tools').get_selected_item().label"))
+      lua("slow_reply({items={{label='alphaLsp'}}})")
+      wait("return require('completion_tools').get_items()[1].label=='alphaLsp'")
+      eq(expected, lua("return require('completion_tools').get_selected_item().label"))
+    end)
+  end
+  test("typing and backspace reset manual selection to the latest first item", function()
+    lua([[require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)
+      cb({items={{label='alpha'},{label='alphaZ'}},reusable=true})
+    end}}})]])
+    input("ial")
+    wait("return require('completion_tools')._can('accept')")
+    for _, key in ipairs({ "p", "<BS>" }) do
+      input("<C-n>")
+      wait("return require('completion_tools').get_selected_item().label=='alphaZ'")
+      input(key)
+      wait(
+        "return require('completion_tools')._can('accept') and require('completion_tools').get_selected_item().label=='alpha'"
+      )
+    end
+    eq("al", lua("return vim.api.nvim_get_current_line()"))
+  end)
+  test("a vanished manual selection stays empty until navigation or another edit", function()
+    lua(
+      [[stream_reply=nil;require('completion_tools').setup({sources={'stream'},documentation={delay_ms=5},providers={
+      stream={complete=function(_,cb) stream_reply=cb;cb({items={{label='alpha',detail='first'},
+        {label='alphaZ',detail='selected'}}}) end}
+    }})]]
+    )
+    input("ial")
+    wait("return require('completion_tools')._can('accept')")
+    input("<C-n>")
+    wait("return require('completion_tools').get_selected_item().label=='alphaZ'")
+    wait([[for _,w in ipairs(vim.api.nvim_list_wins()) do
+      if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then
+        return table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w),0,-1,false),'\n'):find('selected',1,true)~=nil
+      end end;return false]])
+    lua("stream_reply({items={{label='alpha'},{label='alphaNew'}}})")
+    wait("return require('completion_tools').get_items()[2].label=='alphaNew'")
+    lua([[local c=require('completion_tools')
+      assert(c.is_menu_visible() and c.get_selected_item()==nil and not c._can('accept') and not c.accept())
+      for _,w in ipairs(vim.api.nvim_list_wins()) do
+        assert(vim.bo[vim.api.nvim_win_get_buf(w)].filetype~='markdown','cleared selection kept documentation')
+      end
+      stream_reply({items={{label='alpha'},{label='alphaZ'},{label='alphaOther'}}})
+    ]])
+    wait("return #require('completion_tools').get_items()==3")
+    eq(true, lua("return require('completion_tools').get_selected_item()==nil"))
+    input("<C-p>")
+    wait("return require('completion_tools')._can('accept')")
+    eq(
+      true,
+      lua(
+        "return require('completion_tools').get_selected_item().label==require('completion_tools').get_items()[3].label"
+      )
+    )
+    input("p")
+    wait(
+      "return require('completion_tools')._can('accept') and require('completion_tools').get_selected_item().label=='alpha'"
+    )
+  end)
+  test("disabled preselection stays disabled across asynchronous updates and edits", function()
+    lua([[stream_reply=nil;require('completion_tools').setup({preselect=false,sources={'stream'},providers={
+      stream={complete=function(_,cb) stream_reply=cb;cb({items={{label='alpha'},{label='alphaZ'}}}) end}
+    }})]])
+    input("ial")
+    wait("return require('completion_tools').is_menu_visible()")
+    eq(true, lua("return require('completion_tools').get_selected_item()==nil"))
+    lua("stream_reply({items={{label='alpha'},{label='alphaZ'},{label='alphaNew'}}})")
+    wait("return #require('completion_tools').get_items()==3")
+    eq(true, lua("return require('completion_tools').get_selected_item()==nil"))
+    input("<C-n>")
+    wait("return require('completion_tools')._can('accept')")
+    input("p")
+    wait(
+      "return require('completion_tools').get_context().prefix=='alp' and require('completion_tools')._can('select_next')"
+    )
+    eq(true, lua("return require('completion_tools').get_selected_item()==nil"))
+  end)
   test("streaming updates preserve an explicit selection across new item objects", function()
     lua([[require('completion_tools').setup({sources={'stream'},providers={stream={complete=function(ctx,cb)
       cb({items={{label='apple'},{label='apply'}}})
