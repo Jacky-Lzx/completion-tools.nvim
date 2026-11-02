@@ -37,9 +37,12 @@ test("top-k agrees with full ranking and deduplicates sources", function()
       sortText = string.format("%06d", i),
     }
   end
+  -- Always exercise duplicate labels, regardless of the platform's RNG stream.
+  items[1].label, items[3].label = "compiler1", "compiler1"
+  items[2].label, items[4].label = "completion1", "completion1"
   local ranked = {}
   for i, item in ipairs(items) do
-    ranked[i] = { label = item.label, sort = item.sortText, score = matcher.score(item.label, "cmp") }
+    ranked[i] = { item = item, sort = item.sortText, score = matcher.score(item.label, "cmp") }
   end
   table.sort(ranked, function(a, b)
     if a.score ~= b.score then
@@ -47,9 +50,20 @@ test("top-k agrees with full ranking and deduplicates sources", function()
     end
     return a.sort < b.sort
   end)
+  -- This fixture has identical insertion text/kind for each repeated label.
+  -- The first full-sort occurrence is the winner of that completion identity.
+  local unique, seen = {}, {}
+  for _, candidate in ipairs(ranked) do
+    local label = candidate.item.label
+    if not seen[label] then
+      seen[label] = true
+      unique[#unique + 1] = candidate
+    end
+  end
   local result = matcher.filter({ group(items) }, { before = "cmp", prefix = "cmp" }, 50)
+  eq(50, #result)
   for i = 1, 50 do
-    eq(ranked[i].label, result[i].item.label)
+    eq(unique[i].item, result[i].item)
   end
   local duplicate = { label = "completion", kind = 1 }
   local result2 = matcher.filter(
