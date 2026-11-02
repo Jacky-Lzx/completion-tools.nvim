@@ -56,6 +56,7 @@ Buffer-local mappings take precedence over global plugin mappings.
 
                                                      *completion-tools-sources*
 Built-ins: lsp, path, buffer, snippets; optional Ex cmdline.
+Opt-in sources: dictionary, spell. Both are independent of Blink.
 snippets.preset="luasnip" enables the optional literal-trigger LuaSnip adapter.
 cmdline.enabled=true enables Ex completion, without accepting on <CR>.
 
@@ -76,6 +77,33 @@ Entry fields: item, context, start_col, source_id.
 Callbacks may publish more than once. Stale results are ignored even if a
 provider does not honour cancellation. The provider owns external resources.
 Complete reusable lists can be filtered locally during forward typing.
+
+                                                *completion-tools-dictionary*
+Add "dictionary" to sources, and configure dictionary.files (list or function).
+UTF-8, one word/phrase per line; CRLF/BOM and duplicate lines are supported.
+Defaults: min_keyword_length=3, max_items=10, matching="fuzzy", capitalize=true,
+max_bytes=16777216, max_words=500000, max_word_bytes=256, timeout_ms=5000.
+matching="prefix" uses prefix buckets; "fuzzy" scores subsequences.
+File changes invalidate the background index. Lists replace rather than merge.
+At most four indexes / 64 cached queries per index; warnings for missing files
+and truncated budgets are deduplicated. Files exceeding the remaining byte
+budget are skipped.
+
+                                                     *completion-tools-spell*
+Add "spell" to sources. Only active with window-local 'spell' enabled.
+Inherits native spelllang/spellfile/spellcapcheck/spelloptions/spellsuggest.
+Defaults: min_keyword_length=2, max_items=3, debounce_ms=60, timeout_ms=5000,
+sort="match", preselect_current_word=true, suggest_when_correct=false.
+sort="match" prioritizes fuzzy matches and keeps non-matching corrections last.
+sort="suggestion" preserves native spellsuggest() ordering.
+enable_in_context(ctx) can further restrict the source.
+Compiled personal word-list updates reload the worker. User-init functions
+referenced by spellsuggest=expr:... are not copied to the worker.
+
+Both word sources return Text candidates. They run in separate, persistent,
+on-demand headless Neovim processes; no user init is loaded. At most one active
+and one latest pending request are retained. dispose/setup/exit stop workers.
+Slow results cannot block main-thread typing or publish after cancellation.
 
                                                       *CompletionToolsAccept*
 User CompletionToolsAccept fires after primary acceptance.

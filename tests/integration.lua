@@ -612,6 +612,57 @@ local ok, err = xpcall(function()
       wait("return vim.api.nvim_get_mode().mode == 'i'")
     end)
   end
+  test("custom dictionary completes words absent from the buffer and reloads edited files", function()
+    lua([[
+      dictionary_fixture=vim.fn.tempname()
+      vim.fn.writefile({'uniqueDictionaryWord','uniqueDictionaryWord','unrelated'},dictionary_fixture)
+      require('completion_tools').setup({sources={'dictionary'},dictionary={files={dictionary_fixture}}})
+    ]])
+    input("iuni")
+    wait("return require('completion_tools').is_menu_visible()", "background dictionary", 8000)
+    eq("uniqueDictionaryWord", lua("return require('completion_tools').get_selected_item().label"))
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line()=='uniqueDictionaryWord!'")
+    input("<C-u>")
+    wait("return vim.api.nvim_get_current_line()==''")
+    lua("vim.fn.writefile({'uniqueReplacement'},dictionary_fixture)")
+    input("uni")
+    wait(
+      "return require('completion_tools').get_selected_item() and require('completion_tools').get_selected_item().label=='uniqueReplacement'",
+      "dictionary file invalidation",
+      8000
+    )
+    input("<Tab>")
+    wait("return vim.api.nvim_get_current_line()=='uniqueReplacement'")
+    lua("vim.fn.delete(dictionary_fixture)")
+  end)
+  test("spell corrects transposed letters and accepts without copying filterText", function()
+    lua([[
+      vim.wo.spell=true;vim.bo.spelllang='en'
+      require('completion_tools').setup({sources={'spell'},spell={sort='suggestion',debounce_ms=0}})
+    ]])
+    input("iteh")
+    wait(
+      "for _,item in ipairs(require('completion_tools').get_items()) do if item.label=='the' then return true end end;return false",
+      "native background spelling",
+      8000
+    )
+    lua(
+      "local c=require('completion_tools');for _=1,#c.get_items() do if c.get_selected_item().label=='the' then break end;c.select_next() end"
+    )
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line()=='the!'")
+    input("<C-u>teh")
+    wait("return vim.api.nvim_get_current_line()=='teh'")
+    input("<BS><BS><BS>")
+    wait("return not require('completion_tools').is_menu_visible()")
+    vim.wait(100)
+    assert(
+      not lua("return require('completion_tools').is_menu_visible()"),
+      "Late spell results reopened an empty query"
+    )
+    lua("vim.wo.spell=false")
+  end)
   test("command-line Tab accepts without executing", function()
     lua([[require('completion_tools').setup({cmdline={enabled=true}})]])
     input(":set nu")

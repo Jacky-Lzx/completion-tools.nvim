@@ -4,6 +4,9 @@
 
 已实现 LSP、异步路径、缓冲区单词、snippet、带 kind 图标与语法高亮的多列浮动菜单、文档预览，以及可选的 Ex 命令行补全。使用增量单词索引、请求取消、完整 LSP 列表的前向复用和 top-k 排序，减少每次输入的工作量。
 
+另提供独立的 `dictionary` 和 `spell` 来源：自定义词典与原生拼写建议在后台 Neovim
+进程中计算，不依赖 Blink、plenary 或额外可执行程序。
+
 已用本机 blink.cmp v1.10.2 的 Rust 后端完成受控对照，覆盖 1,000、10,000、20,000 个候选，输入到菜单更新延迟达到同一毫秒量级。两者均使用简化菜单和相同候选集；这不是完整个人配置或所有语言服务器的性能保证。测量条件、原始数据和匹配能力差异见 [性能记录](doc/performance.md)。
 
 ## 安装
@@ -137,6 +140,16 @@ require("completion-tools").setup({
     min_length = 3, -- 单词的字节长度
   },
   path = { max_entries = 10000, cache_ms = 1000, show_hidden = false },
+  dictionary = {
+    files = {}, min_keyword_length = 3, max_items = 10,
+    matching = "fuzzy", capitalize = true,
+    max_bytes = 16 * 1024 * 1024, max_words = 500000, max_word_bytes = 256,
+    timeout_ms = 5000,
+  },
+  spell = {
+    min_keyword_length = 2, max_items = 3, debounce_ms = 60, timeout_ms = 5000,
+    sort = "match", preselect_current_word = true, suggest_when_correct = false,
+  },
   snippets = { preset = "default", collection = {} },
   cmdline = { enabled = false, min_keyword_length = 1 },
 })
@@ -303,6 +316,55 @@ client_id；事件中的 item 不含私有元数据。
 
 运行 `:checkhealth completion-tools` 检查版本和多补全引擎冲突。
 
+## 自定义词典和拼写来源
+
+在 `sources` 中显式加入 `"dictionary"`、`"spell"`：
+
+~~~lua
+require("completion-tools").setup({
+  sources = { "lsp", "path", "buffer", "snippets", "dictionary", "spell" },
+  dictionary = {
+    files = { vim.fn.stdpath("config") .. "/configs/dictionary.txt" },
+    min_keyword_length = 3,
+    max_items = 10,
+  },
+  spell = { sort = "match" },
+  providers = { dictionary = { score_offset = 5 }, spell = { score_offset = 10 } },
+})
+~~~
+
+词典采用 UTF-8、每行一个词或短语，支持 CRLF、BOM、去重及带空格的路径。
+`dictionary.files` 也可以是 `function(ctx) -> string[]`，列表整体替换。
+`matching="fuzzy"` 使用本插件的前缀/子序列评分取前 `max_items` 项；
+`"prefix"` 仅取前缀匹配，并用前三个字节的索引缩小搜索范围。
+默认随输入将全小写词转换为首字母大写或全大写；`capitalize=false` 保留原样。
+
+文件内容与查询缓存在后台；每次请求检查文件状态，修改后重新索引。
+同时保留最多四组文件索引、每组 64 个查询。文件总字节预算默认 16 MiB，
+词数预算 500,000，单词最长 256 字节；超过剩余字节预算的文件跳过，
+达到词数预算后截断；缺失文件或预算截断只警告一次，不影响其他来源。
+
+拼写只在当前窗口 `spell` 开启时工作，继承 `spelllang`、`spellfile`、
+`spellcapcheck`、`spelloptions`、`spellsuggest` 与 runtimepath。
+可用 `enable_in_context=function(ctx) -> boolean` 进一步按语法/文件类型限制。
+编译后的个人词表更新时后台进程会重载。
+
+- `sort="match"`：优先匹配程度更高的词，相同分数按词排序，适合部分输入；
+  字母换位等无法通过子序列匹配的纠错建议仍保留，排在匹配项之后。
+- `sort="suggestion"`：保留原生 `spellsuggest()` 的建议顺序。
+- 拼写正确时默认只保留当前词并标记预选；`preselect_current_word=false` 隐藏当前词；
+  `suggest_when_correct=true` 允许同时显示其他建议。
+
+排序仅作用于拼写来源内部，跨来源仍使用分数偏移和统一去重。
+两种来源均为 Text 类型，沿用灰色配色；接受时插入建议词，不会插入用于筛选的错词。
+
+两个来源各自按需启动一个持久的无界面 Neovim，使用当前 Neovim 可执行文件，
+不加载用户 init；闲置时保留以复用索引，`dispose`/重新 setup/退出时终止。
+只保留一个执行中的请求与一个最新待处理请求，取消或过期的结果不会打开菜单。
+拼写默认延迟 60 ms 合并连续输入；其他来源可先显示结果。
+首次大词典加载和慢语言的建议可能延迟到达，但不占用主编辑器线程。
+依赖用户 init 中函数的 `spellsuggest=expr:...` 不会自动复制到后台进程。
+
 ## 菜单布局与高亮
 
 默认布局为「kind 图标｜名称、签名与说明｜kind 名称」。`columns` 中每组可放多个组件，
@@ -354,10 +416,11 @@ LSP kind 对应组（未知值用 `CompletionToolsKindUnknown`），默认链接
 内置来源无需 blink.cmp。LSP 能力、LuaSnip、来源分数、Enter/Tab 行为可以按上文配置。
 请同时修改你自己的 LSP 依赖与能力函数引用；本仓库不代替你修改全局配置。
 
-当前没有 Blink 来源协议兼容层，也没有内置的 Copilot、lazydev、词典、拼写来源，
+当前没有 Blink 来源协议兼容层，也没有内置的 Copilot、lazydev 来源，
 自动括号、ghost text、signature help 或持久化 frecency。
 可通过来源接口扩展；这些差异意味着目前不是完整个人 Blink 配置的直接替换。
-匹配支持忽略 ASCII 大小写的前缀、子序列和驼峰边界加分，不提供拼写纠错或 Unicode 大小写折叠。
+通用匹配器支持忽略 ASCII 大小写的前缀、子序列和驼峰边界加分，不做拼写纠错或 Unicode
+大小写折叠；可选的 spell 来源通过原生拼写建议独立提供纠错。
 
 ## 开发与验证
 
@@ -371,6 +434,7 @@ stylua --check lua tests
 BLINK_CMP_PATH=/path/to/blink.cmp ./tests/bench.sh
 BLINK_CMP_PATH=/path/to/blink.cmp ./tests/bench.sh bench_input
 ./tests/bench.sh bench_menu              # 三列、高亮及原生 Lua query 的热渲染
+DICTIONARY_FILE=/path/to/words.txt ./tests/bench.sh bench_words # 实际词典后台检索与事件循环间隔
 BENCH_SOURCE=buffer BLINK_CMP_PATH=/path/to/blink.cmp ./tests/bench.sh bench_input
 ~~~
 

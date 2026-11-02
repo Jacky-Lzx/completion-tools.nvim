@@ -35,6 +35,26 @@ M.defaults = {
   documentation = { auto_show = true, delay_ms = 150, max_width = 72, max_height = 18, border = "single" },
   buffer = { max_bytes = 1024 * 1024, max_words = 20000, max_buffers = 8, batch_lines = 128, min_length = 3 },
   path = { max_entries = 10000, cache_ms = 1000, show_hidden = false },
+  dictionary = {
+    files = {},
+    min_keyword_length = 3,
+    max_items = 10,
+    matching = "fuzzy",
+    capitalize = true,
+    max_bytes = 16 * 1024 * 1024,
+    max_words = 500000,
+    max_word_bytes = 256,
+    timeout_ms = 5000,
+  },
+  spell = {
+    min_keyword_length = 2,
+    max_items = 3,
+    debounce_ms = 60,
+    timeout_ms = 5000,
+    sort = "match",
+    preselect_current_word = true,
+    suggest_when_correct = false,
+  },
   snippets = { preset = "default", collection = {} },
   cmdline = { enabled = false, min_keyword_length = 1 },
 }
@@ -51,6 +71,9 @@ function M.validate(opts)
   end
   if opts.menu and opts.menu.columns ~= nil then
     config.menu.columns = vim.deepcopy(opts.menu.columns)
+  end
+  if opts.dictionary and opts.dictionary.files ~= nil then
+    config.dictionary.files = opts.dictionary.files
   end
   for _, name in ipairs({ "max_items", "min_keyword_length", "debounce_ms" }) do
     assert(type(config[name]) == "number" and config[name] >= 0, "completion-tools: invalid " .. name)
@@ -89,6 +112,38 @@ function M.validate(opts)
   local function integer(value, minimum)
     return type(value) == "number" and value >= minimum and value % 1 == 0
   end
+  for _, section in ipairs({ "dictionary", "spell" }) do
+    for _, field in ipairs({ "min_keyword_length", "max_items", "timeout_ms" }) do
+      assert(integer(config[section][field], 1), "completion-tools: invalid " .. section .. "." .. field)
+    end
+  end
+  local dict, spell = config.dictionary, config.spell
+  assert(
+    type(dict.files) == "table" or type(dict.files) == "function",
+    "completion-tools: invalid dictionary.files"
+  )
+  if type(dict.files) == "table" then
+    for _, file in ipairs(dict.files) do
+      assert(type(file) == "string" and file ~= "", "completion-tools: invalid dictionary path")
+    end
+  end
+  for _, field in ipairs({ "max_bytes", "max_words", "max_word_bytes" }) do
+    assert(integer(dict[field], 1), "completion-tools: invalid dictionary." .. field)
+  end
+  assert(
+    dict.matching == "prefix" or dict.matching == "fuzzy",
+    "completion-tools: invalid dictionary.matching"
+  )
+  assert(type(dict.capitalize) == "boolean", "completion-tools: invalid dictionary.capitalize")
+  assert(integer(spell.debounce_ms, 0), "completion-tools: invalid spell.debounce_ms")
+  assert(spell.sort == "match" or spell.sort == "suggestion", "completion-tools: invalid spell.sort")
+  for _, field in ipairs({ "preselect_current_word", "suggest_when_correct" }) do
+    assert(type(spell[field]) == "boolean", "completion-tools: invalid spell." .. field)
+  end
+  assert(
+    spell.enable_in_context == nil or type(spell.enable_in_context) == "function",
+    "completion-tools: invalid spell.enable_in_context"
+  )
   assert(type(menu.columns) == "table" and #menu.columns > 0, "completion-tools: empty menu.columns")
   for _, column in ipairs(menu.columns) do
     assert(type(column) == "table" and #column > 0, "completion-tools: invalid menu column")
