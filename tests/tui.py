@@ -105,7 +105,9 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         snapshot = wait(lambda s: s.get("selected") == "CompletionTuiAlpine", "command selection")
         assert snapshot["cmdline"] == "CompletionTui", snapshot
         os.write(primary, b"\t")
-        snapshot = wait(lambda s: s["cmdline"] == "CompletionTuiAlpine", "command acceptance")
+        snapshot = wait(lambda s: s["cmdline"] == "CompletionTuiAlpine"
+                        and "CompletionTuiAlpine" in s.get("cmdline_screen", ""),
+                        "accepted command is immediately visible")
         assert snapshot["mode"] == "c" and not snapshot.get("executed"), snapshot
         os.write(primary, b"\r")
         wait(lambda s: s["mode"] == "n" and s.get("executed") == "alpine" and not s["visible"],

@@ -85,6 +85,12 @@ timer:start(
       cmdline = vim.fn.getcmdline(),
       executed = vim.g.completion_tui_executed,
     }
+    if data.mode == "c" then
+      data.cmdline_screen = ""
+      for col = 1, vim.o.columns do
+        data.cmdline_screen = data.cmdline_screen .. vim.fn.screenstring(vim.o.lines, col)
+      end
+    end
     local ctx = cmp.get_context()
     if ctx then
       data.prefix = ctx.prefix

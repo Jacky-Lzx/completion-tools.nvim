@@ -12,10 +12,11 @@ end
 local function input(keys)
   vim.rpcnotify(child, "nvim_input", keys)
 end
-local function wait(code, message)
+local function wait(code, message, ...)
+  local args = { ... }
   assert(
     vim.wait(3000, function()
-      return lua(code) == true
+      return lua(code, unpack(args)) == true
     end, 5),
     (message or code)
       .. "\n"
@@ -246,6 +247,22 @@ local ok, err = xpcall(function()
         wait(check)
         rpc("nvim_ui_try_resize", 100, 34)
         wait(check, "external menu after resize")
+        local accepted = lua("return 'set '..require('completion_tools').get_selected_item().label")
+        input("<Tab>")
+        wait("return vim.fn.getcmdline()==...", "accepted native command line", accepted)
+        wait(
+          [[
+          local box=require('input-tools').get_layout()
+          if not box then return false end
+          local expected=...
+          if not table.concat(vim.api.nvim_buf_get_lines(box.buf,0,-1,false),'\n'):find(expected,1,true) then return false end
+          local p=vim.fn.screenpos(box.win,1,1);local screen=''
+          for col=p.col,p.col+box.width-1 do screen=screen..vim.fn.screenstring(p.row,col) end
+          return screen:find(expected,1,true)~=nil and not require('completion_tools').is_menu_visible()
+        ]],
+          "accepted command is visible without another key",
+          accepted
+        )
         input("<Esc>")
         wait("return vim.api.nvim_get_mode().mode=='n' and not require('completion_tools').is_menu_visible()")
         lua("require('input-tools').teardown();vim.api.nvim_del_augroup_by_name('CompletionCmdlineFixture')")

@@ -80,7 +80,14 @@ function M.setup(config)
         end
         -- Non-expr callbacks permit text edits and custom actions. Buffer-local
         -- mappings keep Neovim's normal precedence over these global defaults.
-        vim.keymap.set(mode, key, mapping.callback, { silent = true, desc = "completion-tools " .. key })
+        -- A silent command-line mapping suppresses setcmdline's native redraw,
+        -- leaving both native and external command lines stale until the next key.
+        vim.keymap.set(
+          mode,
+          key,
+          mapping.callback,
+          { silent = mode ~= "c", desc = "completion-tools " .. key }
+        )
         installed[#installed + 1] = mapping
       end
     end
