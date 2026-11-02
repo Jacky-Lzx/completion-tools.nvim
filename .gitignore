@@ -1,0 +1,6 @@
+*.log
+.nvimlog
+__pycache__/
+doc/tags
+.DS_Store
+tests/results/

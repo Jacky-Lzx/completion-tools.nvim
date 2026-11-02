@@ -1,0 +1,23 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  neovim:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        neovim: [v0.11.5, v0.12.6]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install official Neovim
+        env:
+          NVIM_VERSION: ${{ matrix.neovim }}
+        run: |
+          curl --fail --location --retry 3 \
+            "https://github.com/neovim/neovim/releases/download/$NVIM_VERSION/nvim-linux-x86_64.tar.gz" \
+            -o "$RUNNER_TEMP/neovim.tar.gz"
+          mkdir "$RUNNER_TEMP/neovim"
+          tar -xzf "$RUNNER_TEMP/neovim.tar.gz" -C "$RUNNER_TEMP/neovim" --strip-components=1
+          echo "$RUNNER_TEMP/neovim/bin" >> "$GITHUB_PATH"
+      - name: Unit, LSP protocol, actual input and PTY tests
+        run: ./tests/run.sh

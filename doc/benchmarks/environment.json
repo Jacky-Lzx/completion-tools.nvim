@@ -1,0 +1,11 @@
+{
+  "date": "2026-11-02",
+  "platform": "macOS arm64",
+  "neovim": "0.12.6",
+  "blink": {
+    "version": "v1.10.2",
+    "revision": "78336bc89ee5365633bcf754d93df01678b5c08f",
+    "native_sha256": "ceeae0c3f72af97ee64b816256638883a67396430445829e2afc938246a36945"
+  },
+  "luasnip_revision": "642b0c595e11608b4c18219e93b88d7637af27bc"
+}

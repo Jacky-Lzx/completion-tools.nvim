@@ -1,0 +1,699 @@
+local M = {}
+local context = require("completion_tools.context")
+local ui = require("completion_tools.ui")
+local state = {
+  generation = 0,
+  items = {},
+  providers = {},
+  cache = {},
+  cancels = {},
+  groups = {},
+  selected = nil,
+  config = nil,
+  context = nil,
+  disposed = true,
+  accept_cancels = {},
+  watched = {},
+}
+local timer, doc_timer, doc_cancel, group
+
+local function stop_timer(id)
+  if id and not id:is_closing() then
+    id:stop()
+  end
+end
+local function close_timer(id)
+  if id and not id:is_closing() then
+    id:stop()
+    id:close()
+  end
+end
+local function cancel_requests()
+  for _, cancel in ipairs(state.cancels) do
+    pcall(cancel)
+  end
+  state.cancels = {}
+end
+local function cancel_doc()
+  stop_timer(doc_timer)
+  if doc_cancel then
+    pcall(doc_cancel)
+    doc_cancel = nil
+  end
+end
+local function report(message)
+  vim.schedule(function()
+    vim.notify("completion-tools: " .. tostring(message), vim.log.levels.ERROR)
+  end)
+end
+local function enabled()
+  local value = state.config and state.config.enabled
+  return not state.disposed
+    and (type(value) == "function" and value() or value == true)
+    and vim.fn.reg_recording() == ""
+    and vim.fn.reg_executing() == ""
+    and not vim.o.paste
+end
+local function current()
+  return state.config and context.get(state.config) or nil
+end
+local function valid(generation, ctx)
+  return not state.disposed and generation == state.generation and context.same(ctx, current())
+end
+local function selected_entry()
+  return state.selected and state.items[state.selected]
+end
+local function watch(buf)
+  if state.watched[buf] or not vim.api.nvim_buf_is_loaded(buf) then
+    return
+  end
+  local token = {}
+  state.watched[buf] = token
+  vim.api.nvim_buf_attach(buf, false, {
+    on_lines = function(_, _, _, first, old_last, new_last)
+      if state.watched[buf] ~= token then
+        return true
+      end
+      for id, cache in pairs(state.cache) do
+        local ctx = cache.context
+        if ctx.bufnr == buf and (first ~= ctx.row or old_last ~= first + 1 or new_last ~= old_last) then
+          state.cache[id] = nil
+        end
+      end
+    end,
+    on_detach = function()
+      if state.watched[buf] == token then
+        state.watched[buf] = nil
+      end
+    end,
+    on_reload = function()
+      if state.watched[buf] == token then
+        state.cache = {}
+      end
+    end,
+  })
+end
+
+local function documentation(force)
+  cancel_doc()
+  ui.hide_documentation()
+  local entry = selected_entry()
+  if not entry then
+    return
+  end
+  local generation = state.generation
+  local may_draw = force
+  local function draw()
+    if generation == state.generation and selected_entry() == entry and M.is_menu_visible() then
+      ui.documentation(entry.resolved or entry.item, state.config)
+    end
+  end
+  local provider = state.providers[entry.source_id]
+  if provider and provider.resolve and not entry.resolved then
+    local ok, cancel = pcall(provider.resolve, entry, function(item)
+      vim.schedule(function()
+        if generation ~= state.generation or selected_entry() ~= entry then
+          return
+        end
+        entry.resolved = item
+        if may_draw then
+          draw()
+        end
+      end)
+    end)
+    if ok then
+      doc_cancel = type(cancel) == "function" and cancel or nil
+    else
+      report(cancel)
+    end
+  end
+  if force then
+    draw()
+  elseif state.config.documentation.auto_show then
+    doc_timer:start(
+      state.config.documentation.delay_ms,
+      0,
+      vim.schedule_wrap(function()
+        may_draw = true
+        draw()
+      end)
+    )
+  end
+end
+
+local function render()
+  local ctx = state.context
+  if not ctx or not context.same(ctx, current()) then
+    return
+  end
+  local groups = {}
+  for _, id in ipairs(state.source_ids) do
+    if state.groups[id] then
+      groups[#groups + 1] = state.groups[id]
+    end
+  end
+  local previous = selected_entry()
+  local items = require("completion_tools.matcher").filter(groups, ctx, state.config.max_items)
+  state.items = items
+  state.selected = state.config.preselect and #items > 0 and 1 or nil
+  if previous then
+    for i, entry in ipairs(items) do
+      if entry.source_id == previous.source_id and entry.key == previous.key then
+        if entry.item == previous.item and entry.context == previous.context then
+          entry.resolved = previous.resolved
+        end
+        state.selected = i
+        break
+      end
+    end
+  end
+  ui.render(items, state.selected, ctx, state.config)
+  documentation(false)
+end
+
+local function source_ids(ctx, override)
+  local configured = override or state.config.sources
+  local ids = type(configured) == "function" and configured(ctx) or configured
+  return ctx.mode == "cmdline" and { "cmdline" } or ids
+end
+
+local function request(manual, override)
+  if not enabled() then
+    M.hide()
+    return false
+  end
+  local ctx = current()
+  if not ctx or (ctx.mode == "insert" and vim.fn.pumvisible() == 1) then
+    M.hide()
+    return false
+  end
+  if not manual and context.same(state.accepted, ctx) then
+    return false
+  end
+  state.accepted = nil
+  local ids = source_ids(ctx, override)
+  local triggered = false
+  for _, id in ipairs(ids) do
+    local provider = state.providers[id]
+    if provider and provider.trigger and provider.trigger(ctx) then
+      triggered = true
+      break
+    end
+  end
+  local minimum = ctx.mode == "cmdline" and state.config.cmdline.min_keyword_length
+    or state.config.min_keyword_length
+  if not manual and #ctx.prefix < minimum and not triggered and not ctx.before:match("[/\\][^%s]*$") then
+    M.hide()
+    return false
+  end
+  state.generation = state.generation + 1
+  local generation = state.generation
+  cancel_requests()
+  cancel_doc()
+  local previous_context = state.context
+  -- Preserve the last rendered frame until at least one replacement arrives.
+  -- It remains unselectable until a result for the current context is ready.
+  state.context, state.groups, state.source_ids = ctx, {}, ids
+  state.manual = manual
+  state.ready = false
+  if not context.extends(previous_context, ctx) then
+    state.items, state.selected = {}, nil
+    ui.hide()
+  end
+  local render_queued = false
+  local function queue_render()
+    if render_queued then
+      return
+    end
+    render_queued = true
+    vim.schedule(function()
+      render_queued = false
+      if valid(generation, ctx) then
+        state.ready = true
+        render()
+      end
+    end)
+  end
+  local started = false
+  for priority, id in ipairs(ids) do
+    local provider = state.providers[id]
+    if provider then
+      local provider_config = state.config.providers[id] or {}
+      local active = provider_config.enabled
+      if active == nil then
+        active = true
+      end
+      if type(active) == "function" then
+        active = active(ctx)
+      end
+      if active then
+        started = true
+        local old = state.cache[id]
+        local function receive(response)
+          if not valid(generation, ctx) then
+            return
+          end
+          response = response or { items = {} }
+          local items = response.items or response
+          if provider_config.transform_items then
+            items = provider_config.transform_items(ctx, items)
+          end
+          local result = {
+            items = items,
+            source_id = id,
+            priority = priority,
+            score_offset = provider_config.score_offset or provider.score_offset or 0,
+            start_col = response.start_col or ctx.start_col,
+            context = response.context or ctx,
+          }
+          for _, item in ipairs(items) do
+            local edit = item.textEdit
+            local range = edit and (edit.range or edit.replace or edit.insert)
+            if range and range.start.line == ctx.row then
+              result.start_cols = result.start_cols or {}
+              local encoding = item._encoding or "utf-8"
+              result.start_cols[item] = encoding == "utf-8" and range.start.character
+                or vim.str_byteindex(ctx.line, encoding, range.start.character, false)
+            end
+          end
+          state.groups[id] = result
+          state.cache[id] = {
+            group = result,
+            context = ctx,
+            reusable = response.reusable,
+            incomplete = response.is_incomplete,
+          }
+          queue_render()
+        end
+        if old and old.reusable and context.extends(old.context, ctx) then
+          state.groups[id] = old.group
+          queue_render()
+        else
+          ctx.incomplete = old and old.incomplete or false
+          local ok, cancel = pcall(provider.complete, ctx, function(response)
+            -- Providers may call from a libuv callback. Always cross into the
+            -- editor event loop before accessing Neovim or plugin state.
+            if vim.in_fast_event() then
+              vim.schedule(function()
+                receive(response)
+              end)
+            else
+              receive(response)
+            end
+          end)
+          if ok then
+            if type(cancel) == "function" then
+              state.cancels[#state.cancels + 1] = cancel
+            end
+          else
+            report(id .. ": " .. tostring(cancel))
+          end
+        end
+      end
+    end
+  end
+  -- No enabled providers must also close a previous menu.
+  if not started then
+    queue_render()
+  end
+  return true
+end
+
+local function queue()
+  if state.disposed then
+    return
+  end
+  state.generation = state.generation + 1
+  cancel_requests()
+  cancel_doc()
+  state.ready = false
+  stop_timer(timer)
+  local generation = state.generation
+  local function run()
+    if generation == state.generation and not state.disposed then
+      request(false)
+    end
+  end
+  if state.config.debounce_ms == 0 then
+    vim.schedule(run)
+  else
+    timer:start(state.config.debounce_ms, 0, vim.schedule_wrap(run))
+  end
+end
+
+function M.setup(opts)
+  local config = require("completion_tools.config").validate(opts or {})
+  if vim.fn.has("nvim-0.11") ~= 1 then
+    error("completion-tools requires Neovim 0.11+")
+  end
+  M.dispose()
+  state.config, state.disposed = config, false
+  timer, doc_timer = vim.uv.new_timer(), vim.uv.new_timer()
+  for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline" }) do
+    state.providers[id] = require("completion_tools.sources." .. id).new(config[id] or {}, function()
+      if state.context and state.context.bufnr == vim.api.nvim_get_current_buf() then
+        request(state.manual, state.source_ids)
+      end
+    end)
+  end
+  for id, provider in pairs(config.providers) do
+    if provider.complete then
+      M.register_source(id, provider)
+    elseif provider.module then
+      local factory = require(provider.module)
+      M.register_source(id, factory.new and factory.new(provider.opts or {}) or factory)
+    end
+  end
+  local function warmup(buf)
+    if
+      type(config.sources) ~= "table"
+      or not vim.list_contains(config.sources, "buffer")
+      or (config.providers.buffer or {}).enabled == false
+    then
+      return
+    end
+    local provider = state.providers.buffer
+    if provider and provider.warmup then
+      provider.warmup(buf)
+    end
+  end
+  ui.highlights()
+  group = vim.api.nvim_create_augroup("CompletionTools", { clear = true })
+  vim.api.nvim_create_autocmd({ "InsertEnter", "TextChangedI", "TextChangedP" }, {
+    group = group,
+    callback = function()
+      if config.auto_show then
+        queue()
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd("CursorMovedI", {
+    group = group,
+    callback = function()
+      if state.context and not context.same(state.context, current()) then
+        if config.auto_show then
+          queue()
+        else
+          M.hide()
+        end
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd({ "InsertLeave", "BufLeave", "WinLeave", "CmdlineLeave" }, {
+    group = group,
+    callback = function()
+      M.hide()
+      state.cache = {}
+    end,
+  })
+  vim.api.nvim_create_autocmd({ "BufEnter", "InsertEnter" }, {
+    group = group,
+    callback = function(args)
+      watch(args.buf)
+      warmup(args.buf)
+    end,
+  })
+  if config.cmdline.enabled then
+    vim.api.nvim_create_autocmd({ "CmdlineEnter", "CmdlineChanged" }, {
+      group = group,
+      callback = function()
+        if config.auto_show then
+          queue()
+        end
+      end,
+    })
+  end
+  vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = ui.highlights })
+  vim.api.nvim_create_autocmd("FileType", {
+    group = group,
+    callback = function(args)
+      if state.context and args.buf == state.context.bufnr then
+        M.hide()
+        state.cache = {}
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd({ "LspAttach", "LspDetach" }, {
+    group = group,
+    callback = function(args)
+      state.cache.lsp = nil
+      if args.buf == vim.api.nvim_get_current_buf() and config.auto_show then
+        queue()
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd("VimResized", { group = group, callback = M.hide })
+  vim.api.nvim_create_autocmd("VimLeavePre", { group = group, callback = M.dispose })
+  require("completion_tools.keymap").setup(config)
+  warmup(vim.api.nvim_get_current_buf())
+  watch(vim.api.nvim_get_current_buf())
+  return M
+end
+
+function M.register_source(id, provider)
+  assert(
+    type(id) == "string" and type(provider) == "table" and type(provider.complete) == "function",
+    "completion-tools: source must have complete(ctx, callback)"
+  )
+  M.hide()
+  if state.providers[id] and state.providers[id].dispose then
+    state.providers[id].dispose()
+  end
+  state.providers[id], state.cache[id] = provider, nil
+end
+
+function M.show(opts)
+  stop_timer(timer)
+  return request(true, opts and opts.sources)
+end
+function M.hide()
+  local visible = ui.visible()
+  state.generation = state.generation + 1
+  cancel_requests()
+  cancel_doc()
+  stop_timer(timer)
+  state.items, state.selected, state.context, state.groups, state.ready = {}, nil, nil, {}, false
+  ui.hide()
+  return visible
+end
+function M.is_menu_visible()
+  return ui.visible()
+end
+function M.get_items()
+  local items = {}
+  for i, entry in ipairs(state.items) do
+    items[i] = entry.resolved or entry.item
+  end
+  return items
+end
+function M.get_selected_item()
+  local entry = selected_entry()
+  return entry and (entry.resolved or entry.item)
+end
+function M.get_context()
+  return state.context
+end
+local function select(direction, opts)
+  if not state.ready or not ui.visible() or not context.same(state.context, current()) then
+    return false
+  end
+  local count = opts and opts.count or 1
+  local index = state.selected or (direction == 1 and 0 or #state.items + 1)
+  state.selected = (index - 1 + direction * count) % #state.items + 1
+  ui.render(state.items, state.selected, state.context, state.config)
+  documentation(false)
+  return true
+end
+function M.select_next(opts)
+  return select(1, opts)
+end
+function M.select_prev(opts)
+  return select(-1, opts)
+end
+function M.accept()
+  if not state.ready or not context.same(state.context, current()) then
+    return false
+  end
+  local entry, ctx = selected_entry(), state.context
+  if not entry or not ui.visible() then
+    return false
+  end
+  local provider = state.providers[entry.source_id]
+  M.hide()
+  state.cache = {}
+  local ok, err = pcall(function()
+    local edits = require("completion_tools.edits")
+    local transaction = edits.apply(entry, ctx, state.config)
+    if provider and provider.execute then
+      provider.execute(entry, ctx)
+    end
+    local item = entry.resolved or entry.item
+    local client = item._client_id and vim.lsp.get_client_by_id(item._client_id)
+    if client and item.command then
+      client:exec_cmd(item.command, { bufnr = ctx.bufnr })
+    end
+    if
+      transaction
+      and not entry.resolved
+      and not next(item.additionalTextEdits or {})
+      and provider
+      and provider.resolve
+    then
+      local tick = vim.api.nvim_buf_get_changedtick(ctx.bufnr)
+      local token = {}
+      state.accept_cancels[token] = false
+      local cancel = provider.resolve(entry, function(resolved)
+        vim.schedule(function()
+          if state.accept_cancels[token] == nil then
+            return
+          end
+          state.accept_cancels[token] = nil
+          if
+            state.disposed
+            or not vim.api.nvim_buf_is_valid(ctx.bufnr)
+            or vim.api.nvim_buf_get_changedtick(ctx.bufnr) ~= tick
+          then
+            return
+          end
+          local applied, apply_err = pcall(edits.apply_resolved, entry, ctx, resolved, transaction)
+          if not applied then
+            report(apply_err)
+            return
+          end
+          if client and not item.command and resolved.command then
+            client:exec_cmd(resolved.command, { bufnr = ctx.bufnr })
+          end
+          state.accepted = current()
+        end)
+      end)
+      state.accept_cancels[token] = type(cancel) == "function" and cancel or false
+    end
+    local public_item = {}
+    for key, value in pairs(item) do
+      if type(key) == "string" and key:sub(1, 1) ~= "_" then
+        public_item[key] = value
+      end
+    end
+    vim.api.nvim_exec_autocmds("User", {
+      pattern = "CompletionToolsAccept",
+      modeline = false,
+      data = { item = public_item, source = entry.source_id, client_id = item._client_id, bufnr = ctx.bufnr },
+    })
+    state.accepted = current()
+  end)
+  if not ok then
+    report(err)
+  end
+  return true
+end
+function M.show_documentation()
+  if not selected_entry() then
+    return false
+  end
+  documentation(true)
+  return true
+end
+function M.scroll_documentation_up()
+  return ui.scroll_documentation(-4)
+end
+function M.scroll_documentation_down()
+  return ui.scroll_documentation(4)
+end
+function M.snippet_forward()
+  if state.config.snippets.jump then
+    return state.config.snippets.jump(1)
+  end
+  if vim.snippet.active({ direction = 1 }) then
+    vim.snippet.jump(1)
+    return true
+  end
+  return false
+end
+function M.snippet_backward()
+  if state.config.snippets.jump then
+    return state.config.snippets.jump(-1)
+  end
+  if vim.snippet.active({ direction = -1 }) then
+    vim.snippet.jump(-1)
+    return true
+  end
+  return false
+end
+function M._can(action)
+  if action == "show" then
+    return not M.is_menu_visible() and enabled()
+  end
+  if action == "hide" then
+    return M.is_menu_visible()
+  end
+  if action == "accept" then
+    return state.ready and selected_entry() ~= nil and context.same(state.context, current())
+  end
+  if action == "select_next" or action == "select_prev" then
+    return state.ready and M.is_menu_visible() and context.same(state.context, current())
+  end
+  if action == "show_documentation" then
+    return selected_entry() ~= nil
+  end
+  if action == "snippet_forward" or action == "snippet_backward" then
+    if vim.api.nvim_get_mode().mode == "c" then
+      return false
+    end
+    if state.config.snippets.active then
+      return state.config.snippets.active(action == "snippet_forward" and 1 or -1)
+    end
+    return vim.snippet.active({ direction = action == "snippet_forward" and 1 or -1 })
+  end
+  if action:match("^scroll_documentation_") then
+    return M.is_menu_visible()
+  end
+  return false
+end
+function M.get_lsp_capabilities(base)
+  return vim.tbl_deep_extend("force", vim.lsp.protocol.make_client_capabilities(), base or {}, {
+    textDocument = {
+      completion = {
+        completionItem = {
+          snippetSupport = true,
+          insertReplaceSupport = true,
+          labelDetailsSupport = true,
+          documentationFormat = { "markdown", "plaintext" },
+          deprecatedSupport = true,
+          preselectSupport = true,
+          resolveSupport = { properties = { "documentation", "detail", "additionalTextEdits", "command" } },
+        },
+        completionList = { itemDefaults = { "editRange", "insertTextFormat", "insertTextMode", "data" } },
+        contextSupport = true,
+      },
+    },
+  })
+end
+function M.dispose()
+  M.hide()
+  state.disposed = true
+  for _, cancel in pairs(state.accept_cancels) do
+    if cancel then
+      pcall(cancel)
+    end
+  end
+  state.accept_cancels = {}
+  if group then
+    vim.api.nvim_del_augroup_by_id(group)
+    group = nil
+  end
+  require("completion_tools.keymap").dispose()
+  for _, provider in pairs(state.providers) do
+    if provider.dispose then
+      provider.dispose()
+    end
+  end
+  close_timer(timer)
+  close_timer(doc_timer)
+  timer, doc_timer = nil, nil
+  ui.dispose()
+  state.providers, state.cache, state.source_ids = {}, {}, {}
+  state.accepted = nil
+  state.watched = {}
+end
+
+return M

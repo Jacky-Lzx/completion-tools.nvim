@@ -1,0 +1,93 @@
+*completion-tools.txt*       Pure Lua completion for Neovim 0.11+
+
+Author: completion-tools.nvim contributors
+License: MIT
+
+                                                        *completion-tools*
+SETUP ~
+>
+    require("completion-tools").setup()
+<
+See README.md for full configuration, source contracts and migration notes.
+Defaults are defined in lua/completion_tools/config.lua.
+
+                                                       *completion-tools-lsp*
+Register capabilities before starting language servers:
+>
+    vim.lsp.config("*", {
+      capabilities = require("completion-tools").get_lsp_capabilities(),
+    })
+<
+                                                        *completion-tools-api*
+The module is available as "completion-tools" and "completion_tools".
+
+setup(opts)              Configure providers, mappings and autocmds.
+show(opts?)              Request completions, optionally with opts.sources.
+hide()                   Hide menu and documentation, cancel pending work.
+is_menu_visible()        Return whether the floating menu is visible.
+accept()                 Apply selected item; false for stale/no selection.
+select_next(opts?)       Move selection; opts.count defaults to 1.
+select_prev(opts?)       Move selection backwards.
+get_items()              Return current CompletionItems (read-only).
+get_selected_item()      Return the selected CompletionItem or nil.
+get_context()            Return current request context (read-only).
+show_documentation()     Resolve/show selected item documentation.
+scroll_documentation_up()
+scroll_documentation_down()
+snippet_forward()
+snippet_backward()
+get_lsp_capabilities(base?)
+register_source(id, source)
+dispose()                Release resources and restore owned keymaps.
+
+                                                       *completion-tools-keys*
+CTRL-Space   Show completions or documentation.
+CTRL-N/P     Select next/previous item, without inserting it.
+CTRL-Y       Accept the selected item.
+<Tab>        Accept, jump forward in a snippet, or fall back.
+<S-Tab>      Jump backwards in a snippet, or fall back.
+CTRL-E       Hide, or fall back.
+<CR>         Unchanged by default.
+
+keymap={} installs no mappings. Custom keymaps replace the defaults.
+Actions can be method names, functions or "fallback".
+Buffer-local mappings take precedence over global plugin mappings.
+
+                                                     *completion-tools-sources*
+Built-ins: lsp, path, buffer, snippets; optional Ex cmdline.
+snippets.preset="luasnip" enables the optional literal-trigger LuaSnip adapter.
+cmdline.enabled=true enables Ex completion, without accepting on <CR>.
+
+Source functions use dot calls:
+>
+    complete(ctx, callback) -> cancel?
+    resolve(entry, callback) -> cancel?  -- optional
+    execute(entry, ctx)                  -- optional, after primary edit
+    trigger(ctx) -> boolean              -- optional
+    dispose()                           -- optional
+<
+complete callbacks receive {items, start_col?, reusable?, is_incomplete?}.
+start_col is a zero-based byte column; item TextEdits take precedence.
+LSP clients carry their negotiated encoding; custom edits default to UTF-8.
+resolve callbacks receive a CompletionItem.
+Entry fields: item, context, start_col, source_id.
+
+Callbacks may publish more than once. Stale results are ignored even if a
+provider does not honour cancellation. The provider owns external resources.
+Complete reusable lists can be filtered locally during forward typing.
+
+                                                      *CompletionToolsAccept*
+User CompletionToolsAccept fires after primary acceptance.
+args.data contains item, source, bufnr and optional client_id.
+Private item fields (leading underscore) are omitted from event data.
+If LSP resolve finishes late, additional edits are applied only when the
+accepted buffer's changedtick has not changed since primary insertion.
+
+                                                    *completion-tools-highlight*
+CompletionToolsMenu       CompletionToolsBorder     CompletionToolsSelected
+CompletionToolsMatch      CompletionToolsSource     CompletionToolsDoc
+
+                                                         *completion-tools-health*
+    :checkhealth completion-tools
+
+vim:tw=78:ts=8:noet:ft=help:norl:

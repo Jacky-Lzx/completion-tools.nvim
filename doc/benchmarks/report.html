@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>completion-tools 性能对照</title>
+<style>
+:root{font-family:var(--font-sans,system-ui,sans-serif);color:var(--foreground,CanvasText)}
+html,body{margin:0;padding:0;background:transparent}
+.controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;font-size:13px;margin:0 0 12px}
+label{display:flex;align-items:center;gap:6px}
+select{font:inherit;color:var(--foreground,CanvasText);background:var(--secondary,Canvas);border:1px solid var(--border,GrayText);border-radius:var(--radius,6px);padding:5px}
+#plot{height:292px}
+.group{margin:0 0 15px}
+.caption{font-size:12px;color:var(--muted-foreground,GrayText);margin:0 0 5px}
+.row{display:grid;grid-template-columns:118px minmax(20px,1fr) 54px;gap:8px;align-items:center;margin:5px 0;font-size:12px}
+.track{height:22px;background:var(--secondary,Canvas);border-radius:3px}
+.bar{height:22px;min-width:1px;border-radius:3px;background:var(--chart-1,LinkText)}
+.bar.blink{background:var(--chart-2,GrayText)}
+.value{font-family:var(--font-mono,monospace);text-align:right;font-variant-numeric:tabular-nums}
+.axis{display:grid;grid-template-columns:118px minmax(20px,1fr) 54px;gap:8px;font-size:11px;color:var(--muted-foreground,GrayText);margin-top:0}
+.ticks{display:flex;justify-content:space-between}
+.note{font-size:12px;line-height:1.6;color:var(--muted-foreground,GrayText);margin:8px 0 0}
+</style></head>
+<body>
+<div class="controls"><strong>输入到菜单更新 · ms</strong><label>来源<select id="source"><option value="static">固定候选</option><option value="buffer">缓冲区单词</option></select></label><label>统计<select id="metric"><option value="p95_ms">p95</option><option value="p50_ms">p50</option></select></label></div>
+<div id="plot" role="img" aria-label="补全延迟对照"></div>
+<p class="note">macOS arm64 · Neovim 0.12.6 · 本机 blink.cmp v1.10.2 Rust 后端。每组 160 次，50 项菜单，已核对实际候选数量。关闭文档、纠错、frecency 与 proximity；包含 RPC 注入调度，不含终端绘制与 LSP 往返。完整个人配置尚未做等价对照。</p>
+<script>
+const data={"static":[{"engine":"completion_tools","items":1000,"stats":{"candidate_min":1000,"samples":160,"p95_ms":0.481708,"candidate_max":1000,"p50_ms":0.384458}},{"engine":"blink","items":1000,"stats":{"candidate_min":1000,"samples":160,"p95_ms":2.120917,"candidate_max":1000,"p50_ms":0.647083}},{"engine":"completion_tools","items":10000,"stats":{"p95_ms":0.704625,"samples":160,"candidate_min":10000,"candidate_max":10000,"p50_ms":0.640625}},{"engine":"blink","items":10000,"stats":{"p95_ms":6.974958,"samples":160,"candidate_min":10000,"candidate_max":10000,"p50_ms":1.64325}},{"engine":"completion_tools","items":20000,"stats":{"candidate_min":20000,"samples":160,"p95_ms":1.095625,"candidate_max":20000,"p50_ms":0.994084}},{"engine":"blink","items":20000,"stats":{"candidate_min":20000,"samples":160,"p95_ms":13.3585,"candidate_max":20000,"p50_ms":3.003375}}],"buffer":[{"stats":{"p95_ms":0.548917,"samples":160,"candidate_max":1001,"candidate_min":1000,"p50_ms":0.397042},"engine":"completion_tools","items":1000},{"stats":{"p95_ms":2.713875,"samples":160,"candidate_max":1000,"candidate_min":1000,"p50_ms":0.665542},"engine":"blink","items":1000},{"stats":{"p95_ms":0.861,"samples":160,"candidate_max":10001,"candidate_min":10000,"p50_ms":0.777041},"engine":"completion_tools","items":10000},{"stats":{"p95_ms":12.959708,"samples":160,"candidate_max":10000,"candidate_min":10000,"p50_ms":1.749167},"engine":"blink","items":10000},{"stats":{"p95_ms":1.294041,"samples":160,"candidate_max":20000,"candidate_min":20000,"p50_ms":1.182166},"engine":"completion_tools","items":20000},{"stats":{"p95_ms":26.071917,"samples":160,"candidate_max":20000,"candidate_min":20000,"p50_ms":3.418208},"engine":"blink","items":20000}]};
+const source=document.getElementById('source'),metric=document.getElementById('metric'),plot=document.getElementById('plot');
+function draw(){
+ const rows=data[source.value],key=metric.value;
+ const max=Math.max(...rows.map(r=>r.stats[key]));
+ const ceiling=Math.ceil(max/(max>10?5:max>2?1:0.5))*(max>10?5:max>2?1:0.5);
+ plot.innerHTML='';
+ for(const size of [1000,10000,20000]){
+  const group=document.createElement('div');group.className='group';
+  const caption=document.createElement('div');caption.className='caption';caption.textContent=size.toLocaleString('en-US')+' 个候选';group.appendChild(caption);
+  for(const engine of ['completion_tools','blink']){
+   const value=rows.find(r=>r.items===size&&r.engine===engine).stats[key];
+   const row=document.createElement('div');row.className='row';
+   const name=document.createElement('span');name.textContent=engine==='blink'?'blink.cmp Rust':'completion-tools';
+   const track=document.createElement('div');track.className='track';
+   const bar=document.createElement('div');bar.className='bar'+(engine==='blink'?' blink':'');bar.style.width=(value/ceiling*100)+'%';bar.title=value.toFixed(3)+' ms';track.appendChild(bar);
+   const text=document.createElement('span');text.className='value';text.textContent=value.toFixed(3);
+   row.append(name,track,text);group.appendChild(row);
+  }
+  plot.appendChild(group);
+ }
+ const axis=document.createElement('div');axis.className='axis';axis.innerHTML='<span></span><div class="ticks"><span>0</span><span>'+(ceiling/2).toFixed(1)+'</span><span>'+ceiling.toFixed(1)+' ms</span></div><span></span>';plot.appendChild(axis);
+ plot.setAttribute('aria-label',source.options[source.selectedIndex].text+'来源，'+metric.options[metric.selectedIndex].text+'补全延迟，毫秒');
+}
+source.onchange=draw;metric.onchange=draw;draw();
+</script></body></html>
