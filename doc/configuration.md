@@ -198,6 +198,30 @@ lazy dependency installs mappings to update fallbacks without resetting completi
 
 ## LSP behavior
 
+### Acceptance and indentation
+
+`accept = { mode = "replace" }` is the default. Set `mode = "insert"` to use
+the insert range of an LSP InsertReplaceEdit, preserving text after the cursor.
+A regular TextEdit always uses its server-provided range. Override one acceptance
+with `require("completion-tools").accept({ mode = "insert" })`, for example in
+a function keymap action. Both modes retain UTF encodings, imports, snippets
+and cached-range rebasing.
+
+LSP `insertTextMode=1` preserves supplied whitespace; `2` adjusts continuation
+lines to the receiving indentation while retaining relative indentation.
+The LSP capability advertises default mode `2`; items without an explicit mode
+from LSP use that default. Other sources retain their previous behavior unless
+they specify `insertTextMode`. Native snippets and the LuaSnip preset avoid
+double indentation and retain placeholder editing/jumping.
+
+Custom `snippets.expand(text, options)` callbacks receive already-adjusted text
+and `{ insert_text_mode?, indentation, bufnr }`. When a mode is present, disable
+the engine's own automatic indentation. For example, LuaSnip uses
+`lsp_expand(text, { indent = not options.insert_text_mode })`.
+The indentation modes follow the [LSP specification](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#insertTextMode).
+
+### Protocol support
+
 Register `get_lsp_capabilities(base?)` before starting servers; setup is not required
 first. The LSP source supports multiple clients, trigger characters, incomplete-list
 requests, UTF-8/16/32 ranges, TextEdit/InsertReplaceEdit, CompletionList.itemDefaults,

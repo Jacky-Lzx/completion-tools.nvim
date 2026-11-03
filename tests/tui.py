@@ -368,6 +368,17 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
             assert snapshot.get("selected") == "alpha" and len(snapshot["menu_rows"]) == 1, snapshot
         os.write(primary, b"\t!\x1b")
         wait(lambda s: s["mode"] == "n" and s["line"] == "alpha!", "accept capped fallback")
+        os.write(primary, b":lua completion_tui_insertion()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "    blTAIL", "insert mode snippet fixture")
+        os.write(primary, b"i\x00")
+        wait(lambda s: s.get("selected") == "block" and s["can_accept"], "insert-range candidate")
+        os.write(primary, b"\t")
+        wait(lambda s: s["mode"] == "s", "adjusted snippet placeholder selection")
+        os.write(primary, b"changed")
+        wait(lambda s: s["line"] == "      changed", "replace shifted placeholder")
+        os.write(primary, b"\t!\x1b")
+        wait(lambda s: s["mode"] == "n" and s.get("lines") ==
+             ["    block", "      changed", "    !TAIL"], "snippet final stop preserves suffix and indentation")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:

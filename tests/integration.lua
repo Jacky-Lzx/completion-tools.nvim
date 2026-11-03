@@ -1113,6 +1113,84 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line() == '😀foobar!'")
     eq({ "import thing", "header", "😀foobar!" }, lua("return vim.api.nvim_buf_get_lines(0,0,-1,false)"))
   end)
+  for _, mode in ipairs({ "insert", "replace", "override" }) do
+    test("accept mode preserves or replaces the suffix with imports: " .. mode, function()
+      lua(
+        [[
+        local mode=...
+        local keys=vim.deepcopy(require('completion_tools.config').defaults.keymap)
+        if mode=='override' then keys['<Tab>']={function(c) return c.accept({mode='insert'}) end} end
+        require('completion_tools').setup({sources={'test'},accept={mode=mode=='insert' and 'insert' or 'replace'},
+          keymap=keys,providers={test={complete=function(_,cb)
+            cb({items={{label='foobar',_encoding='utf-16',textEdit={newText='foobar',
+              insert={start={line=1,character=2},['end']={line=1,character=4}},
+              replace={start={line=1,character=2},['end']={line=1,character=8}}},
+              additionalTextEdits={{newText='import thing\n',range={start={line=0,character=0},['end']={line=0,character=0}}}}}}})
+          end}}})
+        vim.api.nvim_buf_set_lines(0,0,-1,false,{'header','😀foTAIL'})
+        vim.api.nvim_win_set_cursor(0,{2,6})
+      ]],
+        mode
+      )
+      input("i<C-Space>")
+      wait("return require('completion_tools')._can('accept')")
+      input("<Tab>!")
+      local expected = "😀foobar!" .. (mode == "replace" and "" or "TAIL")
+      wait("return vim.api.nvim_get_current_line()==" .. vim.inspect(expected))
+      eq({ "import thing", "header", expected }, lua("return vim.api.nvim_buf_get_lines(0,0,-1,false)"))
+    end)
+  end
+  for _, mode in ipairs({ 1, 2 }) do
+    test("multiline plain text follows insertTextMode " .. mode, function()
+      lua(
+        [[
+        local mode=...
+        require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)
+          cb({items={{label='block',insertText='block\n\tinner\nend',insertTextMode=mode}}})
+        end}}})
+        vim.api.nvim_buf_set_lines(0,0,-1,false,{'    bl'})
+        vim.api.nvim_win_set_cursor(0,{1,6})
+      ]],
+        mode
+      )
+      input("A<C-Space>")
+      wait("return require('completion_tools')._can('accept')")
+      input("<Tab>!")
+      wait("return vim.api.nvim_buf_line_count(0)==3")
+      local indent = mode == 2 and "    " or ""
+      eq(
+        { "    block", indent .. "\tinner", indent .. "end!" },
+        lua("return vim.api.nvim_buf_get_lines(0,0,-1,false)")
+      )
+    end)
+    test("native snippet indentation retains placeholder editing for mode " .. mode, function()
+      lua(
+        [[
+        local mode=...
+        vim.bo.expandtab=true;vim.bo.shiftwidth=2
+        require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)
+          cb({items={{label='block',insertText='block\n\t${1:value}\n$0',insertTextFormat=2,insertTextMode=mode}}})
+        end}}})
+        vim.api.nvim_buf_set_lines(0,0,-1,false,{'    bl'})
+        vim.api.nvim_win_set_cursor(0,{1,6})
+      ]],
+        mode
+      )
+      input("A<C-Space>")
+      wait("return require('completion_tools')._can('accept')")
+      input("<Tab>")
+      wait("return vim.snippet.active() and vim.api.nvim_get_mode().mode=='s'")
+      input("changed")
+      wait("return vim.api.nvim_get_current_line():find('changed',1,true)~=nil")
+      input("<Tab>!")
+      wait("return vim.api.nvim_get_current_line():find('!',1,true)~=nil")
+      eq(
+        mode == 1 and { "    block", "\tchanged", "!" } or { "    block", "      changed", "    !" },
+        lua("return vim.api.nvim_buf_get_lines(0,0,-1,false)")
+      )
+      assert(lua("return vim.bo.expandtab"))
+    end)
+  end
   test("complete lists reused across typing rebase original edit range", function()
     lua(
       [[calls=0; require('completion_tools').setup({ sources = {'test'}, providers={ test={ complete=function(ctx,cb) calls=calls+1; cb({reusable=true,items={{label='foobar',_encoding='utf-16',textEdit={newText='foobar',range={start={line=0,character=2},['end']={line=0,character=3}}}}}}) end } } }); vim.api.nvim_buf_set_lines(0,0,-1,false,{'😀'}); vim.api.nvim_win_set_cursor(0,{1,4})]]
@@ -1444,6 +1522,37 @@ local ok, err = xpcall(function()
     end)
   end
   if vim.env.LUASNIP_PATH then
+    for _, mode in ipairs({ 1, 2 }) do
+      test("LuaSnip respects explicit insertion indentation mode " .. mode, function()
+        lua(
+          [[
+          local path,mode=...
+          vim.opt.runtimepath:append(path)
+          require('luasnip').config.setup({})
+          require('completion_tools').setup({sources={'test'},snippets={preset='luasnip'},
+            providers={test={complete=function(_,cb)
+              cb({items={{label='block',insertText='block\n  ${1:value}\n$0',insertTextFormat=2,insertTextMode=mode}}})
+            end}}})
+          vim.api.nvim_buf_set_lines(0,0,-1,false,{'    bl'})
+          vim.api.nvim_win_set_cursor(0,{1,6})
+        ]],
+          vim.env.LUASNIP_PATH,
+          mode
+        )
+        input("A<C-Space>")
+        wait("return require('completion_tools')._can('accept')")
+        input("<Tab>")
+        wait("return vim.api.nvim_get_mode().mode=='s'")
+        input("changed")
+        wait("return vim.api.nvim_get_current_line():find('changed',1,true)~=nil")
+        input("<Tab>!")
+        wait("return vim.api.nvim_get_current_line():find('!',1,true)~=nil")
+        eq(
+          mode == 1 and { "    block", "  changed", "!" } or { "    block", "      changed", "    !" },
+          lua("return vim.api.nvim_buf_get_lines(0,0,-1,false)")
+        )
+      end)
+    end
     test("optional LuaSnip source, expansion and jump", function()
       lua(
         [[

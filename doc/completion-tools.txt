@@ -26,7 +26,7 @@ setup(opts)              Configure providers, mappings and autocmds.
 show(opts?)              Request completions, optionally with opts.sources.
 hide()                   Hide menu and documentation, cancel pending work.
 is_menu_visible()        Return whether the floating menu is visible.
-accept()                 Apply selected item; false for stale/no selection.
+accept(opts?)            Apply selected item; opts.mode="insert" or "replace".
 select_next(opts?)       Move selection; opts.count defaults to 1.
 select_prev(opts?)       Move selection backwards.
 get_items()              Return current CompletionItems (read-only).
@@ -42,6 +42,15 @@ register_source(id, source)
 refresh_keymaps()         Reinstall mappings after lazy dependencies change them.
 refresh_cmdline()         Refresh an existing external command-line menu.
 dispose()                Release resources and restore owned keymaps.
+
+accept.mode="replace" is the default. "insert" preserves suffix text using an
+InsertReplaceEdit's insert range. accept({mode="insert"}) overrides one action.
+Ordinary TextEdit ranges are unchanged. LSP insertTextMode=1 preserves whitespace;
+2 adjusts continuation indentation. The advertised LSP default is 2. Native
+snippets and LuaSnip retain placeholders without double indentation.
+Custom snippets.expand(text, options) receives adjusted text and
+{insert_text_mode?, indentation, bufnr}; disable engine indentation when a mode
+is present. Non-LSP items without a mode keep their previous behavior.
 
                                                        *completion-tools-keys*
 CTRL-Space   Show completions or documentation.

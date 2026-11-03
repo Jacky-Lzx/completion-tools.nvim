@@ -683,7 +683,12 @@ end
 function M.select_prev(opts)
   return select(-1, opts)
 end
-function M.accept()
+function M.accept(opts)
+  assert(
+    opts == nil
+      or (type(opts) == "table" and (opts.mode == nil or opts.mode == "insert" or opts.mode == "replace")),
+    "completion-tools: invalid accept mode"
+  )
   if not state.ready or not context.same(state.context, current()) then
     return false
   end
@@ -696,7 +701,7 @@ function M.accept()
   state.cache = {}
   local ok, err = pcall(function()
     local edits = require("completion_tools.edits")
-    local transaction = edits.apply(entry, ctx, state.config)
+    local transaction = edits.apply(entry, ctx, state.config, opts)
     state.ranking.record(entry, ctx)
     if provider and provider.execute then
       provider.execute(entry, ctx)
@@ -831,6 +836,7 @@ function M.get_lsp_capabilities(base)
         completionItem = {
           snippetSupport = true,
           insertReplaceSupport = true,
+          insertTextModeSupport = { valueSet = { 1, 2 } },
           labelDetailsSupport = true,
           documentationFormat = { "markdown", "plaintext" },
           deprecatedSupport = true,
@@ -839,6 +845,7 @@ function M.get_lsp_capabilities(base)
         },
         completionList = { itemDefaults = { "editRange", "insertTextFormat", "insertTextMode", "data" } },
         contextSupport = true,
+        insertTextMode = 2,
       },
     },
   })

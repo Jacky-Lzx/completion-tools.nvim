@@ -47,6 +47,35 @@ function _G.completion_tui_fallback()
     },
   })
 end
+function _G.completion_tui_insertion()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "    blTAIL" })
+  vim.api.nvim_win_set_cursor(0, { 1, 6 })
+  vim.bo.expandtab, vim.bo.shiftwidth = true, 2
+  require("completion-tools").setup({
+    sources = { "test" },
+    accept = { mode = "insert" },
+    providers = {
+      test = {
+        complete = function(_, cb)
+          cb({
+            items = {
+              {
+                label = "block",
+                insertTextFormat = 2,
+                insertTextMode = 2,
+                textEdit = {
+                  newText = "block\n  ${1:value}\n$0",
+                  insert = { start = { line = 0, character = 4 }, ["end"] = { line = 0, character = 6 } },
+                  replace = { start = { line = 0, character = 4 }, ["end"] = { line = 0, character = 10 } },
+                },
+              },
+            },
+          })
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_manual()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })

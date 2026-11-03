@@ -11,6 +11,7 @@ export NVIM_LOG_FILE="$task_tmp/nvim.log"
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/unit.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/ranking.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/scheduler.lua
+${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/insertion.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/copilot.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/menu.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/documentation.lua

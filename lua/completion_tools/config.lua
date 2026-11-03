@@ -9,6 +9,7 @@ M.defaults = {
   timeout_ms = 2000,
   max_items = 50,
   preselect = true,
+  accept = { mode = "replace" },
   ranking = {
     history = { enabled = false, max_entries = 1000 },
     proximity = { enabled = false, lines = 50 },
@@ -160,6 +161,10 @@ function M.validate(opts)
     return type(value) == "number" and value >= minimum and value % 1 == 0
   end
   local ranking = config.ranking
+  assert(
+    config.accept.mode == "insert" or config.accept.mode == "replace",
+    "completion-tools: invalid accept.mode"
+  )
   assert(integer(config.timeout_ms, 0), "completion-tools: invalid timeout_ms")
   local visiting, visited = {}, {}
   local function visit(id)
@@ -311,8 +316,10 @@ function M.validate(opts)
   )
   if config.snippets.preset == "luasnip" then
     config.snippets.expand = config.snippets.expand
-      or function(text)
-        require("luasnip").lsp_expand(text)
+      or function(text, options)
+        require("luasnip").lsp_expand(text, {
+          indent = not (options and options.insert_text_mode),
+        })
       end
     config.snippets.active = config.snippets.active
       or function(direction)

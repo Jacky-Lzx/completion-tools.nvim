@@ -30,12 +30,13 @@ function M.rebase(range, old, ctx, encoding)
   return result
 end
 
-function M.range(entry, ctx)
+function M.range(entry, ctx, mode)
   local item = entry.resolved or entry.item
   local edit = item.textEdit
   local encoding = item._encoding or "utf-8"
   if edit then
-    return M.rebase(edit.range or edit.replace or edit.insert, entry.context, ctx, encoding), encoding
+    local range = edit.range or (mode == "insert" and edit.insert) or edit.replace or edit.insert
+    return M.rebase(range, entry.context, ctx, encoding), encoding
   end
   return {
     start = { line = ctx.row, character = units(ctx.line:sub(1, entry.start_col), encoding) },
@@ -67,7 +68,7 @@ local function additional_range(entry, range, ctx, encoding)
   return result
 end
 
-function M.apply(entry, ctx, config)
+function M.apply(entry, ctx, config, opts)
   local item = entry.resolved or entry.item
   local text = item.textEdit and item.textEdit.newText or item.insertText or item.label
   text = text:gsub("\r\n?", "\n")
@@ -78,7 +79,13 @@ function M.apply(entry, ctx, config)
     )
     return
   end
-  local range, encoding = M.range(entry, ctx)
+  local range, encoding = M.range(entry, ctx, opts and opts.mode or config.accept.mode)
+  local insert_mode = item.insertTextMode or (item._client_id and 2 or nil)
+  local insertion = require("completion_tools.insertion")
+  local indentation = ctx.before:match("^[ \t]*")
+  if insert_mode == 2 then
+    text = insertion.indent(text, indentation)
+  end
   local snippet = item.insertTextFormat == 2
   local edits, mark = {}, nil
   for _, edit in ipairs(item.additionalTextEdits or {}) do
@@ -133,8 +140,11 @@ function M.apply(entry, ctx, config)
   local row, col = position[1], position[2]
   vim.api.nvim_win_set_cursor(ctx.winid, { row + 1, col })
   if snippet then
-    local expand = config.snippets.expand or vim.snippet.expand
-    local expanded, expand_err = pcall(expand, text)
+    local expanded, expand_err = pcall(insertion.expand, text, config, {
+      insert_text_mode = insert_mode,
+      indentation = indentation,
+      bufnr = ctx.bufnr,
+    })
     if not expanded then
       -- A malformed server snippet falls back to its literal body.
       pcall(vim.cmd, "undojoin")
