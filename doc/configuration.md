@@ -66,6 +66,9 @@ detection and `min_keyword_length = 0`. Allowed characters can open completion
 without a keyword prefix; providers still decide which candidates to return.
 Manual completion (`<C-Space>` / `show()`) bypasses this filter. Command-line
 completion keeps its independent behavior.
+Background refreshes at the same input snapshot preserve a manually opened
+session and its explicit source list, including after LSP attach/detach. A new
+edit uses the ordinary automatic trigger rules again.
 
 Use `function(ctx) -> string[]` to choose symbols by Neovim filetype:
 

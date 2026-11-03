@@ -155,6 +155,10 @@ During typing/backspace within one keyword, the previous menu remains visible
 until matching results arrive or all sources finish without matches. Stale items
 cannot be accepted. Empty input/context changes close the old menu immediately.
 The retained menu follows the cursor; documentation stays for the same selection.
+Background refreshes preserve a manually opened session and show({sources=...})
+overrides at the same input snapshot, including LSP attach/detach. New edits
+follow ordinary automatic trigger rules. A delayed TextChangedI for text already
+included in show() does not restart or dismiss that manual request.
 Automatic preselection follows the first item of each updated ranking. Navigation
 via select_next/select_prev marks a manual selection, preserved by identity during
 same-context refreshes. If it disappears, selection/docs are cleared and accept()

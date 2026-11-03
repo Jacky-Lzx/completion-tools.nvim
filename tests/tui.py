@@ -322,6 +322,28 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
                         "Unicode multiline Copilot acceptance and continued typing")
         assert snapshot["copilot"]["accepted"] == ["2:printf"], snapshot
         assert not snapshot["visible"], snapshot
+        for attempt in range(5):
+            os.write(primary, b":lua completion_tui_manual()\r")
+            wait(lambda s: s["mode"] == "n" and s.get("manual", {}).get("calls") == 0,
+                 "manual race fixture")
+            # Type the punctuation and manual trigger in one terminal input batch.
+            os.write(primary, b"i(\x00")
+            snapshot = wait(lambda s: s["visible"] and s.get("selected") == "alpha",
+                            "manual completion after blocked symbol")
+            window = snapshot["menu"]["win"]
+            selected = "alpha" if attempt % 2 == 0 else "alpine"
+            if selected == "alpine":
+                os.write(primary, b"\x0e")
+                wait(lambda s: s.get("selected") == selected, "manual selection before LSP attach")
+            until = time.monotonic() + 0.3
+            while time.monotonic() < until:
+                snapshot = wait(lambda s: s.get("manual", {}).get("calls", 0) > 0, "sample manual session")
+                assert snapshot["visible"] and snapshot["menu"]["win"] == window, snapshot
+                assert snapshot.get("selected") == selected, snapshot
+            assert snapshot["manual"]["calls"] == 2 and snapshot["can_accept"], snapshot
+            os.write(primary, b"\t!\x1b")
+            wait(lambda s: s["mode"] == "n" and s["line"] == "(" + selected + "!" and not s["visible"],
+                 "accept refreshed manual candidate and continue typing")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:

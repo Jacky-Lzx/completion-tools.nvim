@@ -8,6 +8,39 @@ vim.api.nvim_win_set_cursor(0, { 80, 0 })
 vim.cmd("normal! zb")
 require("completion-tools").setup({ sources = { "buffer" }, min_keyword_length = 0 })
 vim.api.nvim_set_hl(0, "Comment", { fg = "#a0a0a0" })
+function _G.completion_tui_manual()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  completion_manual = { calls = 0 }
+  local maps = vim.deepcopy(require("completion_tools.config").defaults.keymap)
+  maps["<C-Space>"] = {
+    function(cmp)
+      return cmp.show({ sources = { "manual" } })
+    end,
+  }
+  require("completion-tools").setup({
+    sources = {},
+    keymap = maps,
+    providers = {
+      manual = {
+        complete = function(_, callback)
+          completion_manual.calls = completion_manual.calls + 1
+          local function publish()
+            callback({ items = { { label = "alpha" }, { label = "alpine" } } })
+          end
+          if completion_manual.calls == 1 then
+            publish()
+            vim.defer_fn(function()
+              vim.api.nvim_exec_autocmds("LspAttach", { buffer = 0, data = { client_id = 999999 } })
+            end, 100)
+          else
+            vim.defer_fn(publish, 80)
+          end
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_copilot()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "中😀 = )" })
   vim.api.nvim_win_set_cursor(0, { 1, #"中😀 = " })
@@ -479,6 +512,7 @@ timer:start(
       end
     end
     data.flicker = completion_flicker
+    data.manual = completion_manual
     data.copilot = completion_copilot
     data.lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
     vim.fn.writefile({ vim.json.encode(data) }, vim.env.COMPLETION_TUI_STATE)

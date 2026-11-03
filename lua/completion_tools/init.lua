@@ -252,7 +252,7 @@ local function request(manual, override)
   state.context, state.groups, state.source_ids = ctx, {}, ids
   state.manual = manual
   state.ready = false
-  if not context.continues(previous_context, ctx) then
+  if not context.same(previous_context, ctx) and not context.continues(previous_context, ctx) then
     state.items, state.selected = {}, nil
     state.selection_manual = false
     state.doc_entry = nil
@@ -367,16 +367,21 @@ local function queue()
   if state.disposed then
     return
   end
+  local ctx = current()
+  local same = context.same(state.context, ctx)
+  -- LSP attachment and other background refreshes do not create a new edit.
+  -- Keep an explicit session's trigger policy and source override at that snapshot.
+  local manual = same and state.manual or false
+  local sources = manual and state.source_ids or nil
   state.generation = state.generation + 1
   cancel_requests()
   cancel_doc()
   state.ready = false
   stop_timer(timer)
-  local ctx = current()
-  if not context.same(state.context, ctx) then
+  if not same then
     state.selection_manual = false
   end
-  if context.continues(state.context, ctx) then
+  if same or context.continues(state.context, ctx) then
     ui.reposition(ctx, state.config)
   else
     ui.hide()
@@ -385,7 +390,7 @@ local function queue()
   local generation = state.generation
   local function run()
     if generation == state.generation and not state.disposed then
-      request(false)
+      request(manual, sources)
     end
   end
   if state.config.debounce_ms == 0 then
@@ -408,7 +413,12 @@ function M.setup(opts)
   for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline", "dictionary", "spell", "copilot" }) do
     state.providers[id] = require("completion_tools.sources." .. id).new(config[id] or {}, function()
       if state.context and state.context.bufnr == vim.api.nvim_get_current_buf() then
-        request(state.manual, state.source_ids)
+        local same = context.same(state.context, current())
+        if same or config.auto_show then
+          request(same and state.manual or false, same and state.source_ids or nil)
+        else
+          M.hide()
+        end
       end
     end)
   end
@@ -517,7 +527,11 @@ function M.setup(opts)
     group = group,
     callback = function(args)
       state.cache.lsp = nil
-      if args.buf == vim.api.nvim_get_current_buf() and config.auto_show and state.context then
+      if
+        args.buf == vim.api.nvim_get_current_buf()
+        and state.context
+        and (config.auto_show or state.manual)
+      then
         queue()
       end
     end,
@@ -584,6 +598,12 @@ end
 
 function M.show(opts)
   stop_timer(timer)
+  local ctx = current()
+  if ctx and ctx.mode == "insert" then
+    -- A mapping can run before TextChangedI for the characters preceding it.
+    -- Those edits are already included in this explicit request's snapshot.
+    state.edit_buf, state.edit_tick = ctx.bufnr, ctx.tick
+  end
   return request(true, opts and opts.sources)
 end
 function M.refresh_keymaps()

@@ -65,6 +65,78 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line() == 'alphabet!'")
     eq("i", lua("return vim.api.nvim_get_mode().mode"))
   end)
+  test("manual completion survives text events from the same input batch", function()
+    lua([[
+      require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)
+        cb({items={{label='alpha'}}})
+      end}}})
+    ]])
+    input("i(<C-Space>")
+    wait(
+      "return require('completion_tools').is_menu_visible()",
+      "manual menu after typing and triggering together"
+    )
+    vim.wait(100)
+    assert(lua("return require('completion_tools')._can('accept')"), "delayed text event closed manual menu")
+    input("(")
+    wait(
+      "return not require('completion_tools').is_menu_visible()",
+      "new punctuation still closes the session"
+    )
+  end)
+  test("manual completion survives LSP refreshes at a blocked symbol", function()
+    lua([[
+      manual_calls = 0
+      require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)
+        manual_calls=manual_calls+1; cb({items={{label='alpha'},{label='alpine'}}})
+      end}}})
+    ]])
+    input("i(")
+    wait("return vim.api.nvim_get_current_line()=='(' and not require('completion_tools').is_menu_visible()")
+    input("<C-Space>")
+    wait("return require('completion_tools').is_menu_visible()")
+    for _, event in ipairs({ "LspAttach", "LspDetach" }) do
+      local before = lua("return manual_calls")
+      lua("vim.api.nvim_exec_autocmds(...,{buffer=0,data={client_id=999999}})", event)
+      wait("return manual_calls > " .. before, "manual source re-requested by " .. event)
+      assert(lua("return require('completion_tools').is_menu_visible()"), "manual menu closed on " .. event)
+      assert(lua("return require('completion_tools')._can('accept')"), "refreshed menu must remain usable")
+    end
+  end)
+  test("manual-only completion preserves source overrides and its window during delayed refresh", function()
+    lua([[
+      manual_calls=0
+      local maps=vim.deepcopy(require('completion_tools.config').defaults.keymap)
+      maps['<C-Space>']={function(cmp) return cmp.show({sources={'test'}}) end}
+      require('completion_tools').setup({auto_show=false,sources={},keymap=maps,
+        providers={test={complete=function(_,cb)
+          manual_calls=manual_calls+1
+          if manual_calls==1 then cb({items={{label='alpha'},{label='alpine'}}})
+          else vim.defer_fn(function() cb({items={{label='alpha'},{label='alpine'}}}) end,100) end
+        end}}})
+    ]])
+    input("i<C-Space>")
+    wait("return require('completion_tools')._can('accept')")
+    input("<C-n>")
+    wait("return require('completion_tools').get_selected_item().label=='alpine'")
+    lua([[
+      manual_window=nil
+      for _,win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='completion-tools-menu' then manual_window=win end
+      end
+      manual_window_closed=false
+      vim.api.nvim_create_autocmd('WinClosed',{once=true,pattern=tostring(manual_window),
+        callback=function() manual_window_closed=true end})
+      vim.api.nvim_exec_autocmds('LspAttach',{buffer=0,data={client_id=999999}})
+    ]])
+    wait("return manual_calls==2 and not require('completion_tools')._can('accept')")
+    assert(lua("return require('completion_tools').is_menu_visible() and not manual_window_closed"))
+    wait("return require('completion_tools')._can('accept')")
+    assert(lua("return vim.api.nvim_win_is_valid(manual_window) and not manual_window_closed"))
+    eq("alpine", lua("return require('completion_tools').get_selected_item().label"))
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line()=='alpine!'")
+  end)
   test("automatic completion blocks symbols even when a provider declares them as triggers", function()
     lua([[
       symbol_calls=0
@@ -1165,6 +1237,19 @@ local ok, err = xpcall(function()
       5000
     )
   end
+  test("manual completion survives an actual LSP client attaching after the menu opens", function()
+    lua([[
+      require('completion_tools').setup({sources={'test','lsp'},providers={test={complete=function(_,cb)
+        cb({items={{label='alpha'}}})
+      end}}})
+    ]])
+    input("i(<C-Space>")
+    wait("return require('completion_tools')._can('accept')")
+    start_fixture()
+    wait("return #require('completion_tools').get_items()==3 and require('completion_tools')._can('accept')")
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line():sub(-1)=='!'")
+  end)
   test("LSP protocol: trigger, UTF-16 defaults, cached ranges and late imports/command", function()
     lua([[fixture_trace={}; require("completion_tools").setup({sources={"lsp"}});
       vim.api.nvim_buf_set_lines(0,0,-1,false,{"header","😀"}); vim.api.nvim_win_set_cursor(0,{2,0})]])
