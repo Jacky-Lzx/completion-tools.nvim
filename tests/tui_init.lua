@@ -8,6 +8,27 @@ vim.api.nvim_win_set_cursor(0, { 80, 0 })
 vim.cmd("normal! zb")
 require("completion-tools").setup({ sources = { "buffer" }, min_keyword_length = 0 })
 vim.api.nvim_set_hl(0, "Comment", { fg = "#a0a0a0" })
+function _G.completion_tui_triggers()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.bo.filetype = "lua"
+  require("completion-tools").setup({
+    sources = { "fixture" },
+    min_keyword_length = 0,
+    trigger_characters = function(ctx)
+      return ctx.filetype == "tex" and { ".", "\\", "{" } or { "." }
+    end,
+    providers = {
+      fixture = {
+        trigger = function()
+          return true
+        end,
+        complete = function(_, callback)
+          callback({ items = { { label = "alpha" } } })
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_semantic()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   require("completion-tools").setup({

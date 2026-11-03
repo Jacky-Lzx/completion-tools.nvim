@@ -3,6 +3,7 @@ local M = {}
 M.defaults = {
   enabled = true,
   auto_show = true,
+  trigger_characters = { "." },
   min_keyword_length = 1,
   debounce_ms = 0,
   max_items = 50,
@@ -81,6 +82,9 @@ function M.validate(opts)
   if opts.sources ~= nil then
     config.sources = opts.sources
   end
+  if opts.trigger_characters ~= nil then
+    config.trigger_characters = opts.trigger_characters
+  end
   if opts.keymap ~= nil then
     config.keymap = opts.keymap
   end
@@ -116,6 +120,18 @@ function M.validate(opts)
   )
   assert(type(config.keymap) == "table", "completion-tools: invalid keymap")
   assert(type(config.keyword_pattern) == "string", "completion-tools: invalid keyword_pattern")
+  assert(
+    type(config.trigger_characters) == "table" or type(config.trigger_characters) == "function",
+    "completion-tools: invalid trigger_characters"
+  )
+  if type(config.trigger_characters) == "table" then
+    for _, character in ipairs(config.trigger_characters) do
+      assert(
+        type(character) == "string" and vim.fn.strchars(character) == 1,
+        "completion-tools: trigger_characters must contain single characters"
+      )
+    end
+  end
   for _, section in ipairs({ "menu", "documentation" }) do
     for _, field in ipairs({ "max_width", "max_height" }) do
       assert(

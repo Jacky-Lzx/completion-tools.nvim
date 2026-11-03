@@ -11,6 +11,7 @@ Common options and their defaults are shown below. The complete defaults live in
 require("completion-tools").setup({
   enabled = true, -- Also accepts function() -> boolean
   auto_show = true,
+  trigger_characters = { "." },
   min_keyword_length = 1,
   debounce_ms = 0,
   max_items = 50,
@@ -53,6 +54,37 @@ require("completion-tools").setup({
 
 `sources` may be `function(ctx) -> string[]` to choose providers by filetype,
 syntax context or buffer state. Lists replace existing lists rather than merge.
+
+## Automatic triggers
+
+Insert-mode completion opens while typing words. Other characters close the
+menu and cancel pending requests, except those in `trigger_characters` (default
+`{ "." }`). This filter takes precedence over LSP trigger characters, path
+detection and `min_keyword_length = 0`. Allowed characters can open completion
+without a keyword prefix; providers still decide which candidates to return.
+Manual completion (`<C-Space>` / `show()`) bypasses this filter. Command-line
+completion keeps its independent behavior.
+
+Use `function(ctx) -> string[]` to choose symbols by Neovim filetype:
+
+```lua
+require("completion-tools").setup({
+  trigger_characters = function(ctx)
+    local by_filetype = {
+      lua = { ".", ":" },
+      tex = { ".", "\\", "{" },
+      markdown = {},
+    }
+    return by_filetype[ctx.filetype] or { "." }
+  end,
+})
+```
+
+An empty list disables all symbol triggers while keeping word completion.
+Add `"/"` when you want automatic path completion immediately after a slash;
+otherwise type the next word character or request completion manually.
+
+## Providers
 
 Each `providers[id]` supports:
 

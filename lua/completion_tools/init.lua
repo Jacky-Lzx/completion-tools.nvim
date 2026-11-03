@@ -205,16 +205,25 @@ local function request(manual, override)
     M.hide()
     return false
   end
-  if not manual and not ctx.before:find("%S") then
-    M.hide()
-    return false
+  local character_trigger = false
+  if not manual then
+    local allowed
+    if ctx.mode == "insert" then
+      allowed, character_trigger = context.can_auto_show(state.config, ctx)
+    else
+      allowed = ctx.before:find("%S") ~= nil
+    end
+    if not allowed then
+      M.hide()
+      return false
+    end
   end
   if not manual and context.same(state.accepted, ctx) then
     return false
   end
   state.accepted = nil
   local ids = source_ids(ctx, override)
-  local triggered = ctx.argument_trigger or false
+  local triggered = character_trigger or ctx.argument_trigger or false
   for _, id in ipairs(ids) do
     local provider = state.providers[id]
     if provider and provider.trigger and provider.trigger(ctx) then

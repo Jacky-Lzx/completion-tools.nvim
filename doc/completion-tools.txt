@@ -57,6 +57,20 @@ line mappings. Both custom keymaps replace their respective defaults.
 Actions can be method names, functions or "fallback".
 Buffer-local mappings take precedence over global plugin mappings.
 
+                                                   *completion-tools-triggers*
+Insert-mode automatic completion opens for words and trigger_characters={"."}.
+Other symbols/whitespace close the menu and cancel pending requests, even when
+advertised as LSP triggers or min_keyword_length=0. Manual show() bypasses this
+filter. Command-line completion is independent.
+trigger_characters also accepts function(ctx) -> string[] for filetype rules:
+>
+    trigger_characters = function(ctx)
+      return ctx.filetype == "tex" and { ".", "\\", "{" } or { "." }
+    end
+<
+An empty list disables symbol triggers; words still complete. Add "/" to open
+path completion immediately after a slash.
+
                                                      *completion-tools-sources*
 Built-ins: lsp, path, buffer, snippets; optional Ex cmdline.
 Opt-in sources: dictionary, spell. Both are independent of Blink.

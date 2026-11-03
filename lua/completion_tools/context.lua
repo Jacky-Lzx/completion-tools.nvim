@@ -1,5 +1,24 @@
 local M = {}
 
+-- Return eligibility and whether an explicitly allowed character was typed.
+-- Apply this before provider triggers and path/keyword length exceptions.
+function M.can_auto_show(config, ctx)
+  local character = ctx.before:match("[%z\1-\127\194-\244][\128-\191]*$") or ""
+  local characters = config.trigger_characters
+  if type(characters) == "function" then
+    characters = characters(ctx)
+  end
+  if vim.list_contains(characters, character) then
+    return true, true
+  end
+  -- Keep '_' as a word character, but block other ASCII punctuation even if
+  -- a filetype includes it in 'iskeyword' or a custom keyword_pattern.
+  local word = character ~= ""
+    and (character == "_" or not character:find("[%p%s]"))
+    and vim.fn.match(character, [[\k]]) == 0
+  return word, false
+end
+
 function M.get(config)
   local mode = vim.api.nvim_get_mode().mode
   local cmdline = mode == "c"

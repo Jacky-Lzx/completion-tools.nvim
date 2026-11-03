@@ -68,7 +68,32 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         wait(lambda s: s["line"] == "alphabet!" and s["mode"] == "i", "accept and continue typing")
         os.write(primary, b"\x1b")
         wait(lambda s: not s["visible"] and s["mode"] == "n", "Escape cleanup")
-        assert b"alpha" in output, "Menu text was not rendered to the terminal"
+        # Match highlighting can split the label across terminal escape sequences.
+        assert "alpha" in snapshot["menu_screen"], "Menu text was not rendered to the terminal"
+        os.write(primary, b":lua completion_tui_triggers()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "", "symbol trigger fixture")
+        os.write(primary, b"ia")
+        wait(lambda s: s["visible"], "word completion before punctuation")
+        for char in (" ", "(", ")", "[", "]", "{", "}", ",", ";", ":", "/", "\\", "，", "。"):
+            os.write(primary, char.encode())
+            wait(lambda s: s["line"] == "a" + char and not s["visible"], "symbol closes terminal menu")
+            # Wait beyond a frame to catch a delayed automatic reopen.
+            until = time.monotonic() + 0.06
+            while time.monotonic() < until:
+                snapshot = wait(lambda s: s["line"] == "a" + char, "blocked symbol remains inserted")
+                assert not snapshot["visible"], snapshot
+            os.write(primary, b"\x7f")
+            wait(lambda s: s["line"] == "a" and s["visible"], "backspace restores word completion")
+        os.write(primary, b".")
+        wait(lambda s: s["line"] == "a." and s["visible"], "dot opens terminal menu")
+        os.write(primary, b"(")
+        wait(lambda s: s["line"] == "a.(" and not s["visible"], "bracket closes dot completion")
+        os.write(primary, b"\x00")
+        wait(lambda s: s["line"] == "a.(" and s["visible"], "manual completion after a blocked symbol")
+        os.write(primary, b"\x1b:lua vim.bo.filetype='tex'\rA{")
+        wait(lambda s: s["line"] == "a.({" and s["visible"], "filetype-specific brace trigger")
+        os.write(primary, b" \x1b")
+        wait(lambda s: s["mode"] == "n" and not s["visible"], "symbol trigger cleanup")
         os.write(primary, b":lua completion_tui_flicker()\r")
         wait(lambda s: s["mode"] == "n" and s["line"] == "", "flicker fixture")
         os.write(primary, b"ia")

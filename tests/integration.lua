@@ -65,6 +65,88 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line() == 'alphabet!'")
     eq("i", lua("return vim.api.nvim_get_mode().mode"))
   end)
+  test("automatic completion blocks symbols even when a provider declares them as triggers", function()
+    lua([[
+      symbol_calls=0
+      require('completion_tools').setup({sources={'test'},min_keyword_length=0,
+        providers={test={trigger=function() return true end,complete=function(_,cb)
+          symbol_calls=symbol_calls+1; cb({items={{label='alpha'}}})
+        end}}})
+    ]])
+    input("ia")
+    wait("return require('completion_tools').is_menu_visible()")
+    for _, character in ipairs({
+      " ",
+      "(",
+      ")",
+      "[",
+      "]",
+      "{",
+      "}",
+      ",",
+      ";",
+      ":",
+      "/",
+      "\\",
+      "!",
+      "，",
+      "。",
+    }) do
+      local before = lua("return symbol_calls")
+      input(character)
+      wait(string.format("return vim.api.nvim_get_current_line() == %q", "a" .. character))
+      vim.wait(60)
+      eq(before, lua("return symbol_calls"))
+      assert(not lua("return require('completion_tools').is_menu_visible()"), character)
+      input("<BS>")
+      wait("return vim.api.nvim_get_current_line()=='a' and require('completion_tools').is_menu_visible()")
+    end
+    input("(")
+    wait("return vim.api.nvim_get_current_line()=='a('")
+    input("<C-Space>")
+    wait("return require('completion_tools').is_menu_visible()")
+  end)
+  test("dot and filetype-specific symbols trigger without a provider trigger", function()
+    lua([[
+      require('completion_tools').setup({sources={'test'},min_keyword_length=3,
+        trigger_characters=function(ctx)
+          return ctx.filetype=='tex' and {'.','\\','{'} or {'.'}
+        end, providers={test={complete=function(_,cb) cb({items={{label='alpha'}}}) end}}})
+    ]])
+    input("i.")
+    wait("return require('completion_tools').is_menu_visible()")
+    input("{")
+    wait("return vim.api.nvim_get_current_line()=='.{' and not require('completion_tools').is_menu_visible()")
+    lua("vim.bo.filetype='tex'")
+    input("<BS>{")
+    wait("return require('completion_tools').is_menu_visible()")
+    input("\\")
+    wait(
+      "local c=require('completion_tools'); local ctx=c.get_context(); return ctx and ctx.before=='.{\\\\' and c.is_menu_visible()"
+    )
+    input(" ")
+    wait("return not require('completion_tools').is_menu_visible()")
+  end)
+  test("blocked symbols cancel delayed completion and allow subsequent word input", function()
+    lua([[
+      symbol_requests=0; symbol_cancelled=0
+      require('completion_tools').setup({sources={'test'},debounce_ms=20,
+        providers={test={complete=function(_,cb)
+          symbol_requests=symbol_requests+1
+          vim.defer_fn(function() cb({items={{label='alpha'}}}) end,100)
+          return function() symbol_cancelled=symbol_cancelled+1 end
+        end}}})
+    ]])
+    input("ia")
+    wait("return symbol_requests==1")
+    input("(")
+    wait("return vim.api.nvim_get_current_line()=='a(' and symbol_cancelled==1")
+    vim.wait(150)
+    eq(1, lua("return symbol_requests"))
+    assert(not lua("return require('completion_tools').is_menu_visible()"))
+    input("a")
+    wait("return require('completion_tools').is_menu_visible()")
+  end)
   test("kind columns and independent syntax highlights survive colorscheme and acceptance", function()
     lua([[
       package.preload['colorful-menu']=function() error('unexpected colorful-menu dependency') end

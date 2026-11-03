@@ -97,6 +97,30 @@ test("capability registration is pure and preserves extras", function()
   assert(capabilities.experimental.custom)
   assert(not pcall(vim.api.nvim_get_autocmds, { group = "CompletionTools" }))
 end)
+test("automatic trigger characters replace defaults and support filetype callbacks", function()
+  local config = require("completion_tools.config")
+  local context = require("completion_tools.context")
+  local cfg = config.validate({ trigger_characters = {} })
+  eq({}, cfg.trigger_characters)
+  assert(not context.can_auto_show(cfg, { before = "obj.", filetype = "lua" }))
+  assert(context.can_auto_show(defaults, { before = "obj.", filetype = "lua" }))
+  for _, before in ipairs({ "a", "alpha_", "123", "中文", "λ" }) do
+    assert(context.can_auto_show(defaults, { before = before }))
+  end
+  for _, before in ipairs({ "", "a ", "a(", "a/", "a\\", "a，", "a。" }) do
+    assert(not context.can_auto_show(defaults, { before = before }), before)
+  end
+  cfg = config.validate({
+    trigger_characters = function(ctx)
+      return ctx.filetype == "tex" and { ".", "\\", "{" } or { "." }
+    end,
+  })
+  assert(context.can_auto_show(cfg, { before = "\\input{", filetype = "tex" }))
+  assert(not context.can_auto_show(cfg, { before = "call{", filetype = "lua" }))
+  for _, value in ipairs({ false, 1, { "" }, { "ab" }, { 1 } }) do
+    assert(not pcall(config.validate, { trigger_characters = value }))
+  end
+end)
 test("incremental buffer indexing, insert/delete lines, cap and detach", function()
   local buf = vim.api.nvim_create_buf(true, false)
   vim.api.nvim_buf_set_lines(buf, 0, -1, false, { "alpha beta gamma", "delta delta", "epsilon" })
