@@ -344,6 +344,20 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
             os.write(primary, b"\t!\x1b")
             wait(lambda s: s["mode"] == "n" and s["line"] == "(" + selected + "!" and not s["visible"],
                  "accept refreshed manual candidate and continue typing")
+        os.write(primary, b":lua completion_tui_history()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "", "history fixture")
+        os.write(primary, b"ial")
+        wait(lambda s: s.get("selected") == "alpha" and s["can_accept"], "untrained ordering")
+        os.write(primary, b"\x0e")
+        wait(lambda s: s.get("selected") == "alpine", "select word to learn")
+        os.write(primary, b"\t\x1b")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "alpine", "learn terminal acceptance")
+        os.write(primary, b":lua completion_tui_history()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "", "reload persisted history")
+        os.write(primary, b"ial")
+        wait(lambda s: s.get("selected") == "alpine" and s["can_accept"], "learned ordering after setup")
+        os.write(primary, b"\t!\x1b")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "alpine!", "accept learned candidate")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:

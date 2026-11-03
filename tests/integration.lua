@@ -483,6 +483,38 @@ local ok, err = xpcall(function()
     input("<Tab>!")
     wait("return vim.api.nvim_get_current_line()=='open!' and accepted_overload==2")
   end)
+  test("acceptance learns history across setup without changing command-line sorting", function()
+    lua([[history_path=vim.fn.tempname()..'/history.json'
+      function history_setup(enabled)
+        require('completion_tools').setup({sources={'test'},ranking={history={enabled=enabled,path=history_path}},
+          providers={test={complete=function(_,cb) cb({items={{label='alpha'},{label='alpine'}}}) end}}})
+      end
+      history_setup(true)
+    ]])
+    input("ial")
+    wait("return require('completion_tools')._can('accept')")
+    input("<C-n>")
+    wait("return require('completion_tools').get_selected_item().label=='alpine'")
+    input("<Tab><Esc>")
+    wait("return vim.api.nvim_get_mode().mode=='n' and vim.api.nvim_get_current_line()=='alpine'")
+    lua(
+      "history_setup(true);vim.api.nvim_buf_set_lines(0,0,-1,false,{''});vim.api.nvim_win_set_cursor(0,{1,0})"
+    )
+    input("ial")
+    wait(
+      "return require('completion_tools')._can('accept') and require('completion_tools').get_selected_item().label=='alpine'"
+    )
+    input("<Esc>")
+    wait("return vim.api.nvim_get_mode().mode=='n'")
+    lua(
+      "history_setup(false);vim.api.nvim_buf_set_lines(0,0,-1,false,{''});vim.api.nvim_win_set_cursor(0,{1,0})"
+    )
+    input("ial")
+    wait(
+      "return require('completion_tools')._can('accept') and require('completion_tools').get_selected_item().label=='alpha'"
+    )
+    lua("vim.fn.delete(vim.fs.dirname(history_path),'rf')")
+  end)
   test("typing and backspace reset manual selection to the latest first item", function()
     lua([[require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)
       cb({items={{label='alpha'},{label='alphaZ'}},reusable=true})

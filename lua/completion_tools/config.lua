@@ -8,6 +8,11 @@ M.defaults = {
   debounce_ms = 0,
   max_items = 50,
   preselect = true,
+  ranking = {
+    history = { enabled = false, max_entries = 1000 },
+    proximity = { enabled = false, lines = 50 },
+    max_typos = 0,
+  },
   keyword_pattern = [[\k*$]],
   sources = { "lsp", "path", "buffer", "snippets" },
   providers = {},
@@ -153,6 +158,23 @@ function M.validate(opts)
   local function integer(value, minimum)
     return type(value) == "number" and value >= minimum and value % 1 == 0
   end
+  local ranking = config.ranking
+  assert(
+    type(ranking.history.enabled) == "boolean" and type(ranking.proximity.enabled) == "boolean",
+    "completion-tools: invalid ranking flags"
+  )
+  assert(
+    integer(ranking.history.max_entries, 1) and integer(ranking.proximity.lines, 0),
+    "completion-tools: invalid ranking limits"
+  )
+  assert(
+    ranking.max_typos == 0 or ranking.max_typos == 1,
+    "completion-tools: ranking.max_typos must be 0 or 1"
+  )
+  assert(
+    ranking.history.path == nil or (type(ranking.history.path) == "string" and ranking.history.path ~= ""),
+    "completion-tools: invalid ranking.history.path"
+  )
   assert(integer(menu.shrink_delay_ms, 0), "completion-tools: invalid menu.shrink_delay_ms")
   assert(integer(config.copilot.debounce_ms, 0), "completion-tools: invalid copilot.debounce_ms")
   assert(integer(config.copilot.max_items, 1), "completion-tools: invalid copilot.max_items")

@@ -2,6 +2,34 @@ local M = {}
 local identity = require("completion_tools.identity")
 local byte, find, lower = string.byte, string.find, string.lower
 
+-- One ASCII typo in a prefix (including a transposition). Restrict the work to
+-- short queries and run only after literal subsequence matching has failed.
+local function typo_score(text, query)
+  if #query < 4 or #query > 32 or query:find("[^%w_]") or text:find("[\128-\255]") then
+    return
+  end
+  text = lower(text)
+  for length = math.max(1, #query - 1), math.min(#text, #query + 1) do
+    local prefix, i = text:sub(1, length), 1
+    while i <= math.min(#query, length) and query:sub(i, i) == prefix:sub(i, i) do
+      i = i + 1
+    end
+    local a, b = query:sub(i), prefix:sub(i)
+    local matched = (
+      #query == length
+      and (
+        a:sub(2) == b:sub(2)
+        or (#a >= 2 and a:sub(1, 1) == b:sub(2, 2) and a:sub(2, 2) == b:sub(1, 1) and a:sub(3) == b:sub(3))
+      )
+    )
+      or (#query == length + 1 and a:sub(2) == b)
+      or (length == #query + 1 and a == b:sub(2))
+    if matched then
+      return -100 - math.abs(#text - #query)
+    end
+  end
+end
+
 -- ASCII scoring is intentional; non-ASCII bytes still match literally without
 -- splitting the inserted text. Unicode case folding is not advertised.
 function M.score(text, query)
@@ -51,7 +79,7 @@ local function better(a, b)
 end
 
 -- Keep only the best K in a min-heap, instead of sorting every match.
-function M.filter(groups, ctx, limit)
+function M.filter(groups, ctx, limit, opts)
   local heap, keys, index = {}, {}, 0
   local function swap(a, b)
     heap[a], heap[b] = heap[b], heap[a]
@@ -89,8 +117,14 @@ function M.filter(groups, ctx, limit)
         end
       end
       local score = type(item.label) == "string" and M.score(item.filterText or item.label, item_query)
+      if score == nil and type(item.label) == "string" and opts and opts.max_typos == 1 then
+        score = typo_score(item.filterText or item.label, item_query)
+      end
       if score then
         score = score + group.score_offset + (item.preselect and 8 or 0)
+        if opts and opts.bonus then
+          score = score + opts.bonus(item, group.source_id)
+        end
         -- Exclude the word being typed from the buffer source only.
         local root = heap[1]
         local sort_key = item.sortText or item.label

@@ -158,7 +158,10 @@ local function render(pending)
     end
   end
   local previous = selected_entry()
-  local items = require("completion_tools.matcher").filter(groups, ctx, state.config.max_items)
+  local items = require("completion_tools.matcher").filter(groups, ctx, state.config.max_items, {
+    max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
+    bonus = state.ranking.scorer(ctx),
+  })
   -- An empty partial result is not a final "no matches". Keep the last ready
   -- frame until a useful replacement or the last provider's response arrives.
   if #items == 0 and pending and ui.visible() then
@@ -407,6 +410,7 @@ function M.setup(opts)
   end
   M.dispose()
   state.config, state.disposed = config, false
+  state.ranking = require("completion_tools.ranking").new(config.ranking)
   -- setup may itself run inside Lazy's first InsertEnter callback.
   state.edit_buf, state.edit_tick = vim.api.nvim_get_current_buf(), vim.api.nvim_buf_get_changedtick(0)
   timer, doc_timer = vim.uv.new_timer(), vim.uv.new_timer()
@@ -683,6 +687,7 @@ function M.accept()
   local ok, err = pcall(function()
     local edits = require("completion_tools.edits")
     local transaction = edits.apply(entry, ctx, state.config)
+    state.ranking.record(entry, ctx)
     if provider and provider.execute then
       provider.execute(entry, ctx)
     end
@@ -830,6 +835,10 @@ function M.get_lsp_capabilities(base)
 end
 function M.dispose()
   M.hide()
+  if state.ranking then
+    state.ranking.dispose()
+    state.ranking = nil
+  end
   state.disposed = true
   for _, cancel in pairs(state.accept_cancels) do
     if cancel then

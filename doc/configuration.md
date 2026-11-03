@@ -89,7 +89,31 @@ An empty list disables all symbol triggers while keeping word completion.
 Add `"/"` when you want automatic path completion immediately after a slash;
 otherwise type the next word character or request completion manually.
 
-## Providers
+## Ranking
+
+Matching defaults to the original deterministic prefix/subsequence scoring.
+Enable optional ranking features independently:
+
+```lua
+ranking = {
+  history = { enabled = true, max_entries = 1000 },
+  proximity = { enabled = true, lines = 50 },
+  max_typos = 1, -- Default 0; accepts 0 or 1
+}
+```
+
+History learns successful acceptance, scoped by source and filetype, and combines
+frequency with recency. It persists at `stdpath("state")/completion-tools/history.json`;
+set `ranking.history.path` to override. Records are bounded and saved after a quiet
+500 ms or on disposal/exit. Missing/corrupt files are ignored. Proximity weights
+words in a bounded window around the cursor. Bonuses are small enough to preserve
+prefix-versus-subsequence matching tiers. Disabling either feature removes its bonus.
+History ignores transient client IDs and edit positions, so it survives restarts.
+One-typo matching handles substitution, insertion, deletion and transposition in
+ASCII prefixes of 4–32 characters, only after literal matching fails. It does not
+perform Unicode case folding. Command-line matching and ordering stay native.
+
+## Provider configuration
 
 Each `providers[id]` supports:
 

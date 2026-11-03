@@ -71,6 +71,22 @@ trigger_characters also accepts function(ctx) -> string[] for filetype rules:
 An empty list disables symbol triggers; words still complete. Add "/" to open
 path completion immediately after a slash.
 
+                                                   *completion-tools-ranking*
+Optional ranking (all disabled by default):
+>
+    ranking = {
+      history = { enabled = true, max_entries = 1000 },
+      proximity = { enabled = true, lines = 50 },
+      max_typos = 1,
+    }
+<
+History combines frequency/recency, scoped by source and filetype. It persists
+under stdpath("state")/completion-tools/history.json; history.path overrides it.
+Records are bounded and saved after 500 ms idle or on dispose/exit. Proximity
+weights words within the configured line radius. Bonuses preserve match tiers.
+Typos are opt-in (0 or 1), ASCII-only prefixes of 4-32 characters, and rank below
+literal matches. Command-line matching/order is unaffected.
+
                                                      *completion-tools-sources*
 Built-ins: lsp, path, buffer, snippets; optional Ex cmdline.
 Opt-in sources: dictionary, spell, copilot. All are independent of Blink.

@@ -8,6 +8,21 @@ vim.api.nvim_win_set_cursor(0, { 80, 0 })
 vim.cmd("normal! zb")
 require("completion-tools").setup({ sources = { "buffer" }, min_keyword_length = 0 })
 vim.api.nvim_set_hl(0, "Comment", { fg = "#a0a0a0" })
+function _G.completion_tui_history()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  require("completion-tools").setup({
+    sources = { "history" },
+    ranking = { history = { enabled = true, path = vim.env.COMPLETION_TUI_STATE .. ".history" } },
+    providers = {
+      history = {
+        complete = function(_, cb)
+          cb({ items = { { label = "alpha" }, { label = "alpine" } } })
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_manual()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
