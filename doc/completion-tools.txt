@@ -225,10 +225,20 @@ menu.highlight: enabled=true, treesitter=true, max_bytes=1024, cache_size=512.
 Only visible rows are highlighted; plain words do not create parsers.
 File/folder candidates retain kind and match emphasis without code syntax colors.
 Missing parsers/queries and incomplete signatures keep the lexical fallback.
-menu.shrink_delay_ms=120 delays height reduction while candidates update
+menu.shrink_delay_ms=50 delays height reduction while candidates update
 immediately. Input/results reset the delay; growth is immediate. Extra rows are
 blank and unselectable. Set to 0 for immediate shrinking. The opening direction
-is retained while space permits, and final empty results close immediately.
+uses menu.max_height (default 12), independent of current result count: below
+when it fits, otherwise the side with more space (ties prefer below). Input
+movement/resize recalculates placement. Final empty results close immediately.
+
+menu.inverse="auto" reverses menus above the input by default, keeping the
+first-ranked item nearest the input. Set true to always reverse, false to always
+use top-to-bottom order. This applies to Insert and command-line completion.
+Ranking, preselection and acceptance are unchanged; get_items() stays ranked.
+select_next/select_prev always move down/up on screen, including reversed menus.
+Paging and boundary clamping use the same screen directions.
+Retained blank rows appear opposite the first-ranked candidate.
 
 menu.max_label_bytes=1024 bounds each displayed field. Default icons need a
 Nerd Font. Unknown kinds use CompletionToolsKindUnknown.

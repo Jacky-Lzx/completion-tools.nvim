@@ -541,6 +541,177 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line()=='alphaFast'")
     input("<Esc>")
   end)
+  test("menu direction reserves maximum height before small asynchronous results grow", function()
+    lua([[
+      local lines={};for i=1,32 do lines[i]='' end
+      vim.api.nvim_buf_set_lines(0,0,-1,false,lines)
+      vim.api.nvim_win_set_cursor(0,{26,0})
+      require('completion_tools').setup({sources={'test'},documentation={auto_show=false},
+        providers={test={complete=function(_,cb)
+          direction_reply=cb;cb({items={{label='alpha01'},{label='alpha02'}}})
+        end}}})
+      function direction_menu()
+        for _,w in ipairs(vim.api.nvim_list_wins()) do
+          if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-menu' then
+            local wc=vim.api.nvim_win_get_config(w);wc.win=w
+            wc.lines=vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w),0,-1,false)
+            wc.cursor=vim.api.nvim_win_get_cursor(w)[1]
+            return wc
+          end
+        end
+      end
+    ]])
+    input("ia")
+    wait("return require('completion_tools').is_menu_visible()")
+    local small = lua("return direction_menu()")
+    assert(small.row < 25, "small initial result ignored menu.max_height")
+    eq(2, small.cursor)
+    lua([[
+      local items={};for i=1,20 do items[i]={label=string.format('alpha%02d',i)} end
+      direction_reply({items=items})
+    ]])
+    wait("return direction_menu().height==12")
+    local large = lua("return direction_menu()")
+    eq(small.win, large.win)
+    eq(small.row + small.height, large.row + large.height)
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line()=='alpha01!'")
+  end)
+  for _, case in ipairs({
+    { row = 1, inverse = "auto", reversed = false },
+    { row = 32, inverse = "auto", reversed = true },
+    { row = 1, inverse = true, reversed = true },
+    { row = 32, inverse = true, reversed = true },
+    { row = 1, inverse = false, reversed = false },
+    { row = 32, inverse = false, reversed = false },
+    { row = 32, inverse = "auto", reversed = true, preselect = false },
+  }) do
+    test("inverse menu scrolling and acceptance " .. vim.inspect(case), function()
+      lua(
+        [[
+        local case=...
+        local lines={};for i=1,32 do lines[i]='' end
+        vim.api.nvim_buf_set_lines(0,0,-1,false,lines)
+        vim.api.nvim_win_set_cursor(0,{case.row,0})
+        local items={};for i=1,8 do items[i]={label=string.format('alpha%02d',i)} end
+        require('completion_tools').setup({sources={'test'},preselect=case.preselect~=false,
+          menu={max_height=3,inverse=case.inverse},documentation={auto_show=false},
+          providers={test={complete=function(_,cb) cb({items=items}) end}}})
+      ]],
+        case
+      )
+      input("ia")
+      wait("return require('completion_tools').is_menu_visible()")
+      local menu = lua("return direction_menu()")
+      eq(case.row == 32, menu.row < case.row - 1)
+      eq(case.reversed and 3 or 1, menu.cursor)
+      assert(menu.lines[menu.cursor]:find("alpha01", 1, true))
+      eq(case.preselect ~= false, lua("return require('completion_tools').get_selected_item()~=nil"))
+      if case.preselect == false then
+        input(case.reversed and "<C-p>" or "<C-n>")
+        wait("return require('completion_tools').get_selected_item()~=nil")
+      end
+      lua(
+        "require('completion_tools')."
+          .. (case.reversed and "select_prev" or "select_next")
+          .. "({count=5,wrap=false})"
+      )
+      menu = lua("return direction_menu()")
+      assert(menu.lines[menu.cursor]:find("alpha06", 1, true))
+      -- Ranked API order stays intact even when the visible rows are reversed.
+      eq("alpha01", lua("return require('completion_tools').get_items()[1].label"))
+      local previous_row = menu.cursor
+      input("<C-n>")
+      wait(
+        "return require('completion_tools').get_selected_item().label=='"
+          .. (case.reversed and "alpha05" or "alpha07")
+          .. "'"
+      )
+      menu = lua("return direction_menu()")
+      if case.reversed then
+        eq(previous_row + 1, menu.cursor)
+      end
+      input("<C-p>")
+      wait("return require('completion_tools').get_selected_item().label=='alpha06'")
+      lua("require('completion_tools').select_next({count=100,wrap=false})")
+      eq(
+        case.reversed and "alpha01" or "alpha08",
+        lua("return require('completion_tools').get_selected_item().label")
+      )
+      lua("require('completion_tools').select_prev({count=100,wrap=false})")
+      eq(
+        case.reversed and "alpha08" or "alpha01",
+        lua("return require('completion_tools').get_selected_item().label")
+      )
+      lua(
+        "require('completion_tools')."
+          .. (case.reversed and "select_next" or "select_prev")
+          .. "({count=3,wrap=false})"
+      )
+      input("<Tab>!")
+      wait("return vim.api.nvim_get_current_line()=='" .. (case.reversed and "alpha05!" or "alpha01!") .. "'")
+    end)
+  end
+  test("retained menu reverses its rows and selection when repositioned across the input", function()
+    lua([[
+      local lines={};for i=1,32 do lines[i]='' end
+      vim.api.nvim_buf_set_lines(0,0,-1,false,lines)
+      require('completion_tools').setup({sources={'test'},menu={max_height=3},
+        documentation={auto_show=false},providers={test={complete=function(_,cb)
+          cb({items={{label='alpha01'},{label='alpha02'},{label='alpha03'}}})
+        end}}})
+    ]])
+    input("ia")
+    wait("return require('completion_tools').is_menu_visible()")
+    input("<C-n>")
+    wait("return require('completion_tools').get_selected_item().label=='alpha02'")
+    local original = lua("return direction_menu()")
+    lua([[
+      -- Exercise the retained-frame path without a new provider result.
+      local ctx=vim.deepcopy(require('completion_tools').get_context())
+      ctx.row=31
+      require('completion_tools.ui').reposition(ctx,require('completion_tools.config').validate({menu={max_height=3}}))
+    ]])
+    local menu = lua("return direction_menu()")
+    eq(original.win, menu.win)
+    assert(menu.row < 31 and menu.lines[1]:find("alpha03", 1, true))
+    assert(menu.lines[menu.cursor]:find("alpha02", 1, true))
+    lua([[
+      require('completion_tools.ui').reposition(require('completion_tools').get_context(),
+        require('completion_tools.config').validate({menu={max_height=3}}))
+    ]])
+    menu = lua("return direction_menu()")
+    assert(menu.row > 0 and menu.lines[1]:find("alpha01", 1, true))
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line()=='alpha02!'")
+  end)
+  test("neither side fits maximum height: use more space and prefer below on ties", function()
+    rpc("nvim_ui_try_resize", 120, 18)
+    for _, case in ipairs({
+      { row = 8, above = false, height = 7 },
+      { row = 9, above = false, height = 6 },
+      { row = 11, above = true, height = 8 },
+    }) do
+      lua(
+        [[
+        require('completion_tools').hide()
+        local lines={};for i=1,14 do lines[i]='' end
+        vim.api.nvim_buf_set_lines(0,0,-1,false,lines)
+        vim.api.nvim_win_set_cursor(0,{...,0})
+        local items={};for i=1,20 do items[i]={item={label='alpha'..i},source_id='test',start_col=0} end
+        local config=require('completion_tools.config').validate({})
+        require('completion_tools.ui').render(items,1,{mode='insert',winid=vim.api.nvim_get_current_win(),
+          row=...-1,col=0,start_col=0,before='',filetype='lua'},config)
+      ]],
+        case.row
+      )
+      local menu = lua("return direction_menu()")
+      eq(case.above, menu.row < case.row - 1)
+      eq(case.height, menu.height)
+    end
+    lua("require('completion_tools').hide()")
+    rpc("nvim_ui_try_resize", 120, 36)
+  end)
   local function height_fixture(delay)
     lua(
       [[
@@ -580,8 +751,8 @@ local ok, err = xpcall(function()
     )
     lua([[
       local wc=height_menu();assert(wc.height==12 and wc.row<25)
-      assert(wc.lines[1]:find('abFresh',1,true))
-      for i=3,12 do assert(wc.lines[i]=='','stale candidate retained in blank row') end
+      assert(wc.lines[12]:find('abFresh01',1,true))
+      for i=1,10 do assert(wc.lines[i]=='','stale candidate retained in blank row') end
     ]])
     input("<C-n>")
     wait("return require('completion_tools').get_selected_item().label=='abFresh02'")
@@ -625,7 +796,7 @@ local ok, err = xpcall(function()
     wait("return #require('completion_tools').get_items()==2")
     lua("require('completion_tools').hide();require('completion_tools').show()")
     wait("return height_menu() and height_menu().height==2")
-    assert(lua("return height_menu().row>25"), "reopening retained the previous direction")
+    assert(lua("return height_menu().row<25"), "reopening ignored menu.max_height")
     lua("height_send(1)")
     wait("return #require('completion_tools').get_items()==1")
     lua("require('completion_tools').dispose()")

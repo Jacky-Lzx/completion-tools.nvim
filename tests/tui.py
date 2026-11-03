@@ -59,12 +59,17 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
                         and "Buffer" in s.get("menu_screen", "") and "Text" in s.get("menu_screen", ""),
                         "terminal menu")
         assert snapshot["menu"]["row"] + snapshot["menu"]["height"] + 1 < snapshot["input_row"], snapshot
+        assert snapshot["menu"]["cursor"] == snapshot["menu"]["height"], snapshot
+        assert "alpha" in snapshot["menu_rows"][-1] and "alphanumeric" in snapshot["menu_rows"][0], snapshot
         wait(lambda s: s.get("screen_word") == "al", "input row remains visible above the terminal menu")
         attrs = snapshot["menu_attrs"]
         assert "Text" in snapshot["menu_screen"] and "Buffer" in snapshot["menu_screen"], snapshot
         assert attrs["alpha"] != attrs["pha"] == attrs["Text"], snapshot
         assert b"38;2;160;160;160" in output, "Text candidates must use gray"
-        os.write(primary, b"\x0e\t!")
+        os.write(primary, b"\x10")
+        moved = wait(lambda s: s.get("selected") == "alphabet", "Ctrl-P moves up in the reversed menu")
+        assert moved["menu"]["cursor"] == snapshot["menu"]["cursor"] - 1, moved
+        os.write(primary, b"\t!")
         wait(lambda s: s["line"] == "alphabet!" and s["mode"] == "i", "accept and continue typing")
         os.write(primary, b"\x1b")
         wait(lambda s: not s["visible"] and s["mode"] == "n", "Escape cleanup")
@@ -136,7 +141,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
                 assert snapshot["menu"]["win"] == window and snapshot["menu"]["height"] == 12, snapshot
                 assert snapshot["menu"]["row"] < snapshot["input_row"], snapshot
                 if expected + "Slow" not in "".join(snapshot["menu_rows"]):
-                    assert all(row == "" for row in snapshot["menu_rows"][2:]), snapshot
+                    assert all(row == "" for row in snapshot["menu_rows"][:-2]), snapshot
                     assert not snapshot["menu_blank_screen"].strip(), snapshot
         snapshot = wait(lambda s: s.get("menu", {}).get("height") == 2, "height shrinks after quiet input")
         assert snapshot["menu"]["win"] == window and snapshot["menu"]["row"] < snapshot["input_row"], snapshot
@@ -175,8 +180,12 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         for trigger, stem in ((b"ial", "alpha"), (b":CompletionPaging", "CompletionPaging")):
             os.write(primary, trigger)
             wait(lambda s: s.get("selected") == stem + "01", "initial paging candidate")
-            for key, index in ((b"\x1bd", 6), (b"\x1bd", 8), (b"\x1bd", 8),
-                               (b"\x1bu", 3), (b"\x1bu", 1), (b"\x1bu", 1)):
+            steps = (((b"\x1bd", 1), (b"\x1bu", 6), (b"\x1bu", 8), (b"\x1bu", 8),
+                      (b"\x1bd", 3), (b"\x1bd", 1), (b"\x1bd", 1))
+                     if trigger.startswith(b":") else
+                     ((b"\x1bd", 6), (b"\x1bd", 8), (b"\x1bd", 8),
+                      (b"\x1bu", 3), (b"\x1bu", 1), (b"\x1bu", 1)))
+            for key, index in steps:
                 os.write(primary, key)
                 calls += 1
                 wait(lambda s: s.get("paging_calls") == calls and s.get("selected") == f"{stem}{index:02d}",

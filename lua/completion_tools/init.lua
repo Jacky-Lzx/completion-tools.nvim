@@ -626,6 +626,10 @@ local function select(direction, opts)
   if not state.ready or not ui.visible() or not context.same(state.context, current()) then
     return false
   end
+  -- Navigation follows screen direction; only the painted row order is reversed.
+  if ui.is_inverse() then
+    direction = -direction
+  end
   local count = opts and opts.count or 1
   local index = state.selected or (direction == 1 and 0 or #state.items + 1)
   local target = index + direction * count

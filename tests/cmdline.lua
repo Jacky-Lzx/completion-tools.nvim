@@ -60,6 +60,15 @@ local ok, err = xpcall(function()
     input("FixtureAl")
     wait("return require('completion_tools').is_menu_visible()")
     eq("FixtureAl", lua("return vim.fn.getcmdline()"))
+    lua([[
+      for _,w in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-menu' then
+          local lines=vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w),0,-1,false)
+          assert(lines[#lines]:find('FixtureAlpha',1,true))
+          assert(vim.api.nvim_win_get_cursor(w)[1]==#lines)
+        end
+      end
+    ]])
     input("<Down>")
     wait("return require('completion_tools').get_selected_item().label=='FixtureAlpine'")
     eq("FixtureAl", lua("return vim.fn.getcmdline()"))
@@ -86,14 +95,14 @@ local ok, err = xpcall(function()
       {label='FixtureAlpine',filterText='FixtureAl',sortText='20'}}})]])
     wait("return require('completion_tools').get_items()[1].label=='FixtureAlphaNew'")
     eq("FixtureAlphaNew", lua("return require('completion_tools').get_selected_item().label"))
-    input("<Down>")
+    input("<Up>")
     wait("return require('completion_tools').get_selected_item().label=='FixtureAlpha'")
     lua([[cmd_reply({items={{label='FixtureAlphaNew',filterText='FixtureAl',sortText='00'},
       {label='FixtureAlpine',filterText='FixtureAl',sortText='20'}}})]])
     wait("return #require('completion_tools').get_items()==2")
     lua([[local c=require('completion_tools')
       assert(c.is_menu_visible() and c.get_selected_item()==nil and not c.accept())]])
-    input("<Up>")
+    input("<Down>")
     wait("return require('completion_tools')._can('accept')")
     eq("FixtureAlpine", lua("return require('completion_tools').get_selected_item().label"))
     input("<BS>")
@@ -125,7 +134,8 @@ local ok, err = xpcall(function()
     lua([[
       local height,w=cmd_height();assert(height==8)
       local lines=vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w),0,-1,false)
-      for i=3,8 do assert(lines[i]=='') end
+      for i=1,6 do assert(lines[i]=='') end
+      assert(lines[8]:find('FixtureAValue1',1,true))
     ]])
     wait("return cmd_height()==2")
     lua([[
@@ -150,12 +160,13 @@ local ok, err = xpcall(function()
     input(":FixturePaging")
     wait("return require('completion_tools')._can('accept')")
     for i, step in ipairs({
-      { "<A-d>", "FixturePaging06" },
-      { "<A-d>", "FixturePaging08" },
-      { "<A-d>", "FixturePaging08" },
-      { "<A-u>", "FixturePaging03" },
-      { "<A-u>", "FixturePaging01" },
-      { "<A-u>", "FixturePaging01" },
+      { "<A-d>", "FixturePaging01" },
+      { "<A-u>", "FixturePaging06" },
+      { "<A-u>", "FixturePaging08" },
+      { "<A-u>", "FixturePaging08" },
+      { "<A-d>", "FixturePaging03" },
+      { "<A-d>", "FixturePaging01" },
+      { "<A-d>", "FixturePaging01" },
     }) do
       input(step[1])
       wait(

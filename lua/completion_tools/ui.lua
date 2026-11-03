@@ -3,6 +3,7 @@ local ns = vim.api.nvim_create_namespace("completion-tools-menu")
 local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
 local geometry, doc_item
+local frame_items, frame_selected
 local shrink_timer, shrink_token
 local render = require("completion_tools.render")
 
@@ -60,10 +61,14 @@ function M.hide()
   cancel_shrink()
   close(win)
   win, viewport, geometry = nil, 1, nil
+  frame_items, frame_selected = nil, nil
   M.hide_documentation()
 end
 function M.visible()
   return valid(win) or false
+end
+function M.is_inverse()
+  return M.visible() and geometry and geometry.inverse or false
 end
 
 local function placement(count, width, ctx, config)
@@ -117,15 +122,14 @@ local function placement(count, width, ctx, config)
   -- Anchor vertically to the cursor, since the keyword can wrap onto earlier rows.
   local below = vim.o.lines - math.max(vim.o.cmdheight, 1) - input_bottom - 3
   local above = input_top - 2
-  local height = math.min(count, opts.max_height, math.max(above, below))
+  -- Choose a side for the tallest menu before any asynchronous results arrive.
+  -- Prefer below when it fits; otherwise use the side with more room.
+  local upwards = below < opts.max_height and above > below
+  local height = math.min(count, opts.max_height, upwards and above or below)
   if height < 1 then
     return
   end
   width = math.min(width, opts.max_width, vim.o.columns - 4)
-  local upwards = below < height
-  if valid(win) and geometry and geometry.upwards and above >= height then
-    upwards = true
-  end
   -- Both the contents and the bottom border must end before the input row.
   local row = upwards and input_top - height - 2 or input_bottom + 1
   local start_col = screen.col > 0 and screen.col or cursor.col
@@ -147,12 +151,72 @@ local function placement(count, width, ctx, config)
     width = width,
     height = height,
     upwards = upwards,
+    inverse = opts.inverse == true or (opts.inverse == "auto" and upwards),
     input_row = cursor.row - 1,
     input_top = input_top,
     input_bottom = input_bottom,
     filetype = ctx.filetype,
   }
   return window_config, next_geometry
+end
+
+local function paint(items, selected, ctx, config, layout, window_config, next_geometry)
+  local opts = config.menu
+  local height = window_config.height
+  local target = selected or 1
+  if target < viewport then
+    viewport = target
+  end
+  if target >= viewport + height then
+    viewport = target - height + 1
+  end
+  viewport = math.max(1, math.min(viewport, #items - height + 1))
+  local lines, spans = {}, {}
+  for row = 1, height do
+    local i = viewport + (next_geometry.inverse and height - row or row - 1)
+    local line, marks = "", {}
+    if items[i] then
+      line, marks = render.row(layout, i, items[i], ctx, opts)
+    end
+    lines[#lines + 1], spans[#spans + 1] = line, marks
+  end
+  buf = scratch(buf, "completion-tools-menu")
+  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+  vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+  for i, marks in ipairs(spans) do
+    for _, span in ipairs(marks) do
+      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, span[1], {
+        end_col = span[2],
+        hl_group = span[3],
+        priority = span[4],
+      })
+    end
+  end
+  if valid(win) then
+    vim.api.nvim_win_set_config(win, window_config)
+  else
+    win = vim.api.nvim_open_win(buf, false, window_config)
+    vim.wo[win].winhighlight =
+      "Normal:CompletionToolsMenu,FloatBorder:CompletionToolsBorder,CursorLine:CompletionToolsSelected"
+    vim.wo[win].wrap, vim.wo[win].scrolloff = false, 0
+  end
+  vim.wo[win].cursorline = selected ~= nil
+  local selected_row = target - viewport + 1
+  if next_geometry.inverse then
+    selected_row = height - selected_row + 1
+  end
+  vim.api.nvim_win_set_cursor(win, { math.max(1, selected_row), 0 })
+  local moved = not vim.deep_equal(geometry, next_geometry)
+  geometry = next_geometry
+  frame_items, frame_selected = items, selected
+  if moved and valid(doc_win) and doc_item then
+    M.documentation(doc_item, config)
+  end
+  if ctx.mode == "cmdline" then
+    -- Native command-line input can defer float painting until another key.
+    -- Flush the new colors and contents even when the user pauses typing.
+    vim.cmd.redraw()
+  end
 end
 
 local function draw(items, selected, ctx, config, settled)
@@ -192,55 +256,7 @@ local function draw(items, selected, ctx, config, settled)
       end, opts.shrink_delay_ms)
     end
   end
-  local height = window_config.height
-  local target = selected or 1
-  if target < viewport then
-    viewport = target
-  end
-  if target >= viewport + height then
-    viewport = target - height + 1
-  end
-  viewport = math.max(1, math.min(viewport, #items - height + 1))
-  local lines, spans = {}, {}
-  for i = viewport, viewport + height - 1 do
-    local line, marks = "", {}
-    if items[i] then
-      line, marks = render.row(layout, i, items[i], ctx, opts)
-    end
-    lines[#lines + 1], spans[#spans + 1] = line, marks
-  end
-  buf = scratch(buf, "completion-tools-menu")
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-  for i, marks in ipairs(spans) do
-    for _, span in ipairs(marks) do
-      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, span[1], {
-        end_col = span[2],
-        hl_group = span[3],
-        priority = span[4],
-      })
-    end
-  end
-  if valid(win) then
-    vim.api.nvim_win_set_config(win, window_config)
-  else
-    win = vim.api.nvim_open_win(buf, false, window_config)
-    vim.wo[win].winhighlight =
-      "Normal:CompletionToolsMenu,FloatBorder:CompletionToolsBorder,CursorLine:CompletionToolsSelected"
-    vim.wo[win].wrap, vim.wo[win].scrolloff = false, 0
-  end
-  vim.wo[win].cursorline = selected ~= nil
-  vim.api.nvim_win_set_cursor(win, { math.max(1, target - viewport + 1), 0 })
-  local moved = not vim.deep_equal(geometry, next_geometry)
-  geometry = next_geometry
-  if moved and valid(doc_win) and doc_item then
-    M.documentation(doc_item, config)
-  end
-  if ctx.mode == "cmdline" then
-    -- Native command-line input can defer float painting until another key.
-    -- Flush the new colors and contents even when the user pauses typing.
-    vim.cmd.redraw()
-  end
+  paint(items, selected, ctx, config, layout, window_config, next_geometry)
 end
 
 function M.render(items, selected, ctx, config)
@@ -248,7 +264,7 @@ function M.render(items, selected, ctx, config)
 end
 
 -- Keep an old frame clear of the live input while its replacement is pending.
--- Moving the float does not rewrite candidate text, run matching, or create it.
+-- Repaint the retained items only when the visible rows or their order change.
 function M.reposition(ctx, config)
   -- New input invalidates a shrink even before its providers return a result.
   cancel_shrink()
@@ -259,6 +275,11 @@ function M.reposition(ctx, config)
   if not wc then
     M.hide()
     return false
+  end
+  if next_geometry.inverse ~= geometry.inverse or next_geometry.height ~= geometry.height then
+    local layout = render.prepare(frame_items, config.menu, vim.o.columns - 4)
+    paint(frame_items, frame_selected, ctx, config, layout, wc, next_geometry)
+    return true
   end
   if not vim.deep_equal(geometry, next_geometry) then
     vim.api.nvim_win_set_config(win, wc)

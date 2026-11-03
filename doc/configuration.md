@@ -20,7 +20,7 @@ require("completion-tools").setup({
   sources = { "lsp", "path", "buffer", "snippets" },
   providers = {},
   menu = {
-    max_height = 12, shrink_delay_ms = 120,
+    max_height = 12, inverse = "auto", shrink_delay_ms = 50,
     min_width = 18, max_width = 72, border = "single",
     columns = { { "kind_icon" }, { "label", gap = 1 }, { "kind" }, { "source" } },
     column_gap = 1, padding = 1,
@@ -485,7 +485,8 @@ Actions return `true` when handled, allowing keymap chains.
 
 `select_next` / `select_prev` accept `{ count=1, wrap=true }`. For paging, use
 `{ count=5, wrap=false }`: selection stops at the first/last item and still consumes
-the key at a boundary. State getters return read-only values.
+the key at a boundary. `select_next` moves down and `select_prev` moves up on
+screen, including reversed menus. State getters return read-only values in ranked order.
 
 While typing/backspacing within one keyword, the previous menu remains visible
 until new matches arrive or every provider completes without matches. Stale items
@@ -494,10 +495,25 @@ pending. Empty input or a context change closes it. Retained menus follow the cu
 documentation remains for the same selection.
 
 Candidate contents update immediately. The menu grows immediately and waits for
-`menu.shrink_delay_ms` (default `120`) of quiet input/results before shrinking.
+`menu.shrink_delay_ms` (default `50`) of quiet input/results before shrinking.
 Extra rows are cleared and cannot be selected. Set this option to `0` to shrink
-immediately. The menu keeps its opening direction while space permits; hiding
-the menu resets its height and direction. Final empty results close it immediately.
+immediately. Placement reserves `menu.max_height` regardless of the current result
+count: prefer below when it fits, otherwise choose the side with more space
+(below wins ties). Small initial results and later growth/shrinkage therefore use
+the same side. Moving/resizing the input can change the direction. Hiding resets
+the retained height. Final empty results close the menu immediately.
+
+`menu.inverse` controls the visible row order in Insert and command-line modes:
+
+- `"auto"` (default): reverse above the input, keeping the first-ranked candidate
+  closest to the input; use normal order below.
+- `true`: always reverse the visible rows.
+- `false`: always show normal top-to-bottom order.
+
+Ranking, preselection, acceptance and selection identity remain the same. In a
+reversed menu, downward keys still move down and upward keys still move up;
+paging and boundary clamping follow the same screen directions. Retained blank
+rows stay opposite the first item.
 
 Automatic preselection follows the latest first-ranked item, including higher
 ranked results from slower providers. Navigation marks a manual selection, preserved

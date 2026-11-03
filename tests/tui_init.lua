@@ -304,17 +304,19 @@ timer:start(
       for _, win in ipairs(vim.api.nvim_list_wins()) do
         if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "completion-tools-menu" then
           local geometry = vim.api.nvim_win_get_config(win)
-          data.menu = { row = geometry.row, height = geometry.height, win = win }
+          local selected_row = vim.api.nvim_win_get_cursor(win)[1]
+          data.menu = { row = geometry.row, height = geometry.height, win = win, cursor = selected_row }
           local b = vim.api.nvim_win_get_buf(win)
-          local line = vim.api.nvim_buf_get_lines(b, 0, 1, false)[1]
-          local at = vim.fn.screenpos(win, 1, 1)
+          local line = vim.api.nvim_buf_get_lines(b, selected_row - 1, selected_row, false)[1]
+          local top = vim.fn.screenpos(win, 1, 1)
+          local at = vim.fn.screenpos(win, selected_row, 1)
           data.menu_line = line
           data.menu_rows = vim.api.nvim_buf_get_lines(b, 0, -1, false)
           data.menu_blank_screen = ""
           for row, text in ipairs(data.menu_rows) do
             if text == "" then
               for col = at.col, at.col + geometry.width - 1 do
-                data.menu_blank_screen = data.menu_blank_screen .. vim.fn.screenstring(at.row + row - 1, col)
+                data.menu_blank_screen = data.menu_blank_screen .. vim.fn.screenstring(top.row + row - 1, col)
               end
             end
           end
@@ -330,7 +332,7 @@ timer:start(
               )
             )
           do
-            if mark[2] == 0 and mark[4].hl_group == "CompletionToolsSource" then
+            if mark[2] == selected_row - 1 and mark[4].hl_group == "CompletionToolsSource" then
               local cell = vim.fn.strdisplaywidth(line:sub(1, mark[3]))
               data.menu_source_attrs[#data.menu_source_attrs + 1] = vim.fn.screenattr(at.row, at.col + cell)
             end

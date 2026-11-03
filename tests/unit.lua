@@ -92,10 +92,20 @@ test("configuration preserves empty source and keymap lists", function()
 end)
 test("menu shrink delay accepts zero and rejects invalid timers", function()
   local validate = require("completion_tools.config").validate
-  eq(120, validate({}).menu.shrink_delay_ms)
+  eq(50, validate({}).menu.shrink_delay_ms)
   eq(0, validate({ menu = { shrink_delay_ms = 0 } }).menu.shrink_delay_ms)
   for _, value in ipairs({ -1, 1.5, "120", false, math.huge }) do
     assert(not pcall(validate, { menu = { shrink_delay_ms = value } }))
+  end
+end)
+test("menu inverse defaults to automatic and accepts explicit overrides", function()
+  local validate = require("completion_tools.config").validate
+  eq("auto", validate({}).menu.inverse)
+  for _, value in ipairs({ "auto", true, false }) do
+    eq(value, validate({ menu = { inverse = value } }).menu.inverse)
+  end
+  for _, value in ipairs({ "reverse", 0, {} }) do
+    assert(not pcall(validate, { menu = { inverse = value } }))
   end
 end)
 test("capability registration is pure and preserves extras", function()
