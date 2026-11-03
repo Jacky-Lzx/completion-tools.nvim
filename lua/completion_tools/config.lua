@@ -22,6 +22,7 @@ M.defaults = {
   },
   menu = {
     max_height = 12,
+    shrink_delay_ms = 120,
     min_width = 18,
     max_width = 72,
     border = "single",
@@ -150,6 +151,7 @@ function M.validate(opts)
   local function integer(value, minimum)
     return type(value) == "number" and value >= minimum and value % 1 == 0
   end
+  assert(integer(menu.shrink_delay_ms, 0), "completion-tools: invalid menu.shrink_delay_ms")
   for _, section in ipairs({ "dictionary", "spell" }) do
     for _, field in ipairs({ "min_keyword_length", "max_items", "timeout_ms" }) do
       assert(integer(config[section][field], 1), "completion-tools: invalid " .. section .. "." .. field)

@@ -113,6 +113,36 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         assert stats["samples"] >= 6 and stats["hidden"] == stats["blank"] == stats["closed"] == 0, snapshot
         os.write(primary, b"\x1b")
         wait(lambda s: s["mode"] == "n" and not s["visible"], "flicker fixture cleanup")
+        os.write(primary, b":lua completion_tui_height()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "", "height fixture")
+        os.write(primary, b"ia")
+        snapshot = wait(lambda s: s.get("prefix") == "a" and s.get("menu", {}).get("height") == 12,
+                        "initial tall menu")
+        window = snapshot["menu"]["win"]
+        assert snapshot["menu"]["row"] < snapshot["input_row"], snapshot
+        prefix = "a"
+        steps = []
+        for char in b"bcdefgh":
+            prefix += chr(char)
+            steps.append((bytes([char]), prefix))
+        steps.extend([(b"\x7f", "abcdefg"), (b"h", "abcdefgh")])
+        for key, expected in steps:
+            os.write(primary, key)
+            snapshot = wait(lambda s: s.get("prefix") == expected and s["can_accept"]
+                            and expected + "Fast" in s.get("menu_screen", ""), "fresh contents while typing")
+            deadline = time.monotonic() + 0.045
+            while time.monotonic() < deadline:
+                snapshot = wait(lambda s: s.get("prefix") == expected, "continuous height sampling")
+                assert snapshot["menu"]["win"] == window and snapshot["menu"]["height"] == 12, snapshot
+                assert snapshot["menu"]["row"] < snapshot["input_row"], snapshot
+                if expected + "Slow" not in "".join(snapshot["menu_rows"]):
+                    assert all(row == "" for row in snapshot["menu_rows"][2:]), snapshot
+                    assert not snapshot["menu_blank_screen"].strip(), snapshot
+        snapshot = wait(lambda s: s.get("menu", {}).get("height") == 2, "height shrinks after quiet input")
+        assert snapshot["menu"]["win"] == window and snapshot["menu"]["row"] < snapshot["input_row"], snapshot
+        os.write(primary, b"\x0e\t!\x1b")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "abcdefghFast2!" and not s["visible"],
+             "accept current candidate after delayed shrink")
         os.write(primary, b":lua completion_tui_selection()\r")
         wait(lambda s: s["mode"] == "n" and s["line"] == "", "selection fixture")
         os.write(primary, b"ial")
@@ -189,7 +219,9 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"iTe")
         path = "/Users/test/Research/Papers/Very_Long_Project/TeX/0_Abstract.tex"
         snapshot = wait(lambda s: s.get("doc_lines") == [path]
-                        and "0_Abstract.tex" in s.get("menu_screen", ""), "file path detail")
+                        and "0_Abstract.tex" in s.get("menu_screen", "")
+                        and path in s.get("doc_screen", "").replace("\n", "").replace(" ", ""),
+                        "file path detail painted on screen")
         assert "TeX/4_Experimental_Results.tex" in snapshot["menu_rows"][1], snapshot
         assert "…" in snapshot["menu_screen"], snapshot
         attrs = snapshot["menu_attrs"]
@@ -264,7 +296,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         if child.poll() is None:
             raise AssertionError(f"quit timed out: {state.read_text()}, terminal tail={output[-1800:]!r}")
         assert child.returncode == 0
-        print("tui: async selection, continuous typing/backspace, highlights, dictionary meanings and command-line acceptance passed")
+        print("tui: stable height, async selection, continuous typing/backspace, highlights, dictionary meanings and command-line acceptance passed")
     finally:
         if child.poll() is None:
             child.terminate()

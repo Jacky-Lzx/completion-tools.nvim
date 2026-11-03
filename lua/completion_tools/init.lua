@@ -163,6 +163,7 @@ local function render(pending)
   -- frame until a useful replacement or the last provider's response arrives.
   if #items == 0 and pending and ui.visible() then
     state.ready = false
+    ui.reposition(ctx, state.config)
     return
   end
   state.ready = true

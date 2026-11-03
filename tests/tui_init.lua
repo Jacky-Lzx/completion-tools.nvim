@@ -144,6 +144,44 @@ function _G.completion_tui_flicker()
     end,
   })
 end
+function _G.completion_tui_height()
+  local lines = {}
+  for i = 1, 32 do
+    lines[i] = ""
+  end
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+  vim.api.nvim_win_set_cursor(0, { 26, 0 })
+  vim.cmd("normal! zt")
+  vim.cmd("normal! 25\25")
+  require("completion-tools").setup({
+    sources = { "fast", "slow" },
+    documentation = { auto_show = false },
+    providers = {
+      fast = {
+        complete = function(ctx, cb)
+          local items = {}
+          for i = 1, (ctx.prefix == "a" and 12 or 2) do
+            items[i] = { label = ctx.prefix .. "Fast" .. i }
+          end
+          cb({ items = items })
+        end,
+      },
+      slow = {
+        complete = function(ctx, cb)
+          vim.defer_fn(function()
+            local items = {}
+            if #ctx.prefix % 2 == 1 then
+              for i = 1, 10 do
+                items[i] = { label = ctx.prefix .. "Slow" .. i }
+              end
+            end
+            cb({ items = items })
+          end, 25)
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_selection()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   require("completion-tools").setup({
@@ -272,6 +310,14 @@ timer:start(
           local at = vim.fn.screenpos(win, 1, 1)
           data.menu_line = line
           data.menu_rows = vim.api.nvim_buf_get_lines(b, 0, -1, false)
+          data.menu_blank_screen = ""
+          for row, text in ipairs(data.menu_rows) do
+            if text == "" then
+              for col = at.col, at.col + geometry.width - 1 do
+                data.menu_blank_screen = data.menu_blank_screen .. vim.fn.screenstring(at.row + row - 1, col)
+              end
+            end
+          end
           data.menu_source_attrs = {}
           for _, mark in
             ipairs(

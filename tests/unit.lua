@@ -90,6 +90,14 @@ test("configuration preserves empty source and keymap lists", function()
   assert(not pcall(require("completion_tools.config").validate, { max_items = 0 }))
   assert(not pcall(require("completion_tools.config").validate, { buffer = { batch_lines = 0 } }))
 end)
+test("menu shrink delay accepts zero and rejects invalid timers", function()
+  local validate = require("completion_tools.config").validate
+  eq(120, validate({}).menu.shrink_delay_ms)
+  eq(0, validate({ menu = { shrink_delay_ms = 0 } }).menu.shrink_delay_ms)
+  for _, value in ipairs({ -1, 1.5, "120", false, math.huge }) do
+    assert(not pcall(validate, { menu = { shrink_delay_ms = value } }))
+  end
+end)
 test("capability registration is pure and preserves extras", function()
   local cmp = require("completion_tools")
   local capabilities = cmp.get_lsp_capabilities({ experimental = { custom = true } })

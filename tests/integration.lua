@@ -541,6 +541,105 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line()=='alphaFast'")
     input("<Esc>")
   end)
+  local function height_fixture(delay)
+    lua(
+      [[
+      local lines={};for i=1,32 do lines[i]='' end
+      vim.api.nvim_buf_set_lines(0,0,-1,false,lines)
+      vim.api.nvim_win_set_cursor(0,{26,0})
+      function height_menu()
+        for _,w in ipairs(vim.api.nvim_list_wins()) do
+          if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-menu' then
+            local wc=vim.api.nvim_win_get_config(w);wc.win=w
+            wc.lines=vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w),0,-1,false)
+            return wc
+          end
+        end
+      end
+      require('completion_tools').setup({sources={'test'},documentation={auto_show=false},
+        menu={shrink_delay_ms=...},providers={test={complete=function(ctx,cb)
+          height_send=function(count,pending)
+            local items={};for i=1,count do items[i]={label=ctx.prefix..string.format('Fresh%02d',i)} end
+            cb({items=items,pending=pending})
+          end
+          if ctx.prefix~='abc' then height_send(#ctx.prefix==1 and 12 or 2) end
+        end}}})
+    ]],
+      delay
+    )
+    input("ia")
+    wait("return height_menu() and height_menu().height==12")
+  end
+  test("height settles without delaying contents, selecting blank rows or flipping direction", function()
+    height_fixture(200)
+    local original = lua("return height_menu()")
+    assert(original.row < 25)
+    input("b")
+    wait(
+      "return require('completion_tools').get_context().prefix=='ab' and #require('completion_tools').get_items()==2"
+    )
+    lua([[
+      local wc=height_menu();assert(wc.height==12 and wc.row<25)
+      assert(wc.lines[1]:find('abFresh',1,true))
+      for i=3,12 do assert(wc.lines[i]=='','stale candidate retained in blank row') end
+    ]])
+    input("<C-n>")
+    wait("return require('completion_tools').get_selected_item().label=='abFresh02'")
+    input("<C-n>")
+    wait("return require('completion_tools').get_selected_item().label=='abFresh01'")
+    wait("return height_menu().height==2")
+    local settled = lua("return height_menu()")
+    eq(original.win, settled.win)
+    assert(settled.row < 25, "shrinking switched the menu below the cursor")
+    lua("height_send(9)")
+    wait("return height_menu().height==9 and #require('completion_tools').get_items()==9")
+    lua("height_send(0)")
+    wait("return not require('completion_tools').is_menu_visible()")
+    vim.wait(250)
+    assert(not lua("return require('completion_tools').is_menu_visible()"))
+  end)
+  test("new results and input invalidate pending height reductions", function()
+    height_fixture(200)
+    input("b")
+    wait("return #require('completion_tools').get_items()==2")
+    vim.wait(120)
+    lua("height_send(1)")
+    wait("return #require('completion_tools').get_items()==1")
+    vim.wait(120)
+    eq(12, lua("return height_menu().height"))
+    lua("height_send(0,true)")
+    vim.wait(250)
+    lua("assert(height_menu().height==12 and not require('completion_tools')._can('accept'))")
+    lua("height_send(1)")
+    wait("return require('completion_tools')._can('accept')")
+    input("c")
+    wait("return require('completion_tools').get_context().prefix=='abc'")
+    vim.wait(250)
+    lua("assert(height_menu().height==12 and not require('completion_tools')._can('accept'))")
+    lua("height_send(1)")
+    wait("return height_menu().height==1")
+  end)
+  test("hiding resets retained height and disposal cancels shrink callbacks", function()
+    height_fixture(200)
+    input("b")
+    wait("return #require('completion_tools').get_items()==2")
+    lua("require('completion_tools').hide();require('completion_tools').show()")
+    wait("return height_menu() and height_menu().height==2")
+    assert(lua("return height_menu().row>25"), "reopening retained the previous direction")
+    lua("height_send(1)")
+    wait("return #require('completion_tools').get_items()==1")
+    lua("require('completion_tools').dispose()")
+    vim.wait(250)
+    assert(not lua("return require('completion_tools').is_menu_visible()"))
+  end)
+  test("zero shrink delay reduces height immediately", function()
+    height_fixture(0)
+    input("b")
+    wait("return #require('completion_tools').get_items()==2")
+    eq(2, lua("return height_menu().height"))
+    input("<Tab>")
+    wait("return vim.api.nvim_get_current_line()=='abFresh01'")
+  end)
   test("typing and backspace keep the same menu and selected-item documentation", function()
     lua([[require('completion_tools').setup({sources={'slow'},documentation={delay_ms=120},providers={
       slow={complete=function(ctx,cb) vim.defer_fn(function()

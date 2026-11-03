@@ -102,6 +102,42 @@ local ok, err = xpcall(function()
     )
     eq("FixtureAlpha", lua("return require('completion_tools').get_selected_item().label"))
   end)
+  test("command-line shrink clears old rows immediately and paints after the delay", function()
+    lua([[require('completion_tools').setup({cmdline={enabled=true},documentation={auto_show=false},
+      menu={shrink_delay_ms=200},providers={cmdline={complete=function(ctx,cb)
+        local items={};for i=1,(ctx.prefix=='Fixture' and 8 or 2) do
+          items[i]={label=ctx.prefix..'Value'..i}
+        end
+        cb({items=items})
+      end}}})
+      function cmd_height()
+        for _,w in ipairs(vim.api.nvim_list_wins()) do
+          if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-menu' then
+            return vim.api.nvim_win_get_height(w),w
+          end
+        end
+      end
+    ]])
+    input(":Fixture")
+    wait("return cmd_height()==8")
+    input("A")
+    wait("return #require('completion_tools').get_items()==2")
+    lua([[
+      local height,w=cmd_height();assert(height==8)
+      local lines=vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w),0,-1,false)
+      for i=3,8 do assert(lines[i]=='') end
+    ]])
+    wait("return cmd_height()==2")
+    lua([[
+      local _,w=cmd_height();local at=vim.fn.screenpos(w,1,1)
+      local screen='';for col=at.col,at.col+vim.api.nvim_win_get_width(w)-1 do
+        screen=screen..vim.fn.screenstring(at.row,col)
+      end
+      assert(screen:find('FixtureAValue',1,true),screen)
+    ]])
+    input("<Tab>")
+    wait("return vim.fn.getcmdline()=='FixtureAValue1'")
+  end)
   test("Alt paging clamps at command-line candidate boundaries and consumes the keys", function()
     lua([[paging_calls=0;paging_fallback=0
       for i=1,8 do vim.api.nvim_create_user_command(string.format('FixturePaging%02d',i),function() end,{}) end

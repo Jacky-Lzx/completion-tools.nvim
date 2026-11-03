@@ -3,7 +3,17 @@ local ns = vim.api.nvim_create_namespace("completion-tools-menu")
 local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
 local geometry, doc_item
+local shrink_timer, shrink_token
 local render = require("completion_tools.render")
+
+local function cancel_shrink()
+  shrink_token = nil
+  if shrink_timer and not shrink_timer:is_closing() then
+    shrink_timer:stop()
+    shrink_timer:close()
+  end
+  shrink_timer = nil
+end
 
 local function valid(id)
   return id and vim.api.nvim_win_is_valid(id)
@@ -47,6 +57,7 @@ function M.hide_documentation()
   doc_win, doc_item = nil, nil
 end
 function M.hide()
+  cancel_shrink()
   close(win)
   win, viewport, geometry = nil, 1, nil
   M.hide_documentation()
@@ -112,6 +123,9 @@ local function placement(count, width, ctx, config)
   end
   width = math.min(width, opts.max_width, vim.o.columns - 4)
   local upwards = below < height
+  if valid(win) and geometry and geometry.upwards and above >= height then
+    upwards = true
+  end
   -- Both the contents and the bottom border must end before the input row.
   local row = upwards and input_top - height - 2 or input_bottom + 1
   local start_col = screen.col > 0 and screen.col or cursor.col
@@ -141,7 +155,8 @@ local function placement(count, width, ctx, config)
   return window_config, next_geometry
 end
 
-function M.render(items, selected, ctx, config)
+local function draw(items, selected, ctx, config, settled)
+  cancel_shrink()
   if #items == 0 or vim.o.columns < 8 or vim.o.lines < 6 then
     M.hide()
     return
@@ -152,6 +167,30 @@ function M.render(items, selected, ctx, config)
   if not window_config then
     M.hide()
     return
+  end
+  if
+    not settled
+    and valid(win)
+    and geometry
+    and window_config.height < geometry.height
+    and opts.shrink_delay_ms > 0
+  then
+    -- Replace candidate text immediately, retaining only the old window height.
+    window_config, next_geometry = placement(math.max(#items, geometry.height), layout.width, ctx, config)
+    if window_config.height > #items then
+      local token = {}
+      shrink_token = token
+      shrink_timer = vim.defer_fn(function()
+        if shrink_token ~= token then
+          return
+        end
+        shrink_timer, shrink_token = nil, nil
+        local context = require("completion_tools.context")
+        if valid(win) and context.same(ctx, context.get(config)) then
+          draw(items, selected, ctx, config, true)
+        end
+      end, opts.shrink_delay_ms)
+    end
   end
   local height = window_config.height
   local target = selected or 1
@@ -164,7 +203,10 @@ function M.render(items, selected, ctx, config)
   viewport = math.max(1, math.min(viewport, #items - height + 1))
   local lines, spans = {}, {}
   for i = viewport, viewport + height - 1 do
-    local line, marks = render.row(layout, i, items[i], ctx, opts)
+    local line, marks = "", {}
+    if items[i] then
+      line, marks = render.row(layout, i, items[i], ctx, opts)
+    end
     lines[#lines + 1], spans[#spans + 1] = line, marks
   end
   buf = scratch(buf, "completion-tools-menu")
@@ -201,9 +243,15 @@ function M.render(items, selected, ctx, config)
   end
 end
 
+function M.render(items, selected, ctx, config)
+  draw(items, selected, ctx, config, false)
+end
+
 -- Keep an old frame clear of the live input while its replacement is pending.
 -- Moving the float does not rewrite candidate text, run matching, or create it.
 function M.reposition(ctx, config)
+  -- New input invalidates a shrink even before its providers return a result.
+  cancel_shrink()
   if not valid(win) or not geometry then
     return false
   end

@@ -225,6 +225,11 @@ menu.highlight: enabled=true, treesitter=true, max_bytes=1024, cache_size=512.
 Only visible rows are highlighted; plain words do not create parsers.
 File/folder candidates retain kind and match emphasis without code syntax colors.
 Missing parsers/queries and incomplete signatures keep the lexical fallback.
+menu.shrink_delay_ms=120 delays height reduction while candidates update
+immediately. Input/results reset the delay; growth is immediate. Extra rows are
+blank and unselectable. Set to 0 for immediate shrinking. The opening direction
+is retained while space permits, and final empty results close immediately.
+
 menu.max_label_bytes=1024 bounds each displayed field. Default icons need a
 Nerd Font. Unknown kinds use CompletionToolsKindUnknown.
 

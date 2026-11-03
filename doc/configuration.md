@@ -20,7 +20,8 @@ require("completion-tools").setup({
   sources = { "lsp", "path", "buffer", "snippets" },
   providers = {},
   menu = {
-    max_height = 12, min_width = 18, max_width = 72, border = "single",
+    max_height = 12, shrink_delay_ms = 120,
+    min_width = 18, max_width = 72, border = "single",
     columns = { { "kind_icon" }, { "label", gap = 1 }, { "kind" }, { "source" } },
     column_gap = 1, padding = 1,
     kind_icons = true, label_details = true, max_label_bytes = 1024,
@@ -491,6 +492,12 @@ until new matches arrive or every provider completes without matches. Stale item
 cannot be accepted. A fast empty source does not close the menu while another is
 pending. Empty input or a context change closes it. Retained menus follow the cursor;
 documentation remains for the same selection.
+
+Candidate contents update immediately. The menu grows immediately and waits for
+`menu.shrink_delay_ms` (default `120`) of quiet input/results before shrinking.
+Extra rows are cleared and cannot be selected. Set this option to `0` to shrink
+immediately. The menu keeps its opening direction while space permits; hiding
+the menu resets its height and direction. Final empty results close it immediately.
 
 Automatic preselection follows the latest first-ranked item, including higher
 ranked results from slower providers. Navigation marks a manual selection, preserved
