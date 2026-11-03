@@ -12,6 +12,7 @@ No build step or required third-party dependencies.
 - **Smooth while typing:** incremental word indexes, cancellation and reusable completion lists; the previous menu stays visible while results arrive.
 - **Beyond code:** opt-in command/search completion, custom dictionaries, native spelling suggestions and local WordNet definitions.
 - **Yours to extend:** custom providers, context-aware sources, keymap action chains and theme highlights.
+- **Control the results:** optional history/proximity ranking and typo matching, source deadlines, quotas and fallbacks.
 
 ## Install
 
@@ -109,5 +110,6 @@ keymaps, menu styling, custom sources and external command-line UI integration.
 - [Tests and development](doc/configuration.md#development)
 
 Run `:checkhealth completion-tools` to check your setup.
+Use `:CompletionToolsStatus` to inspect source timings, candidate counts and cache hits.
 
 [MIT License](LICENSE)

@@ -178,6 +178,8 @@ local function render(pending)
   end
   local previous = selected_entry()
   local items = matcher.filter(groups, ctx, state.config.max_items, match_options)
+  state.reason = #items > 0 and "ready" or (pending and "pending" or "no_matches")
+  state.last_request_reason = state.reason
   -- An empty partial result is not a final "no matches". Keep the last ready
   -- frame until a useful replacement or the last provider's response arrives.
   if #items == 0 and pending and ui.visible() then
@@ -187,6 +189,7 @@ local function render(pending)
   end
   state.ready = true
   state.items = items
+  state.diagnostics.shown(items)
   -- A vanished manual choice stays empty until navigation or another edit.
   state.selected = not state.selection_manual and state.config.preselect and #items > 0 and 1 or nil
   if previous then
@@ -217,12 +220,12 @@ end
 
 local function request(manual, override)
   if not enabled() then
-    M.hide()
+    M.hide("disabled")
     return false
   end
   local ctx = current()
   if not ctx or vim.fn.pumvisible() == 1 or (ctx.mode == "cmdline" and vim.fn.wildmenumode() == 1) then
-    M.hide()
+    M.hide(ctx and "native_completion" or "unsupported_context")
     return false
   end
   local character_trigger = false
@@ -234,11 +237,12 @@ local function request(manual, override)
       allowed = ctx.before:find("%S") ~= nil
     end
     if not allowed then
-      M.hide()
+      M.hide("trigger_filtered")
       return false
     end
   end
   if not manual and context.same(state.accepted, ctx) then
+    state.reason = "accepted"
     return false
   end
   state.accepted = nil
@@ -254,7 +258,7 @@ local function request(manual, override)
   local minimum = ctx.mode == "cmdline" and state.config.cmdline.min_keyword_length
     or state.config.min_keyword_length
   if not manual and #ctx.prefix < minimum and not triggered and not ctx.before:match("[/\\][^%s]*$") then
-    M.hide()
+    M.hide("min_keyword_length")
     return false
   end
   state.generation = state.generation + 1
@@ -271,6 +275,7 @@ local function request(manual, override)
   state.context, state.groups, state.source_ids = ctx, {}, ids
   state.manual = manual
   state.ready = false
+  state.reason = "pending"
   if not context.same(previous_context, ctx) and not context.continues(previous_context, ctx) then
     state.items, state.selected = {}, nil
     state.selection_manual = false
@@ -281,6 +286,9 @@ local function request(manual, override)
   end
   local render_queued, run = false, nil
   local function queue_render()
+    if run then
+      state.diagnostics.update(run.records)
+    end
     if render_queued then
       return
     end
@@ -300,10 +308,16 @@ local function request(manual, override)
       active = true
     end
     if type(active) == "function" then
-      active = active(ctx)
+      local ok, value = pcall(active, ctx)
+      active = ok and value
+      if not ok then
+        options[id] = { error = tostring(value) }
+        report(id .. ": " .. tostring(value))
+      end
     end
     options[id] = {
       enabled = state.providers[id] ~= nil and active,
+      error = options[id] and options[id].error,
       timeout_ms = configured.timeout_ms or state.config.timeout_ms,
       fallback_for = configured.fallback_for,
     }
@@ -318,7 +332,9 @@ local function request(manual, override)
     end,
     start = function(id, receive)
       local old = state.cache[id]
-      if old and old.reusable and context.extends(old.context, ctx) then
+      local cached = old and old.reusable and context.extends(old.context, ctx)
+      state.diagnostics.start(id, cached)
+      if cached then
         receive({ cached = old })
       else
         ctx.incomplete = old and old.incomplete or false
@@ -332,6 +348,7 @@ local function request(manual, override)
       response = response or { items = {} }
       if response.cached then
         state.groups[id] = response.cached.group
+        state.diagnostics.receive(id, #response.cached.group.items)
         return require("completion_tools.matcher").has_match(response.cached.group, ctx, {
           max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
         })
@@ -360,6 +377,7 @@ local function request(manual, override)
         end
       end
       state.groups[id] = result
+      state.diagnostics.receive(id, #items)
       state.cache[id] = {
         group = result,
         context = ctx,
@@ -372,7 +390,11 @@ local function request(manual, override)
     end,
   })
   state.run = run
-  state.cancels[#state.cancels + 1] = run.cancel
+  state.diagnostics.update(run.records)
+  state.cancels[#state.cancels + 1] = function()
+    run.cancel()
+    state.diagnostics.update(run.records)
+  end
   return true
 end
 
@@ -390,6 +412,7 @@ local function queue()
   cancel_requests()
   cancel_doc()
   state.ready = false
+  state.reason = "pending"
   stop_timer(timer)
   if not same then
     state.selection_manual = false
@@ -420,6 +443,9 @@ function M.setup(opts)
   end
   M.dispose()
   state.config, state.disposed = config, false
+  state.diagnostics = require("completion_tools.diagnostics").new()
+  state.run, state.reason, state.last_request_reason = nil, "idle", nil
+  state.dispose_command = require("completion_tools.diagnostics").command()
   state.ranking = require("completion_tools.ranking").new(config.ranking)
   -- setup may itself run inside Lazy's first InsertEnter callback.
   state.edit_buf, state.edit_tick = vim.api.nvim_get_current_buf(), vim.api.nvim_buf_get_changedtick(0)
@@ -627,7 +653,7 @@ function M.refresh_keymaps()
   require("completion_tools.keymap").setup(state.config)
   return true
 end
-function M.hide()
+function M.hide(reason)
   local visible = ui.visible()
   state.generation = state.generation + 1
   cancel_requests()
@@ -635,6 +661,13 @@ function M.hide()
   stop_timer(timer)
   state.items, state.selected, state.context, state.groups, state.ready = {}, nil, nil, {}, false
   state.selection_manual = false
+  state.reason = reason or "hidden"
+  if reason then
+    state.last_request_reason = reason
+  end
+  if state.diagnostics then
+    state.diagnostics.shown({})
+  end
   state.doc_entry = nil
   ui.hide()
   return visible
@@ -655,6 +688,50 @@ function M.get_selected_item()
 end
 function M.get_context()
   return state.context
+end
+function M.get_status()
+  local sources = state.diagnostics and state.diagnostics.snapshot() or {}
+  local configured = state.config and state.config.sources or {}
+  local ids = state.source_ids or (type(configured) == "table" and configured or {})
+  local selected = {}
+  for _, id in ipairs(ids) do
+    selected[id] = true
+  end
+  if type(configured) == "table" then
+    for _, id in ipairs(configured) do
+      sources[id] = sources[id] or { status = "not_requested" }
+    end
+  end
+  for id, item in pairs(sources) do
+    item.registered = state.providers[id] ~= nil
+    item.selected = selected[id] == true
+    local options = state.config and state.config.providers[id] or {}
+    options = options or {}
+    item.configured_enabled = options.enabled ~= false
+    if item.status == "not_requested" and not item.configured_enabled then
+      item.status = "disabled"
+    end
+    item.timeout_ms = options.timeout_ms or (state.config and state.config.timeout_ms)
+    item.max_items = options.max_items
+  end
+  local ok, active = pcall(enabled)
+  return {
+    configured = state.config ~= nil and not state.disposed,
+    enabled = ok and active or false,
+    reason = not state.config and "not_configured" or (state.disposed and "disposed" or state.reason),
+    last_request_reason = state.last_request_reason,
+    menu_visible = ui.visible(),
+    ready = state.ready == true,
+    stale = ui.visible() and state.ready ~= true,
+    mode = state.context and state.context.mode,
+    filetype = state.context and state.context.filetype,
+    sources = sources,
+  }
+end
+function M.show_status()
+  local status = M.get_status()
+  vim.notify(require("completion_tools.diagnostics").format(status), vim.log.levels.INFO)
+  return status
 end
 local function select(direction, opts)
   if not state.ready or not ui.visible() or not context.same(state.context, current()) then
@@ -697,7 +774,7 @@ function M.accept(opts)
     return false
   end
   local provider = state.providers[entry.source_id]
-  M.hide()
+  M.hide("accepted")
   state.cache = {}
   local ok, err = pcall(function()
     local edits = require("completion_tools.edits")
@@ -852,6 +929,10 @@ function M.get_lsp_capabilities(base)
 end
 function M.dispose()
   M.hide()
+  if state.dispose_command then
+    state.dispose_command()
+    state.dispose_command = nil
+  end
   if state.ranking then
     state.ranking.dispose()
     state.ranking = nil

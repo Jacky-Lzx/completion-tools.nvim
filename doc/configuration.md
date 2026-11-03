@@ -14,8 +14,15 @@ require("completion-tools").setup({
   trigger_characters = { "." },
   min_keyword_length = 1,
   debounce_ms = 0,
+  timeout_ms = 2000,
   max_items = 50,
   preselect = true,
+  accept = { mode = "replace" },
+  ranking = {
+    history = { enabled = false, max_entries = 1000 },
+    proximity = { enabled = false, lines = 50 },
+    max_typos = 0,
+  },
   keyword_pattern = [[\k*$]],
   sources = { "lsp", "path", "buffer", "snippets" },
   providers = {},
@@ -592,6 +599,37 @@ private provider metadata; standard `item.data` must be JSON serializable.
 After setup, `register_source("name", source)` adds or replaces a provider.
 
 ## API and selection lifecycle
+
+### Runtime diagnostics
+
+Run `:CompletionToolsStatus` after setup, or call:
+
+```lua
+local status = require("completion-tools").get_status()
+require("completion-tools").show_status() -- Print the same snapshot
+```
+
+The snapshot reports `configured`, `enabled`, `reason`, `last_request_reason`,
+`menu_visible`, `ready`, `stale`, `mode`, `filetype`, and a `sources` map.
+Each source reports registration/selection, configured enablement and limits,
+its latest status/elapsed milliseconds, raw and shown candidate counts, provider
+request/cache-hit/response counters, timeout/error counts and the latest callback
+error. Statuses include `not_requested`, `waiting`, `pending`, `done`, `disabled`,
+`skipped`, `timeout`, `cancelled` and `error`. Errors remain inspectable after a
+later successful request. `last_request_reason` preserves trigger filtering or
+no-match decisions after leaving Insert mode to run the status command.
+
+Counters cover the current setup lifetime and reset on setup; cache hits do not
+increment provider request counts. Timings measure source completion, including
+async wait and response processing, rather than terminal drawing. Raw counts are
+after transforms and before quotas/deduplication; shown counts are contributions
+to the current menu. Retained stale menus have `stale=true` and cannot be accepted.
+Getters return detached snapshots. Diagnostics store counters and errors, with no
+candidate-body log or network telemetry. `:checkhealth completion-tools` includes
+source status, missing registrations, recent errors and deadlines.
+The status command is removed on disposal only while still owned by the plugin.
+
+### Candidate lifecycle
 
 Plain words deduplicate across sources. Candidates with different signatures,
 JSON data, clients, edit ranges, additional edits, commands or snippet behavior

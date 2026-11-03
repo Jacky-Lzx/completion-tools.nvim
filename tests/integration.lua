@@ -567,6 +567,72 @@ local ok, err = xpcall(function()
     vim.wait(40)
     assert(not lua("return require('completion_tools').is_menu_visible()"))
   end)
+  test("live diagnostics track cached requests, counts and trigger rejection", function()
+    lua([[diag_calls=0
+      require('completion_tools').setup({sources={'test'},providers={test={max_items=1,complete=function(_,cb)
+        diag_calls=diag_calls+1; cb({items={{label='alpha'},{label='alpine'}},reusable=true})
+      end}}})]])
+    input("ia")
+    wait("return require('completion_tools')._can('accept')")
+    lua([[local s=require('completion_tools').get_status();local p=s.sources.test
+      assert(s.reason=='ready' and p.status=='done' and p.raw_count==2 and p.shown_count==1)
+      assert(p.requests==1 and p.cache_hits==0 and p.elapsed_ms>=0)
+      p.requests=999
+      assert(require('completion_tools').get_status().sources.test.requests==1)
+    ]])
+    input("l")
+    wait(
+      "return require('completion_tools').get_status().sources.test.cache_hits==1 and require('completion_tools')._can('accept')"
+    )
+    eq(1, lua("return diag_calls"))
+    input("(")
+    wait("return require('completion_tools').get_status().reason=='trigger_filtered'")
+    lua([[local s=require('completion_tools').get_status()
+      assert(not s.menu_visible and s.sources.test.shown_count==0)
+      assert(s.last_request_reason=='trigger_filtered')]])
+  end)
+  test("diagnostics distinguish pending, timeout, waiting and skipped sources", function()
+    lua([[require('completion_tools').setup({sources={'main','fallback','last'},timeout_ms=100,
+      providers={main={complete=function() end},fallback={fallback_for={'main'},complete=function(_,cb)
+        cb({items={{label='alpha'}}})
+      end},last={fallback_for={'fallback'},complete=function() error('must not run') end}}})]])
+    input("ial")
+    wait("return require('completion_tools').get_status().sources.main.status=='pending'")
+    eq("waiting", lua("return require('completion_tools').get_status().sources.fallback.status"))
+    wait("return require('completion_tools').get_status().sources.main.status=='timeout'")
+    lua([[local s=require('completion_tools').get_status()
+      assert(s.sources.main.timeouts==1 and s.sources.main.elapsed_ms>=80)
+      assert(s.sources.fallback.status=='done' and s.sources.last.status=='skipped')]])
+  end)
+  test("provider errors remain inspectable after a later successful request", function()
+    lua([[diag_fail=true
+      require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)
+        if diag_fail then error('diagnostic fixture failure') end
+        cb({items={{label='alpha'}}})
+      end}}})]])
+    input("ia")
+    wait("return require('completion_tools').get_status().sources.test.status=='error'")
+    lua([[local p=require('completion_tools').get_status().sources.test
+      assert(p.errors==1 and p.last_error:find('diagnostic fixture failure',1,true))
+      test_notifications={};diag_fail=false]])
+    input("l")
+    wait("return require('completion_tools')._can('accept')")
+    lua(
+      [[local p=require('completion_tools').get_status().sources.test
+      assert(p.status=='done' and p.errors==1 and p.last_error:find('diagnostic fixture failure',1,true))]]
+    )
+  end)
+  test("source eligibility callback errors are diagnosed and release fallback", function()
+    lua([[require('completion_tools').setup({sources={'bad','fallback'},providers={
+      bad={enabled=function() error('eligibility fixture failure') end,complete=function() end},
+      fallback={fallback_for={'bad'},complete=function(_,cb) cb({items={{label='alpha'}}}) end},
+    }})]])
+    input("ia")
+    wait("return require('completion_tools')._can('accept')")
+    lua([[local p=require('completion_tools').get_status().sources.bad
+      assert(p.status=='error' and p.errors==1 and p.last_error:find('eligibility fixture failure',1,true))
+      test_notifications={}]])
+  end)
   test("typing and backspace reset manual selection to the latest first item", function()
     lua([[require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)
       cb({items={{label='alpha'},{label='alphaZ'}},reusable=true})

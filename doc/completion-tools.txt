@@ -32,6 +32,8 @@ select_prev(opts?)       Move selection backwards.
 get_items()              Return current CompletionItems (read-only).
 get_selected_item()      Return the selected CompletionItem or nil.
 get_context()            Return current request context (read-only).
+get_status()             Return a detached runtime diagnostic snapshot.
+show_status()            Print and return the diagnostic snapshot.
 show_documentation()     Resolve/show selected item documentation.
 scroll_documentation_up()
 scroll_documentation_down()
@@ -42,6 +44,15 @@ register_source(id, source)
 refresh_keymaps()         Reinstall mappings after lazy dependencies change them.
 refresh_cmdline()         Refresh an existing external command-line menu.
 dispose()                Release resources and restore owned keymaps.
+
+:CompletionToolsStatus prints engine/source status after setup. get_status()
+reports readiness, stale retained frames, last request reason and per-source
+status, elapsed_ms, raw_count, shown_count, requests, cache_hits, responses,
+timeouts, errors and last_error. Counters reset on setup. Cache hits exclude
+provider requests; timings include async waiting/processing, not terminal drawing.
+Raw counts follow transforms and precede quotas/deduplication; shown counts are
+current menu contributions. Callback errors survive later successful requests.
+:checkhealth completion-tools includes status, deadlines and missing sources.
 
 accept.mode="replace" is the default. "insert" preserves suffix text using an
 InsertReplaceEdit's insert range. accept({mode="insert"}) overrides one action.

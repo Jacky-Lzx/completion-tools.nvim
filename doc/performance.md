@@ -77,8 +77,10 @@ After warmup at each size, 240 calls rotate through `c`, `co`, `com`, `comp`, `c
 and `cBN`. Sources and UI are excluded. completion-tools returns the top 50;
 Blink's native fuzzy API returns all sorted matches. This compares each plugin's
 processing path, rather than equivalent algorithms or equal-output throughput.
-The Lua matcher supports ASCII-insensitive matching, subsequences and camel-case
-boundary bonuses; it has no typo correction, Unicode case folding or frecency.
+The measured Lua matcher used ASCII-insensitive matching, subsequences and
+camel-case boundary bonuses, without typo correction, Unicode case folding or
+frecency. Optional history, proximity and one-typo ranking were added after this
+recorded run and are disabled by default; these numbers do not measure them.
 
 | Candidates | completion-tools p50 | p95 | Blink Rust p50 | p95 |
 | ---: | ---: | ---: | ---: | ---: |

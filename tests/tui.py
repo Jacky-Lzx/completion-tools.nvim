@@ -379,6 +379,23 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"\t!\x1b")
         wait(lambda s: s["mode"] == "n" and s.get("lines") ==
              ["    block", "      changed", "    !TAIL"], "snippet final stop preserves suffix and indentation")
+        os.write(primary, b":lua completion_tui_diagnostics()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "" and "diagnostics" in s, "diagnostic fixture")
+        os.write(primary, b"ia")
+        wait(lambda s: s.get("diagnostics", {}).get("sources", {}).get("diag", {}).get("status") == "pending",
+             "live pending diagnostic")
+        wait(lambda s: s["can_accept"] and s["diagnostics"]["sources"]["diag"]["raw_count"] == 2,
+             "completed diagnostic counts")
+        os.write(primary, b"l")
+        snapshot = wait(lambda s: s["can_accept"] and s["diagnostics"]["sources"]["diag"]["cache_hits"] == 1,
+                        "live cache diagnostic")
+        assert snapshot["diagnostics"]["sources"]["diag"]["requests"] == 1, snapshot
+        assert snapshot["diagnostics"]["sources"]["diag"]["shown_count"] == 1, snapshot
+        os.write(primary, b"(\x1b")
+        wait(lambda s: s["mode"] == "n" and s["diagnostics"]["last_request_reason"] == "trigger_filtered",
+             "diagnostic rejection survives leaving Insert mode")
+        os.write(primary, b":silent CompletionToolsStatus\r")
+        wait(lambda s: s["mode"] == "n", "terminal diagnostic command")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:

@@ -7,7 +7,11 @@ function M.run(args)
   local run = { records = records }
   for _, id in ipairs(args.ids) do
     local options = args.options[id]
-    records[id] = { status = options.enabled and "waiting" or "disabled", matches = false }
+    records[id] = {
+      status = options.error and "error" or (options.enabled and "waiting" or "disabled"),
+      error = options.error,
+      matches = false,
+    }
   end
   local function close(record)
     if record.timer then
@@ -136,6 +140,9 @@ function M.run(args)
     for _, record in pairs(records) do
       close(record)
       if record.status == "pending" or record.status == "waiting" then
+        if record.started then
+          record.elapsed_ms = (vim.uv.hrtime() - record.started) / 1e6
+        end
         record.status = "cancelled"
       end
       if record.cancel then

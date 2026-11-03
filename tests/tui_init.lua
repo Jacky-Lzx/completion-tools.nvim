@@ -76,6 +76,24 @@ function _G.completion_tui_insertion()
     },
   })
 end
+function _G.completion_tui_diagnostics()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  require("completion-tools").setup({
+    sources = { "diag" },
+    providers = {
+      diag = {
+        max_items = 1,
+        complete = function(_, cb)
+          vim.defer_fn(function()
+            cb({ items = { { label = "alpha" }, { label = "alpine" } }, reusable = true })
+          end, 100)
+        end,
+      },
+    },
+  })
+  completion_diagnostics = true
+end
 function _G.completion_tui_manual()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -586,6 +604,9 @@ timer:start(
     data.manual = completion_manual
     data.copilot = completion_copilot
     data.lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+    if completion_diagnostics then
+      data.diagnostics = cmp.get_status()
+    end
     vim.fn.writefile({ vim.json.encode(data) }, vim.env.COMPLETION_TUI_STATE)
   end)
 )
