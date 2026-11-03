@@ -6,6 +6,7 @@ M.defaults = {
   trigger_characters = { "." },
   min_keyword_length = 1,
   debounce_ms = 0,
+  timeout_ms = 2000,
   max_items = 50,
   preselect = true,
   ranking = {
@@ -159,6 +160,33 @@ function M.validate(opts)
     return type(value) == "number" and value >= minimum and value % 1 == 0
   end
   local ranking = config.ranking
+  assert(integer(config.timeout_ms, 0), "completion-tools: invalid timeout_ms")
+  local visiting, visited = {}, {}
+  local function visit(id)
+    assert(not visiting[id], "completion-tools: cyclic provider fallback_for: " .. id)
+    if visited[id] then
+      return
+    end
+    visiting[id] = true
+    local provider = config.providers[id] or {}
+    if provider.timeout_ms ~= nil then
+      assert(integer(provider.timeout_ms, 0), "completion-tools: invalid provider timeout_ms")
+    end
+    if provider.max_items ~= nil then
+      assert(integer(provider.max_items, 1), "completion-tools: invalid provider max_items")
+    end
+    if provider.fallback_for ~= nil then
+      assert(type(provider.fallback_for) == "table", "completion-tools: invalid fallback_for")
+      for _, dependency in ipairs(provider.fallback_for) do
+        assert(type(dependency) == "string", "completion-tools: fallback_for expects source IDs")
+        visit(dependency)
+      end
+    end
+    visiting[id], visited[id] = nil, true
+  end
+  for id in pairs(config.providers) do
+    visit(id)
+  end
   assert(
     type(ranking.history.enabled) == "boolean" and type(ranking.proximity.enabled) == "boolean",
     "completion-tools: invalid ranking flags"

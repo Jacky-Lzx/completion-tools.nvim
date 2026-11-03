@@ -93,6 +93,15 @@ Opt-in sources: dictionary, spell, copilot. All are independent of Blink.
 snippets.preset="luasnip" enables the optional literal-trigger LuaSnip adapter.
 cmdline.enabled=true enables command/search completion; see below.
 
+Global timeout_ms=2000 bounds pending async requests; 0 disables the deadline.
+providers[id].timeout_ms overrides it. Timeouts cancel requests, reject late
+results, and keep already received partial candidates.
+providers[id].max_items caps matched/ranked candidates before global merging.
+providers[id].fallback_for={"lsp"} waits for all named sources to finish without
+matches. Disabled/unselected sources count as empty. Chains are supported;
+cycles are rejected. Timeouts/errors can release fallback sources. Synchronous
+Lua callbacks and native getcompletion() cannot be interrupted by deadlines.
+
                                                    *completion-tools-copilot*
 Add "copilot" to sources and install/configure zbirenbaum/copilot.lua.
 Disable copilot.lua's suggestion and panel to use only this menu:

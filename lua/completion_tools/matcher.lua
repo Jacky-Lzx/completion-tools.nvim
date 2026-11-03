@@ -78,6 +78,20 @@ local function better(a, b)
   return a.index < b.index
 end
 
+function M.has_match(group, ctx, opts)
+  for _, item in ipairs(group.items) do
+    if type(item.label) == "string" and not (group.source_id == "buffer" and item.label == ctx.prefix) then
+      local start_col = group.start_cols and group.start_cols[item] or group.start_col
+      local query = lower(ctx.before:sub(start_col + 1))
+      local text = item.filterText or item.label
+      if M.score(text, query) or (opts and opts.max_typos == 1 and typo_score(text, query)) then
+        return true
+      end
+    end
+  end
+  return false
+end
+
 -- Keep only the best K in a min-heap, instead of sorting every match.
 function M.filter(groups, ctx, limit, opts)
   local heap, keys, index = {}, {}, 0

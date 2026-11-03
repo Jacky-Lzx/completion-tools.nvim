@@ -23,6 +23,30 @@ function _G.completion_tui_history()
     },
   })
 end
+function _G.completion_tui_fallback()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  require("completion-tools").setup({
+    sources = { "main", "fallback" },
+    timeout_ms = 40,
+    providers = {
+      main = {
+        complete = function(_, cb)
+          vim.defer_fn(function()
+            cb({ items = { { label = "alWrong" } } })
+          end, 250)
+        end,
+      },
+      fallback = {
+        fallback_for = { "main" },
+        max_items = 1,
+        complete = function(_, cb)
+          cb({ items = { { label = "alphanumeric" }, { label = "alpha" } } })
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_manual()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -260,6 +284,9 @@ function _G.completion_tui_height()
   vim.cmd("normal! 25\25")
   require("completion-tools").setup({
     sources = { "fast", "slow" },
+    -- Leave enough margin for the terminal polling loop's 45 ms input cadence.
+    -- The default 50 ms deadline is covered by attached-UI and unit tests.
+    menu = { shrink_delay_ms = 150 },
     documentation = { auto_show = false },
     providers = {
       fast = {

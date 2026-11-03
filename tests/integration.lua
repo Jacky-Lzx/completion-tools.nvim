@@ -515,6 +515,58 @@ local ok, err = xpcall(function()
     )
     lua("vim.fn.delete(vim.fs.dirname(history_path),'rf')")
   end)
+  test("fallback waits for completion and uses matching results rather than raw counts", function()
+    lua([[fallback_calls=0
+      require('completion_tools').setup({sources={'fallback','main'},providers={
+        main={complete=function(_,cb) main_reply=cb;cb({items={{label='unrelated'}},pending=true}) end},
+        fallback={fallback_for={'main'},max_items=1,complete=function(_,cb)
+          fallback_calls=fallback_calls+1;cb({items={{label='alphanumeric'},{label='alpha'}}})
+        end},
+      }})]])
+    input("ial")
+    wait("return main_reply~=nil")
+    eq(0, lua("return fallback_calls"))
+    lua("main_reply({items={{label='unrelated'}}})")
+    wait("return require('completion_tools')._can('accept')")
+    eq(1, lua("return fallback_calls"))
+    eq(
+      { "alpha" },
+      lua("return vim.tbl_map(function(i) return i.label end,require('completion_tools').get_items())")
+    )
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line()=='alpha!'")
+  end)
+  test("matching main results suppress fallback even when configured first", function()
+    lua([[fallback_calls=0
+      require('completion_tools').setup({sources={'fallback','main'},providers={
+        main={complete=function(_,cb) cb({items={{label='alpha'}}}) end},
+        fallback={fallback_for={'main'},complete=function(_,cb)
+          fallback_calls=fallback_calls+1;cb({items={{label='alpine'}}})
+        end},
+      }})]])
+    input("ial")
+    wait("return require('completion_tools')._can('accept')")
+    eq(0, lua("return fallback_calls"))
+    eq(1, lua("return #require('completion_tools').get_items()"))
+  end)
+  test("source deadline closes retained menus and ignores late callbacks", function()
+    lua([[timeout_cancelled=0
+      require('completion_tools').setup({sources={'main'},timeout_ms=50,providers={
+        main={complete=function(ctx,cb)
+          if ctx.prefix=='a' then cb({items={{label='alpha'}}}) else timeout_reply=cb end
+          return function() timeout_cancelled=timeout_cancelled+1 end
+        end},
+      }})]])
+    input("ia")
+    wait("return require('completion_tools')._can('accept')")
+    input("l")
+    wait("return timeout_reply~=nil")
+    wait("return not require('completion_tools').is_menu_visible()")
+    assert(lua("return timeout_cancelled>0"))
+    lua("timeout_reply({items={{label='alpha'}}})")
+    vim.wait(40)
+    assert(not lua("return require('completion_tools').is_menu_visible()"))
+  end)
   test("typing and backspace reset manual selection to the latest first item", function()
     lua([[require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)
       cb({items={{label='alpha'},{label='alphaZ'}},reusable=true})

@@ -152,16 +152,32 @@ local function render(pending)
     return
   end
   local groups = {}
+  local matcher = require("completion_tools.matcher")
+  local match_options = {
+    max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
+    bonus = state.ranking.scorer(ctx),
+  }
   for _, id in ipairs(state.source_ids) do
-    if state.groups[id] then
-      groups[#groups + 1] = state.groups[id]
+    local suppressed = false
+    for _, dependency in ipairs((state.config.providers[id] or {}).fallback_for or {}) do
+      local record = state.run and state.run.records[dependency]
+      suppressed = suppressed or (record and (record.matches or record.status == "skipped"))
+    end
+    if state.groups[id] and not suppressed then
+      local source_group = state.groups[id]
+      local cap = (state.config.providers[id] or {}).max_items
+      if cap then
+        source_group = vim.tbl_extend("force", source_group, {
+          items = vim.tbl_map(function(entry)
+            return entry.item
+          end, matcher.filter({ source_group }, ctx, cap, match_options)),
+        })
+      end
+      groups[#groups + 1] = source_group
     end
   end
   local previous = selected_entry()
-  local items = require("completion_tools.matcher").filter(groups, ctx, state.config.max_items, {
-    max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
-    bonus = state.ranking.scorer(ctx),
-  })
+  local items = matcher.filter(groups, ctx, state.config.max_items, match_options)
   -- An empty partial result is not a final "no matches". Keep the last ready
   -- frame until a useful replacement or the last provider's response arrives.
   if #items == 0 and pending and ui.visible() then
@@ -263,7 +279,7 @@ local function request(manual, override)
   else
     ui.reposition(ctx, state.config)
   end
-  local render_queued, pending = false, {}
+  local render_queued, run = false, nil
   local function queue_render()
     if render_queued then
       return
@@ -272,97 +288,91 @@ local function request(manual, override)
     vim.schedule(function()
       render_queued = false
       if valid(generation, ctx) then
-        render(next(pending) ~= nil)
+        render(run and run.pending() or false)
       end
     end)
   end
-  local started = false
+  local options, priorities = {}, {}
   for priority, id in ipairs(ids) do
-    local provider = state.providers[id]
-    if provider then
-      local provider_config = state.config.providers[id] or {}
-      local active = provider_config.enabled
-      if active == nil then
-        active = true
-      end
-      if type(active) == "function" then
-        active = active(ctx)
-      end
-      if active then
-        started = true
-        pending[id] = true
-        local old = state.cache[id]
-        local function receive(response)
-          if not valid(generation, ctx) then
-            return
-          end
-          response = response or { items = {} }
-          pending[id] = response.pending == true or nil
-          local items = response.items or response
-          if provider_config.transform_items then
-            items = provider_config.transform_items(ctx, items)
-          end
-          local result = {
-            items = items,
-            source_id = id,
-            priority = priority,
-            score_offset = provider_config.score_offset or provider.score_offset or 0,
-            start_col = response.start_col or ctx.start_col,
-            context = response.context or ctx,
-          }
-          for _, item in ipairs(items) do
-            local edit = item.textEdit
-            local range = edit and (edit.range or edit.replace or edit.insert)
-            if range and range.start.line == ctx.row then
-              result.start_cols = result.start_cols or {}
-              local encoding = item._encoding or "utf-8"
-              result.start_cols[item] = encoding == "utf-8" and range.start.character
-                or vim.str_byteindex(ctx.line, encoding, range.start.character, false)
-            end
-          end
-          state.groups[id] = result
-          state.cache[id] = {
-            group = result,
-            context = ctx,
-            reusable = response.reusable and not response.pending,
-            incomplete = response.is_incomplete,
-          }
-          queue_render()
-        end
-        if old and old.reusable and context.extends(old.context, ctx) then
-          pending[id] = nil
-          state.groups[id] = old.group
-          queue_render()
-        else
-          ctx.incomplete = old and old.incomplete or false
-          local ok, cancel = pcall(provider.complete, ctx, function(response)
-            -- Providers may call from a libuv callback. Always cross into the
-            -- editor event loop before accessing Neovim or plugin state.
-            if vim.in_fast_event() then
-              vim.schedule(function()
-                receive(response)
-              end)
-            else
-              receive(response)
-            end
-          end)
-          if ok then
-            if type(cancel) == "function" then
-              state.cancels[#state.cancels + 1] = cancel
-            end
-          else
-            pending[id] = nil
-            report(id .. ": " .. tostring(cancel))
-            queue_render()
-          end
-        end
-      end
+    local configured = state.config.providers[id] or {}
+    local active = configured.enabled
+    if active == nil then
+      active = true
     end
+    if type(active) == "function" then
+      active = active(ctx)
+    end
+    options[id] = {
+      enabled = state.providers[id] ~= nil and active,
+      timeout_ms = configured.timeout_ms or state.config.timeout_ms,
+      fallback_for = configured.fallback_for,
+    }
+    priorities[id] = priority
   end
-  -- No enabled providers must also close a previous menu.
-  if not started then
-    queue_render()
-  end
+  run = require("completion_tools.scheduler").run({
+    ids = ids,
+    options = options,
+    changed = queue_render,
+    failed = function(id, err)
+      report(id .. ": " .. tostring(err))
+    end,
+    start = function(id, receive)
+      local old = state.cache[id]
+      if old and old.reusable and context.extends(old.context, ctx) then
+        receive({ cached = old })
+      else
+        ctx.incomplete = old and old.incomplete or false
+        return state.providers[id].complete(ctx, receive)
+      end
+    end,
+    receive = function(id, response)
+      if not valid(generation, ctx) then
+        return false
+      end
+      response = response or { items = {} }
+      if response.cached then
+        state.groups[id] = response.cached.group
+        return require("completion_tools.matcher").has_match(response.cached.group, ctx, {
+          max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
+        })
+      end
+      local configured = state.config.providers[id] or {}
+      local items = response.items or response
+      if configured.transform_items then
+        items = configured.transform_items(ctx, items)
+      end
+      local result = {
+        items = items,
+        source_id = id,
+        priority = priorities[id],
+        score_offset = configured.score_offset or state.providers[id].score_offset or 0,
+        start_col = response.start_col or ctx.start_col,
+        context = response.context or ctx,
+      }
+      for _, item in ipairs(items) do
+        local edit = item.textEdit
+        local range = edit and (edit.range or edit.replace or edit.insert)
+        if range and range.start.line == ctx.row then
+          result.start_cols = result.start_cols or {}
+          local encoding = item._encoding or "utf-8"
+          result.start_cols[item] = encoding == "utf-8" and range.start.character
+            or vim.str_byteindex(ctx.line, encoding, range.start.character, false)
+        end
+      end
+      state.groups[id] = result
+      state.cache[id] = {
+        group = result,
+        context = ctx,
+        reusable = response.reusable and not response.pending,
+        incomplete = response.is_incomplete,
+      }
+      return require("completion_tools.matcher").has_match(result, ctx, {
+        max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
+      })
+    end,
+  })
+  state.run = run
+  state.cancels[#state.cancels + 1] = run.cancel
   return true
 end
 

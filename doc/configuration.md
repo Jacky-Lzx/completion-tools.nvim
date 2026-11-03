@@ -122,6 +122,9 @@ Each `providers[id]` supports:
 | `enabled` | Boolean or `function(ctx) -> boolean` |
 | `score_offset` | Add an offset to the provider's match scores |
 | `transform_items(ctx, items)` | Filter or modify the returned item list |
+| `timeout_ms` | Total request deadline; defaults to global `timeout_ms = 2000`; `0` disables |
+| `max_items` | Maximum matched/ranked items contributed by this source |
+| `fallback_for` | Source IDs which must all finish without matches before this source runs |
 | `module`, `opts` | Load a custom module exposing `new(opts)` |
 | `complete`, `resolve`, etc. | Define a provider inline; see [custom sources](#custom-sources) |
 
@@ -138,6 +141,27 @@ providers = {
   },
 }
 ```
+
+To use buffer words only when LSP has no matches:
+
+```lua
+sources = { "lsp", "buffer" },
+providers = {
+  lsp = { timeout_ms = 1500, max_items = 30 },
+  buffer = { fallback_for = { "lsp" }, max_items = 10 },
+},
+```
+
+Fallback waits for final responses (including streaming sources). It tests the
+current query after transforms/matching, so an unrelated nonempty list counts as
+no matches. All listed dependencies must have no matches; disabled/unselected
+sources count as empty. Chains are supported and cycles are rejected at setup.
+A skipped fallback suppresses its downstream fallback chain. Dependencies should
+also appear in `sources` when you want them queried. Sources run independently
+otherwise. Limits apply after ranking, before global merging/deduplication.
+Deadlines cancel pending requests and reject late responses; partial results
+already received remain usable. A timeout can release waiting fallback sources.
+Timeouts cannot interrupt synchronous Lua callbacks or native `getcompletion()`.
 
 ## Keymaps
 

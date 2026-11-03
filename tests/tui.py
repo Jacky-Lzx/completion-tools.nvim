@@ -358,6 +358,16 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         wait(lambda s: s.get("selected") == "alpine" and s["can_accept"], "learned ordering after setup")
         os.write(primary, b"\t!\x1b")
         wait(lambda s: s["mode"] == "n" and s["line"] == "alpine!", "accept learned candidate")
+        os.write(primary, b":lua completion_tui_fallback()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "", "fallback deadline fixture")
+        os.write(primary, b"ial")
+        wait(lambda s: s.get("selected") == "alpha" and s["can_accept"], "fallback after timeout")
+        until = time.monotonic() + 0.3
+        while time.monotonic() < until:
+            snapshot = wait(lambda s: s["visible"], "sample fallback after stale main reply")
+            assert snapshot.get("selected") == "alpha" and len(snapshot["menu_rows"]) == 1, snapshot
+        os.write(primary, b"\t!\x1b")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "alpha!", "accept capped fallback")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:
