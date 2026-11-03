@@ -463,6 +463,26 @@ local ok, err = xpcall(function()
       eq(expected, lua("return require('completion_tools').get_selected_item().label"))
     end)
   end
+  test("same-label overload selection survives reordered streaming items", function()
+    lua([[require('completion_tools').setup({sources={'stream'},providers={stream={
+      complete=function(_,cb)
+        overload_reply=cb
+        cb({items={{label='open',kind=3,detail='open(path)',data={id=1}},
+          {label='open',kind=3,detail='open(fd)',data={id=2}}}})
+      end,
+      execute=function(entry) accepted_overload=entry.item.data.id end,
+    }}})]])
+    input("iop")
+    wait("return #require('completion_tools').get_items()==2 and require('completion_tools')._can('accept')")
+    input("<C-n>")
+    wait("return require('completion_tools').get_selected_item().data.id==2")
+    lua([[overload_reply({items={{label='open',kind=3,detail='open(fd)',data={id=2}},
+      {label='open',kind=3,detail='open(path)',data={id=1}}}})]])
+    wait("return require('completion_tools').get_items()[1].data.id==2")
+    eq(2, lua("return require('completion_tools').get_selected_item().data.id"))
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line()=='open!' and accepted_overload==2")
+  end)
   test("typing and backspace reset manual selection to the latest first item", function()
     lua([[require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)
       cb({items={{label='alpha'},{label='alphaZ'}},reusable=true})

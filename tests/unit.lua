@@ -74,6 +74,21 @@ test("top-k agrees with full ranking and deduplicates sources", function()
   eq(1, #result2)
   eq("lsp", result2[1].source_id)
 end)
+test("semantic identities retain overloads, imports and edit behavior", function()
+  local identity = require("completion_tools.identity")
+  local a = { label = "open", kind = 3, detail = "open(path)", data = { symbol = 1, module = "a" } }
+  local b = { label = "open", kind = 3, detail = "open(fd)", data = { symbol = 2, module = "b" } }
+  local copy = vim.deepcopy(a)
+  copy.data = { module = "a", symbol = 1 }
+  eq(identity.key(a), identity.key(copy))
+  local result = matcher.filter({ group({ a, b, copy }, "lsp") }, { before = "op", prefix = "op" }, 10)
+  eq(2, #result)
+  copy.additionalTextEdits = { { newText = "import other", range = {} } }
+  assert(identity.key(copy) ~= identity.key(a))
+  copy = vim.deepcopy(a)
+  copy.insertTextFormat = 2
+  assert(identity.key(copy) ~= identity.key(a))
+end)
 test("buffer source excludes the typed word only", function()
   local result = matcher.filter(
     { group({ { label = "apple" } }, "buffer"), group({ { label = "apple" } }, "lsp") },

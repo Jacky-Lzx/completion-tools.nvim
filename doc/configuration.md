@@ -521,6 +521,12 @@ After setup, `register_source("name", source)` adds or replaces a provider.
 
 ## API and selection lifecycle
 
+Plain words deduplicate across sources. Candidates with different signatures,
+JSON data, clients, edit ranges, additional edits, commands or snippet behavior
+retain separate identities, so overloads and alternative imports remain selectable.
+Object key ordering does not affect identity; streaming refreshes preserve the
+selected semantic candidate even when providers rebuild and reorder their tables.
+
 `require("completion-tools")` and `require("completion_tools")` expose the same module.
 See [the help reference](completion-tools.txt) for the full method list.
 Actions return `true` when handled, allowing keymap chains.

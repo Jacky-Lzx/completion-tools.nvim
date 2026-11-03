@@ -1,4 +1,5 @@
 local M = {}
+local identity = require("completion_tools.identity")
 local byte, find, lower = string.byte, string.find, string.lower
 
 -- ASCII scoring is intentional; non-ASCII bytes still match literally without
@@ -105,8 +106,7 @@ function M.filter(groups, ctx, limit)
             )
           )
         if competitive and not (group.source_id == "buffer" and item.label == ctx.prefix) then
-          local text = item.textEdit and item.textEdit.newText or item.insertText or item.label
-          local key = item.label .. "\0" .. text .. "\0" .. (item.kind or 0)
+          local key = identity.key(item)
           local candidate = { item = item, group = group, score = score, key = key, index = index }
           local existing = keys[key]
           if existing then
