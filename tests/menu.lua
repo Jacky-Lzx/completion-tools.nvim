@@ -181,6 +181,32 @@ test("lexical fallback, deprecation and whole UTF-8 match spans", function()
   local marks = span_for(spans, "CompletionToolsMatch")
   eq("中文", line:sub(marks[1][1] + 1, marks[2][2]))
 end)
+test("Copilot fields stay purple with match styles and custom theme overrides", function()
+  local e = entry({
+    label = 'print("hello")',
+    kind = 1,
+    deprecated = true,
+    labelDetails = { detail = "(value)", description = "AI" },
+  })
+  e.source_id = "copilot"
+  local layout = render.prepare({ e }, opts, 120)
+  local _, spans = render.row(layout, 1, e, { before = "pr", filetype = "lua" }, opts)
+  local purple = span_for(spans, "CompletionToolsCopilot")
+  eq(#layout.columns, #purple)
+  for _, span in ipairs(purple) do
+    eq(195, span[4])
+  end
+  assert(#span_for(spans, "CompletionToolsMatch") > 0)
+  assert(#span_for(spans, "CompletionToolsDeprecated") > 0)
+  e.source_id = "buffer"
+  local _, buffer_spans = render.row(layout, 1, e, ctx, opts)
+  eq(0, #span_for(buffer_spans, "CompletionToolsCopilot"))
+  require("completion_tools.ui").highlights()
+  eq(0xcba6f7, vim.api.nvim_get_hl(0, { name = "CompletionToolsCopilot" }).fg)
+  vim.api.nvim_set_hl(0, "CompletionToolsCopilot", { fg = "#aa66ff" })
+  require("completion_tools.ui").highlights()
+  eq(0xaa66ff, vim.api.nvim_get_hl(0, { name = "CompletionToolsCopilot" }).fg)
+end)
 test("command-line names are literal, keep matching and do not share syntax caches", function()
   for _, label in ipairs({ "write-local-help", "<Help>", "vim.lsp.buf.signature_help.Opts" }) do
     local e = { item = { label = label, kind = 18 }, source_id = "cmdline", start_col = 5 }

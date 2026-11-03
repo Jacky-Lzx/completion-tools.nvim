@@ -294,6 +294,34 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"\r")
         wait(lambda s: s["mode"] == "n" and s.get("executed") == "alpine" and not s["visible"],
              "native Enter executes accepted command")
+        os.write(primary, b":lua completion_tui_copilot()\r")
+        wait(lambda s: s["mode"] == "n" and s.get("copilot", {}).get("requests") == 0,
+             "Copilot fixture")
+        os.write(primary, b"ipr")
+        wait(lambda s: s.get("copilot", {}).get("requests") == 1, "initial Copilot request")
+        os.write(primary, b"i")
+        snapshot = wait(lambda s: s.get("selected") == 'print("fresh")'
+                        and "Copilot" in s.get("menu_screen", "")
+                        and s.get("copilot", {}).get("cancelled") == 1,
+                        "latest Copilot suggestion after cancelling old request")
+        rows = [row for row in snapshot["menu_rows"] if "Copilot" in row]
+        assert len(rows) == 3 and all("print_more" not in row for row in rows), snapshot
+        assert len(snapshot["copilot_marks"]) == 3 and all(
+            count == 4 for count in snapshot["copilot_marks"].values()), snapshot
+        wait(lambda s: b"38;2;203;166;247" in output, "purple Copilot RGB emitted to terminal")
+        os.write(primary, b"\x0e")
+        wait(lambda s: s.get("selected") == 'printf("fresh")', "Copilot candidate navigation")
+        # The cancelled response deliberately arrives late; it must not replace selection.
+        until = time.monotonic() + 0.35
+        while time.monotonic() < until:
+            snapshot = wait(lambda s: s.get("selected") == 'printf("fresh")', "late Copilot reply ignored")
+            assert "stale" not in snapshot.get("menu_screen", ""), snapshot
+        os.write(primary, b"\t!\x1b")
+        snapshot = wait(lambda s: s["mode"] == "n" and s.get("lines") ==
+                        ['中😀 = printf("fresh")', 'print("$1")!)'],
+                        "Unicode multiline Copilot acceptance and continued typing")
+        assert snapshot["copilot"]["accepted"] == ["2:printf"], snapshot
+        assert not snapshot["visible"], snapshot
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:
@@ -305,7 +333,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         if child.poll() is None:
             raise AssertionError(f"quit timed out: {state.read_text()}, terminal tail={output[-1800:]!r}")
         assert child.returncode == 0
-        print("tui: stable height, async selection, continuous typing/backspace, highlights, dictionary meanings and command-line acceptance passed")
+        print("tui: stable height, async selection, continuous input, highlights, dictionary, command-line and Copilot multiline acceptance passed")
     finally:
         if child.poll() is None:
             child.terminate()

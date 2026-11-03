@@ -60,6 +60,7 @@ M.defaults = {
     suggest_when_correct = false,
   },
   snippets = { preset = "default", collection = {} },
+  copilot = { debounce_ms = 150, max_items = 3 },
   cmdline = {
     enabled = false,
     auto_show = true,
@@ -153,6 +154,8 @@ function M.validate(opts)
     return type(value) == "number" and value >= minimum and value % 1 == 0
   end
   assert(integer(menu.shrink_delay_ms, 0), "completion-tools: invalid menu.shrink_delay_ms")
+  assert(integer(config.copilot.debounce_ms, 0), "completion-tools: invalid copilot.debounce_ms")
+  assert(integer(config.copilot.max_items, 1), "completion-tools: invalid copilot.max_items")
   assert(
     menu.inverse == "auto" or type(menu.inverse) == "boolean",
     'completion-tools: menu.inverse must be "auto", true or false'

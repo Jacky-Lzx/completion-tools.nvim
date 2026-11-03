@@ -73,9 +73,32 @@ path completion immediately after a slash.
 
                                                      *completion-tools-sources*
 Built-ins: lsp, path, buffer, snippets; optional Ex cmdline.
-Opt-in sources: dictionary, spell. Both are independent of Blink.
+Opt-in sources: dictionary, spell, copilot. All are independent of Blink.
 snippets.preset="luasnip" enables the optional literal-trigger LuaSnip adapter.
 cmdline.enabled=true enables command/search completion; see below.
+
+                                                   *completion-tools-copilot*
+Add "copilot" to sources and install/configure zbirenbaum/copilot.lua.
+Disable copilot.lua's suggestion and panel to use only this menu:
+>
+    require("copilot").setup({
+      suggestion = { enabled = false }, panel = { enabled = false },
+    })
+    require("completion-tools").setup({
+      sources = { "copilot", "lsp", "path", "buffer", "snippets" },
+      copilot = { debounce_ms = 150, max_items = 3 },
+    })
+<
+Authenticate with :Copilot auth. Only initialized, attached clients are used;
+Copilot's disable/detach and filetype policies are respected. No forced attach.
+Copilot loads only when its source is requested; lazy.nvim module loading works.
+Requests debounce independently, cancel on edits/hide/dispose and are not reused.
+The cycling API requests alternatives, retaining up to max_items unique edits
+(default 3); the service may return fewer. Copilot fields are purple (#cba6f7)
+through CompletionToolsCopilot, preserving matches and selected backgrounds.
+The first nonempty line appears in the menu, with the full insertion in docs.
+UTF-16 ranges and multiline edits are preserved. Acceptance notifies Copilot.
+There is no Copilot source in command-line mode. No Blink/nvim-cmp adapter needed.
 
                                                    *completion-tools-cmdline*
 cmdline = { enabled=false, auto_show=true, min_keyword_length=1,

@@ -45,6 +45,7 @@ function M.highlights()
     vim.api.nvim_set_hl(0, name, { default = true, link = target })
   end
   -- Foreground-only syntax groups preserve the selected row's PmenuSel background.
+  vim.api.nvim_set_hl(0, "CompletionToolsCopilot", { default = true, fg = "#cba6f7" })
   vim.api.nvim_set_hl(0, "CompletionToolsMatch", { default = true, bold = true, underline = true })
   vim.api.nvim_set_hl(0, "CompletionToolsDeprecated", { default = true, strikethrough = true })
   vim.api.nvim_set_hl(0, "CompletionToolsDocItalic", { default = true, italic = true })

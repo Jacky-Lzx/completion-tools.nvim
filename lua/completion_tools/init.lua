@@ -405,7 +405,7 @@ function M.setup(opts)
   -- setup may itself run inside Lazy's first InsertEnter callback.
   state.edit_buf, state.edit_tick = vim.api.nvim_get_current_buf(), vim.api.nvim_buf_get_changedtick(0)
   timer, doc_timer = vim.uv.new_timer(), vim.uv.new_timer()
-  for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline", "dictionary", "spell" }) do
+  for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline", "dictionary", "spell", "copilot" }) do
     state.providers[id] = require("completion_tools.sources." .. id).new(config[id] or {}, function()
       if state.context and state.context.bufnr == vim.api.nvim_get_current_buf() then
         request(state.manual, state.source_ids)

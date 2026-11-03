@@ -7,7 +7,7 @@ No build step or required third-party dependencies.
 
 *Live Lua language-server completions in Neovim, with syntax-colored signatures and documentation. [Reproduce the screenshots](doc/screenshots/README.md).*
 
-- **Ready to code:** LSP, async paths, buffer words and native snippets out of the box; optional LuaSnip support.
+- **Ready to code:** LSP, async paths, buffer words and native snippets out of the box; optional LuaSnip and Copilot support.
 - **Easy to read:** aligned columns, kind icons, highlighted matches and automatic documentation.
 - **Smooth while typing:** incremental word indexes, cancellation and reusable completion lists; the previous menu stays visible while results arrive.
 - **Beyond code:** opt-in command/search completion, custom dictionaries, native spelling suggestions and local WordNet definitions.
@@ -45,6 +45,23 @@ vim.lsp.config("*", {
 
 When lazy-loading, make your LSP configuration depend on this plugin so the module
 is available during server setup. `get_lsp_capabilities(base)` preserves other capabilities.
+
+### Copilot completions
+
+Install and configure [copilot.lua](https://github.com/zbirenbaum/copilot.lua), then
+add `"copilot"` to `sources`:
+
+```lua
+require("copilot").setup({ suggestion = { enabled = false }, panel = { enabled = false } })
+require("completion-tools").setup({
+  sources = { "copilot", "lsp", "path", "buffer", "snippets" },
+})
+```
+
+Authenticate with `:Copilot auth`. Suggestions appear in the normal menu and use
+the same accept keys, including multiline edits. See the
+[Copilot configuration](doc/configuration.md#copilot) for lazy loading and debounce.
+Up to three unique suggestions appear in purple; the service may return fewer.
 
 ## Everyday keys
 

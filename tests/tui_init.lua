@@ -8,6 +8,63 @@ vim.api.nvim_win_set_cursor(0, { 80, 0 })
 vim.cmd("normal! zb")
 require("completion-tools").setup({ sources = { "buffer" }, min_keyword_length = 0 })
 vim.api.nvim_set_hl(0, "Comment", { fg = "#a0a0a0" })
+function _G.completion_tui_copilot()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "中😀 = )" })
+  vim.api.nvim_win_set_cursor(0, { 1, #"中😀 = " })
+  vim.bo.filetype = "lua"
+  completion_copilot = { requests = 0, cancelled = 0, accepted = {} }
+  local client = { initialized = true }
+  function client:is_stopped()
+    return false
+  end
+  function client:cancel_request()
+    completion_copilot.cancelled = completion_copilot.cancelled + 1
+  end
+  package.loaded["copilot.client"] = {
+    get = function()
+      return client
+    end,
+    is_disabled = function()
+      return false
+    end,
+    buf_is_attached = function()
+      return true
+    end,
+  }
+  package.loaded["copilot.util"] = {
+    get_doc_params = function(overrides)
+      return vim.tbl_extend("force", vim.lsp.util.make_position_params(0, "utf-16"), overrides)
+    end,
+  }
+  package.loaded["copilot.api"] = {
+    get_completions_cycling = function(_, params, callback)
+      completion_copilot.requests = completion_copilot.requests + 1
+      local id = completion_copilot.requests
+      local stale = params.position.character == 8
+      vim.defer_fn(function()
+        local items = {}
+        for i, name in ipairs({ "print", "printf", "printlog", "print_more" }) do
+          items[i] = {
+            text = "中😀 = " .. name .. '("' .. (stale and "stale" or "fresh") .. '")\nprint("$1")',
+            uuid = tostring(id) .. ":" .. name,
+            range = { start = { line = 0, character = 0 }, ["end"] = params.position },
+          }
+        end
+        callback(nil, { completions = items })
+      end, stale and 300 or 60)
+      return true, id
+    end,
+    notify_accepted = function(_, params, callback)
+      table.insert(completion_copilot.accepted, params.uuid)
+      callback()
+    end,
+  }
+  require("completion-tools").setup({
+    sources = { "copilot" },
+    copilot = { debounce_ms = 20 },
+    documentation = { delay_ms = 0 },
+  })
+end
 function _G.completion_tui_triggers()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.bo.filetype = "lua"
@@ -321,6 +378,7 @@ timer:start(
             end
           end
           data.menu_source_attrs = {}
+          data.copilot_marks = {}
           for _, mark in
             ipairs(
               vim.api.nvim_buf_get_extmarks(
@@ -332,6 +390,10 @@ timer:start(
               )
             )
           do
+            if mark[4].hl_group == "CompletionToolsCopilot" then
+              local row = tostring(mark[2] + 1)
+              data.copilot_marks[row] = (data.copilot_marks[row] or 0) + 1
+            end
             if mark[2] == selected_row - 1 and mark[4].hl_group == "CompletionToolsSource" then
               local cell = vim.fn.strdisplaywidth(line:sub(1, mark[3]))
               data.menu_source_attrs[#data.menu_source_attrs + 1] = vim.fn.screenattr(at.row, at.col + cell)
@@ -417,6 +479,8 @@ timer:start(
       end
     end
     data.flicker = completion_flicker
+    data.copilot = completion_copilot
+    data.lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
     vim.fn.writefile({ vim.json.encode(data) }, vim.env.COMPLETION_TUI_STATE)
   end)
 )

@@ -10,6 +10,7 @@ local source_names = {
   cmdline = "Cmdline",
   dictionary = "Dict",
   spell = "Spell",
+  copilot = "Copilot",
 }
 
 M.components = {
@@ -225,6 +226,11 @@ function M.row(layout, index, entry, ctx, opts)
           add(start, start + math.min(retained, row.label_bytes), "CompletionToolsDeprecated", 210)
         end
       end
+    end
+    -- Keep every Copilot field purple while retaining match/deprecation styles
+    -- and the selected row's background. Other Text sources retain their colors.
+    if entry.source_id == "copilot" then
+      add(start, start + #value, "CompletionToolsCopilot", 195)
     end
   end
   return line .. string.rep(" ", math.max(0, layout.width - vim.fn.strdisplaywidth(line))), spans

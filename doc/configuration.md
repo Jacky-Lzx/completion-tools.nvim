@@ -47,6 +47,7 @@ require("completion-tools").setup({
     sort = "match", preselect_current_word = true, suggest_when_correct = false,
   },
   snippets = { preset = "default", collection = {} },
+  copilot = { debounce_ms = 150, max_items = 3 },
   cmdline = {
     enabled = false, auto_show = true, min_keyword_length = 1, types = { ":", "/", "?" },
   },
@@ -357,6 +358,44 @@ default, letting other providers appear first. Cold dictionaries and slow langua
 suggestions may arrive later without occupying the editor's main thread.
 User-init functions referenced by `spellsuggest=expr:...` are not copied to workers.
 
+## Copilot
+
+The opt-in `copilot` source uses [copilot.lua](https://github.com/zbirenbaum/copilot.lua)
+directly, without Blink or nvim-cmp adapters. With lazy.nvim, add this dependency
+to your completion-tools spec and include `"copilot"` in `opts.sources`:
+
+```lua
+dependencies = {
+  {
+    "zbirenbaum/copilot.lua",
+    opts = { suggestion = { enabled = false }, panel = { enabled = false } },
+  },
+},
+opts = {
+  sources = { "copilot", "lsp", "path", "buffer", "snippets" },
+  copilot = { debounce_ms = 150, max_items = 3 },
+  providers = { copilot = { score_offset = 50 } },
+},
+```
+
+Run `:Copilot auth` if needed. Copilot controls server startup, authentication,
+filetype eligibility and buffer attachment. Disabled, detached, unavailable or
+uninitialized clients return no items. The source never forces attachment.
+Loading completion-tools alone does not load Copilot; requesting this source
+loads its modules, allowing lazy.nvim's module loader to initialize copilot.lua.
+
+Requests debounce independently (150 ms by default; 0 disables it). Typing,
+hiding the menu and disposal cancel pending timers and in-flight requests.
+The cycling API requests alternatives; duplicates are removed and at most
+`copilot.max_items` (default 3) are retained. The service may return fewer.
+Copilot menu fields use the purple `CompletionToolsCopilot` highlight (`#cba6f7`),
+preserving the selected background and match emphasis. Override that group to
+customize the color; ordinary Text candidates retain their own highlighting.
+Generated candidates are never reused across edits. UTF-16 replacement ranges
+and multiline text are preserved; the menu shows the first nonempty line and
+the documentation shows the full insertion. Acceptance reports the selected
+suggestion's UUID to Copilot. Command-line completion never requests Copilot.
+
 ## Menu and highlighting
 
 The default layout is **kind icon | label, signature and description | kind | source**.
@@ -365,7 +404,7 @@ Each `columns` group can contain multiple components, separated by `gap` (defaul
 `source`, `label_detail`, `label_description`. The column list replaces defaults;
 components cannot repeat.
 
-Sources display as LSP, Buffer, Path, Snippets, Cmdline, Dict and Spell. Custom sources
+Sources display as LSP, Buffer, Path, Snippets, Cmdline, Dict, Spell and Copilot. Custom sources
 retain their IDs. Column widths are calculated across retained candidates and stay
 aligned while scrolling. Narrow windows compress labels first while retaining a
 readable namespace. Truncation uses display width; extmarks use UTF-8 byte ranges.
@@ -531,7 +570,7 @@ is omitted. `dispose()` closes UI, cancels work, releases caches and restores ma
 Built-in sources do not require Blink. Update your own LSP dependencies and
 capability function references; this repository does not modify global configuration.
 
-There is no Blink source compatibility layer, built-in Copilot/lazydev provider,
+There is no Blink source compatibility layer, built-in lazydev provider,
 automatic brackets, ghost text, signature help or persistent frecency. Custom
 sources can extend the plugin, but it is not a drop-in replacement for every Blink setup.
 The matcher supports ASCII-insensitive prefixes, subsequences and camel-case
