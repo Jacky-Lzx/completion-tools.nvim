@@ -72,6 +72,7 @@ M.defaults = {
   cmdline = {
     enabled = false,
     auto_show = true,
+    fuzzy = true,
     min_keyword_length = 1,
     types = { ":", "/", "?" },
     keymap = {
@@ -229,6 +230,7 @@ function M.validate(opts)
     "completion-tools: invalid cmdline flags"
   )
   assert(integer(cmdline.min_keyword_length, 0), "completion-tools: invalid cmdline.min_keyword_length")
+  assert(type(cmdline.fuzzy) == "boolean", "completion-tools: invalid cmdline.fuzzy")
   assert(
     type(cmdline.keymap) == "table" and type(cmdline.types) == "table",
     "completion-tools: invalid cmdline maps/types"

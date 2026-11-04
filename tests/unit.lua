@@ -105,6 +105,63 @@ test("configuration preserves empty source and keymap lists", function()
   assert(not pcall(require("completion_tools.config").validate, { max_items = 0 }))
   assert(not pcall(require("completion_tools.config").validate, { buffer = { batch_lines = 0 } }))
 end)
+test("command-line fuzzy defaults and opt-out respect native options", function()
+  local validate = require("completion_tools.config").validate
+  eq(true, validate({}).cmdline.fuzzy)
+  eq(false, validate({ cmdline = { fuzzy = false } }).cmdline.fuzzy)
+  assert(not pcall(validate, { cmdline = { fuzzy = "true" } }))
+  local source = require("completion_tools.sources.cmdline")
+  local saved = vim.o.wildoptions
+  vim.api.nvim_create_user_command("FixtureFuzzyAlpha", function() end, {})
+  local function complete(opts)
+    local result
+    source
+      .new(opts)
+      .complete({ before = "FxFzAp", prefix = "FxFzAp", completion_type = "command" }, function(reply)
+        result = vim.tbl_map(function(item)
+          return item.label
+        end, reply.items)
+      end)
+    return result
+  end
+  local ok, err = pcall(function()
+    vim.o.wildoptions = "tagfile"
+    eq({ "FixtureFuzzyAlpha" }, complete({ fuzzy = true }))
+    eq("tagfile", vim.o.wildoptions)
+    eq({}, complete({ fuzzy = false }))
+    eq("tagfile", vim.o.wildoptions)
+    vim.o.wildoptions = "tagfile,fuzzy"
+    eq({ "FixtureFuzzyAlpha" }, complete({ fuzzy = false }))
+    eq({ "FixtureFuzzyAlpha" }, complete({ fuzzy = true }))
+    eq("tagfile,fuzzy", vim.o.wildoptions)
+  end)
+  vim.o.wildoptions = saved
+  vim.api.nvim_del_user_command("FixtureFuzzyAlpha")
+  assert(ok, err)
+end)
+test("command-line fuzzy restores options after native completion errors", function()
+  local getcompletion, saved = vim.fn.getcompletion, vim.o.wildoptions
+  vim.o.wildoptions = "tagfile"
+  local called = false
+  vim.fn.getcompletion = function()
+    called = true
+    assert(vim.tbl_contains(vim.opt.wildoptions:get(), "fuzzy"))
+    error("fixture completion failure")
+  end
+  local result
+  local ok, err = pcall(function()
+    require("completion_tools.sources.cmdline")
+      .new({ fuzzy = true })
+      .complete({ before = "Fx", prefix = "Fx" }, function(reply)
+        result = reply.items
+      end)
+    eq(true, called)
+    eq({}, result)
+    eq("tagfile", vim.o.wildoptions)
+  end)
+  vim.fn.getcompletion, vim.o.wildoptions = getcompletion, saved
+  assert(ok, err)
+end)
 test("menu timers accept zero and reject invalid values", function()
   local validate = require("completion_tools.config").validate
   eq(50, validate({}).menu.shrink_delay_ms)

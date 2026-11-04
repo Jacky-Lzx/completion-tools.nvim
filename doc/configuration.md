@@ -56,7 +56,8 @@ require("completion-tools").setup({
   snippets = { preset = "default", collection = {} },
   copilot = { debounce_ms = 150, max_items = 3 },
   cmdline = {
-    enabled = false, auto_show = true, min_keyword_length = 1, types = { ":", "/", "?" },
+    enabled = false, auto_show = true, fuzzy = true,
+    min_keyword_length = 1, types = { ":", "/", "?" },
   },
 })
 ```
@@ -301,6 +302,11 @@ selection to finish before typing replacement text.
 `cmdline = { enabled = true }` enables `:`, `/` and `?` completion.
 Ex uses native `getcompletion()` for commands, options/values, files/directories,
 help, Lua members and declared user-command completions. Search uses buffer words.
+`cmdline.fuzzy=true` (default) temporarily enables native fuzzy matching for Ex
+completion, restoring `wildoptions` after each call, including failed calls.
+Set `cmdline.fuzzy=false` to follow your existing `wildoptions` instead.
+Neovim does not support native fuzzy matching for file/directory names; those
+continue to use wildcard expansion. Custom completers follow native semantics.
 Native ordering and matches are preserved; wildcards and escaped characters are
 not filtered again. Path insertion escapes spaces and other special characters.
 Replacement preserves modifiers, `no`/`inv` prefixes, Lua namespaces and trailing text.

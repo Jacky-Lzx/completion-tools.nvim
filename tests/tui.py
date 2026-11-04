@@ -282,18 +282,20 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b":")
         snapshot = wait(lambda s: s["mode"] == "c" and s["cmdline"] == "", "idle command line")
         assert not snapshot["visible"], snapshot
-        os.write(primary, b"CompletionTui")
+        os.write(primary, b"CmTui")
         snapshot = wait(lambda s: s["visible"] and s.get("selected") == "CompletionTuiAlpha",
-                        "terminal command menu")
+                        "fuzzy terminal command menu")
+        assert snapshot["wildoptions"] == "tagfile", snapshot
         assert snapshot["menu"]["row"] + snapshot["menu"]["height"] + 1 < snapshot["input_row"], snapshot
         os.write(primary, b"\x0e")
         snapshot = wait(lambda s: s.get("selected") == "CompletionTuiAlpine", "command selection")
-        assert snapshot["cmdline"] == "CompletionTui", snapshot
+        assert snapshot["cmdline"] == "CmTui", snapshot
         os.write(primary, b"\t")
         snapshot = wait(lambda s: s["cmdline"] == "CompletionTuiAlpine"
                         and "CompletionTuiAlpine" in s.get("cmdline_screen", ""),
                         "accepted command is immediately visible")
         assert snapshot["mode"] == "c" and not snapshot.get("executed"), snapshot
+        assert snapshot["wildoptions"] == "tagfile", snapshot
         os.write(primary, b"\r")
         wait(lambda s: s["mode"] == "n" and s.get("executed") == "alpine" and not s["visible"],
              "native Enter executes accepted command")

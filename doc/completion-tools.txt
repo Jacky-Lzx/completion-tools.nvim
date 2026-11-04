@@ -146,11 +146,15 @@ UTF-16 ranges and multiline edits are preserved. Acceptance notifies Copilot.
 There is no Copilot source in command-line mode. No Blink/nvim-cmp adapter needed.
 
                                                    *completion-tools-cmdline*
-cmdline = { enabled=false, auto_show=true, min_keyword_length=1,
+cmdline = { enabled=false, auto_show=true, fuzzy=true, min_keyword_length=1,
             types={":","/","?"} }
 
 Ex uses native getcompletion() (including custom user-command completions);
 search uses buffer words. Native order, wildcards and escaped paths are retained.
+fuzzy=true temporarily enables native fuzzy matching for Ex completion and
+restores 'wildoptions' even after errors. Set fuzzy=false to follow your existing
+'wildoptions'. File/directory names still use native wildcard expansion.
+Custom completers follow native semantics.
 Acceptance preserves modifiers, option prefixes, namespaces and trailing text.
 Empty command lines stay closed; empty arguments after a command may complete.
 

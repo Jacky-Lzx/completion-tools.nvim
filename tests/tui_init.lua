@@ -434,6 +434,7 @@ function _G.completion_tui_dictionary()
 end
 function _G.completion_tui_cmdline()
   vim.bo.filetype = "lua"
+  vim.o.wildoptions = "tagfile"
   require("completion-tools").setup({ sources = {}, cmdline = { enabled = true } })
   local path = vim.fn.tempname()
   vim.fn.mkdir(path .. "/doc", "p")
@@ -470,6 +471,7 @@ timer:start(
       paging_calls = completion_paging_calls,
       error = vim.v.errmsg,
       cmdline = vim.fn.getcmdline(),
+      wildoptions = vim.o.wildoptions,
       executed = vim.g.completion_tui_executed,
       can_accept = cmp._can("accept") == true,
     }

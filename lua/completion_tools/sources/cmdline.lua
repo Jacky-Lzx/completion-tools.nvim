@@ -20,10 +20,21 @@ local kinds = {
   ["function"] = 3,
   filetype = 14,
 }
-function M.new()
+function M.new(opts)
+  opts = opts or {}
   return {
     complete = function(ctx, callback)
+      -- getcompletion() follows wildoptions. Enable native fuzzy matching only
+      -- for this synchronous call, including when a custom completer throws.
+      local wildoptions = vim.o.wildoptions
+      local enable_fuzzy = opts.fuzzy ~= false and not vim.tbl_contains(vim.opt.wildoptions:get(), "fuzzy")
+      if enable_fuzzy then
+        vim.opt.wildoptions:append("fuzzy")
+      end
       local ok, matches = pcall(vim.fn.getcompletion, ctx.before, "cmdline", true)
+      if enable_fuzzy then
+        vim.o.wildoptions = wildoptions
+      end
       local items = {}
       local kind = kinds[ctx.completion_type] or (ctx.command and ctx.command:match("^set") and 10) or 1
       for index, label in ipairs(ok and matches or {}) do
