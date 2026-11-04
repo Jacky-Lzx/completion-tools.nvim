@@ -569,6 +569,15 @@ function M.setup(opts)
     })
   end
   vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = ui.highlights })
+  vim.api.nvim_create_autocmd("User", {
+    group = group,
+    pattern = { "ThemeToolsIconsChanged", "ThemeToolsReady" },
+    callback = function()
+      if state.context and M.is_menu_visible() then
+        ui.refresh_icons(state.items, state.selected, state.context, state.config)
+      end
+    end,
+  })
   vim.api.nvim_create_autocmd("FileType", {
     group = group,
     callback = function(args)

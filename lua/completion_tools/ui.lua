@@ -278,6 +278,11 @@ local function draw(items, selected, ctx, config, settled)
   paint(items, selected, ctx, config, layout, window_config, next_geometry)
 end
 
+function M.refresh_icons(items, selected, ctx, config)
+  frame_layout = nil
+  M.render(items, selected, ctx, config)
+end
+
 function M.render(items, selected, ctx, config)
   draw(items, selected, ctx, config, false)
 end

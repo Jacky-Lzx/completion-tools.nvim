@@ -33,12 +33,23 @@ local unknown = { "Unknown", "?", "Special" }
 function M.get(kind, icons)
   local definition = definitions[kind or 1] or unknown
   local name, icon = definition[1], definition[2]
+  local shared = package.loaded["theme_tools.icons"]
+  local group = "CompletionToolsKind" .. name
+  local mode
+  if type(shared) == "table" and type(shared.get) == "function" and icons ~= false then
+    mode = shared.current()
+    local shared_group
+    icon, shared_group = shared.get("lsp", name)
+    if icon ~= "" then
+      group = shared_group
+    end
+  end
   if icons == false then
     icon = ""
-  elseif type(icons) == "table" and icons[name] ~= nil then
+  elseif mode ~= "ascii" and mode ~= "none" and type(icons) == "table" and icons[name] ~= nil then
     icon = icons[name]
   end
-  return name, icon, "CompletionToolsKind" .. name
+  return name, icon, group
 end
 
 function M.highlights()

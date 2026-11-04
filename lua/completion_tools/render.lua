@@ -103,7 +103,18 @@ function M.prepare(items, opts, available, previous)
   end
   for _, group in ipairs(groups) do
     for j, name in ipairs(group) do
-      if not (name == "kind_icon" and opts.kind_icons == false) then
+      if
+        not (
+          name == "kind_icon"
+          and (
+            opts.kind_icons == false
+            or (
+              package.loaded["theme_tools.icons"]
+              and package.loaded["theme_tools.icons"].current() == "none"
+            )
+          )
+        )
+      then
         local width = 0
         for _, row in ipairs(rows) do
           width = math.max(width, vim.fn.strdisplaywidth(row[name]))
