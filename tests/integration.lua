@@ -1896,6 +1896,99 @@ local ok, err = xpcall(function()
     )
     lua("vim.wo.spell=false")
   end)
+  test("native Copilot server startup, three candidates and multiline acceptance", function()
+    lua([[
+      copilot_protocol_log=vim.fn.tempname()
+      vim.api.nvim_buf_set_lines(0,0,-1,false,{'中😀 = )'})
+      vim.api.nvim_win_set_cursor(0,{1,#'中😀 = '})
+      require('completion_tools').setup({sources={'copilot'},
+        copilot={debounce_ms=0,command={'python3','tests/fixtures/copilot_server.py',copilot_protocol_log}}})
+      assert(not require('completion_tools').get_status().sources.copilot.client.running)
+    ]])
+    input("ipr")
+    wait("return #require('completion_tools').get_items()==3", "native Copilot menu", 3000)
+    eq("print(1)", lua("return require('completion_tools').get_selected_item().label"))
+    assert(lua("return not package.loaded['copilot.client'] and not package.loaded['copilot.api']"))
+    input("<Tab>!")
+    wait(
+      [[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),{'中😀 = print(1)','print("done")!)'})]]
+    )
+    wait([[for _,line in ipairs(vim.fn.readfile(copilot_protocol_log)) do
+      local m=vim.json.decode(line)
+      if m.method=='notifyAccepted' and m.params.uuid=='candidate-1' then return true end
+    end return false]])
+    lua("vim.fn.delete(copilot_protocol_log)")
+  end)
+  test("Copilot status-only pane updates without becoming a completion", function()
+    lua([[
+      copilot_status_log=vim.fn.tempname()
+      require('completion_tools').setup({sources={'copilot'},
+        copilot={debounce_ms=80,command={'python3','tests/fixtures/copilot_server.py',copilot_status_log,'0.5'}}})
+      vim.api.nvim_buf_set_lines(0,0,-1,false,{'中😀 = )'})
+      vim.api.nvim_win_set_cursor(0,{1,#'中😀 = '})
+      function fixture_footer()
+        for _,win in ipairs(vim.api.nvim_list_wins()) do
+          if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='completion-tools-menu' then
+            local chunks=vim.api.nvim_win_get_config(win).footer or {}
+            local result={}
+            for _,chunk in ipairs(chunks) do result[#result+1]=chunk[1] end
+            return table.concat(result),win
+          end
+        end
+        return ''
+      end
+    ]])
+    input("ipr")
+    wait(
+      [[return fixture_footer():find(' ',1,true)~=nil and #require('completion_tools').get_items()==0]],
+      "Copilot loading icon"
+    )
+    assert(
+      lua(
+        [[local c=require('completion_tools');return #c.get_items()==0 and not c.accept() and not c.select_next() and c._can('show')]]
+      )
+    )
+    local status_win = lua("local _,win=fixture_footer();return win")
+    local first_frame = lua("return fixture_footer()")
+    assert(
+      vim.wait(300, function()
+        return lua("return fixture_footer()") ~= first_frame
+      end, 5),
+      "Copilot spinner did not advance while idle"
+    )
+    assert(lua("return #require('completion_tools').get_items()==0"))
+    wait([[return vim.trim(fixture_footer())=='' and #require('completion_tools').get_items()==3]])
+    eq(status_win, lua("local _,win=fixture_footer();return win"))
+    local ready_frame = lua("return fixture_footer()")
+    local selected_label = lua("return require('completion_tools').get_selected_item().label")
+    local menu_tick = lua(
+      "local _,win=fixture_footer();return vim.api.nvim_buf_get_changedtick(vim.api.nvim_win_get_buf(win))"
+    )
+    vim.wait(180)
+    eq(ready_frame, lua("return fixture_footer()"))
+    eq(selected_label, lua("return require('completion_tools').get_selected_item().label"))
+    eq(
+      menu_tick,
+      lua(
+        "local _,win=fixture_footer();return vim.api.nvim_buf_get_changedtick(vim.api.nvim_win_get_buf(win))"
+      )
+    )
+    lua([[
+      local native=vim.lsp.get_clients({name='completion-tools-copilot'})[1]
+      native.handlers.didChangeStatus(nil,{kind='Warning',message='offline'})
+    ]])
+    wait([[return vim.trim(fixture_footer())=='']])
+    input("<Esc>")
+    wait("return not require('completion_tools').is_menu_visible()")
+    lua([[local c=vim.lsp.get_clients({name='completion-tools-copilot'})[1]
+      c.handlers.didChangeStatus(nil,{kind='Normal'})]])
+    vim.wait(60)
+    assert(
+      not lua("return require('completion_tools').is_menu_visible()"),
+      "Status event reopened hidden menu"
+    )
+    lua("vim.fn.delete(copilot_status_log)")
+  end)
   test("command-line Tab accepts without executing", function()
     lua([[require('completion_tools').setup({cmdline={enabled=true}})]])
     input(":set nu")

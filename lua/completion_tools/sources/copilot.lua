@@ -1,4 +1,4 @@
--- Optional copilot.lua adapter. Do not load Copilot until this source is requested.
+-- Native Copilot completion source. The language server starts on demand.
 local M = {}
 
 local function normalise(raw, ctx, client)
@@ -44,6 +44,8 @@ end
 
 function M.new(opts)
   opts = opts or {}
+  local native = require("completion_tools.copilot")
+  local copilot = native.new(opts)
   local source, active = { score_offset = 50 }, nil
   local function cancel_active()
     if active then
@@ -57,12 +59,11 @@ function M.new(opts)
       callback({ items = {} })
       return
     end
-    local ok, copilot = pcall(require, "copilot.client")
-    if not ok or copilot.is_disabled() then
+    if not copilot.eligible(ctx.bufnr) then
       callback({ items = {} })
       return
     end
-    local cancelled, finished, timer, client, request_id = false, false, nil, nil, nil
+    local cancelled, finished, timer, client, request_id, cancel_start = false, false, nil, nil, nil, nil
     local function cancel()
       if cancelled then
         return
@@ -72,22 +73,24 @@ function M.new(opts)
         timer:stop()
         timer:close()
       end
+      if cancel_start then
+        cancel_start()
+      end
       if client and request_id and not finished then
         client:cancel_request(request_id)
       end
     end
     active = cancel
-    local function send()
+    local function send(ready_client)
       if cancelled then
         return
       end
-      client = copilot.get()
+      client = ready_client
       if
-        copilot.is_disabled()
+        not copilot.eligible(ctx.bufnr)
         or not client
         or not client.initialized
         or client:is_stopped()
-        or not copilot.buf_is_attached(ctx.bufnr)
         or not vim.api.nvim_buf_is_valid(ctx.bufnr)
         or vim.api.nvim_get_current_buf() ~= ctx.bufnr
         or vim.api.nvim_get_current_win() ~= ctx.winid
@@ -98,13 +101,16 @@ function M.new(opts)
         callback({ items = {} })
         return
       end
-      local params = require("copilot.util").get_doc_params({ bufnr = ctx.bufnr })
+      local params = native.params(ctx)
       local sent
       -- Cycling requests ask Copilot for alternatives instead of only its first suggestion.
-      sent, request_id = require("copilot.api").get_completions_cycling(client, params, function(err, result)
+      sent, request_id = client:request("getCompletionsCycling", params, function(err, result)
         finished = true
         if cancelled then
           return
+        end
+        if copilot.record_error then
+          copilot.record_error(err)
         end
         local items, seen = {}, {}
         if not err and result and result ~= vim.NIL then
@@ -134,30 +140,36 @@ function M.new(opts)
         end
         -- Never reuse generated edits after typing, even for longer prefixes.
         callback({ items = items })
-      end)
+      end, ctx.bufnr)
       if not sent and not finished then
         finished = true
         callback({ items = {} })
       end
     end
     if (opts.debounce_ms or 150) == 0 then
-      send()
+      cancel_start = copilot.ensure(ctx.bufnr, send)
     else
-      timer = vim.defer_fn(send, opts.debounce_ms or 150)
+      timer = vim.defer_fn(function()
+        cancel_start = copilot.ensure(ctx.bufnr, send)
+      end, opts.debounce_ms or 150)
     end
     return cancel
   end
   function source.execute(entry)
     local item = entry.item
-    if item._copilot_uuid and not item._copilot_client:is_stopped() then
-      require("copilot.api").notify_accepted(
-        item._copilot_client,
-        { uuid = item._copilot_uuid },
-        function() end
-      )
+    local client = item._copilot_client
+    if client and not client:is_stopped() then
+      if item._copilot_uuid then
+        client:request("notifyAccepted", { uuid = item._copilot_uuid }, function() end)
+      end
     end
   end
-  source.dispose = cancel_active
+  function source.dispose()
+    cancel_active()
+    copilot.dispose()
+  end
+  source.get_status = copilot.get_status
+
   return source
 end
 

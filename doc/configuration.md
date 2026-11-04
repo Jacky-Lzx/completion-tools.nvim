@@ -448,41 +448,76 @@ User-init functions referenced by `spellsuggest=expr:...` are not copied to work
 
 ## Copilot
 
-The opt-in `copilot` source uses [copilot.lua](https://github.com/zbirenbaum/copilot.lua)
-directly, without Blink or nvim-cmp adapters. With lazy.nvim, add this dependency
-to your completion-tools spec and include `"copilot"` in `opts.sources`:
+The opt-in source directly starts GitHub's
+[Copilot Language Server](https://github.com/github/copilot-language-server-release)
+using Neovim's LSP client. Install the server via `npm install -g
+@github/copilot-language-server`, Mason or your system package manager. A
+GitHub account with Copilot access is required. There is no `copilot.lua`
+dependency and no chat or separate suggestion UI.
 
 ```lua
-dependencies = {
-  {
-    "zbirenbaum/copilot.lua",
-    opts = { suggestion = { enabled = false }, panel = { enabled = false } },
-  },
-},
-opts = {
+require("completion-tools").setup({
   sources = { "copilot", "lsp", "path", "buffer", "snippets" },
-  copilot = { debounce_ms = 150, max_items = 3 },
-  providers = { copilot = { score_offset = 50 } },
-},
+  copilot = {
+    command = { "copilot-language-server", "--stdio" },
+    debounce_ms = 150,
+    max_items = 3,
+    show_status = true, -- Status in the completion window footer
+    filetypes = { markdown = false, text = false },
+    -- ["*"] = false in filetypes disables unlisted types.
+    -- should_attach = function(bufnr) return ... end,
+    settings = {}, -- Copilot server settings, e.g. http.proxy
+  },
+  providers = { copilot = { score_offset = 50, timeout_ms = 5000 } },
+})
 ```
 
-Run `:Copilot auth` if needed. Copilot controls server startup, authentication,
-filetype eligibility and buffer attachment. Disabled, detached, unavailable or
-uninitialized clients return no items. The source never forces attachment.
-Loading completion-tools alone does not load Copilot; requesting this source
-loads its modules, allowing lazy.nvim's module loader to initialize copilot.lua.
+The default `filetypes = {}` allows normal, listed buffers. Special/unlisted
+buffers are excluded; `should_attach(bufnr)` can further restrict attachment.
+For Mason installations outside PATH, set `command` to its executable path.
+For the JavaScript distribution, use `{ "node", "/path/to/dist/language-server.js",
+"--stdio" }` (Node.js 20.8+). Command lists replace defaults in full. Server
+credentials and authentication storage are managed by the official server.
+
+Commands:
+
+- `:CompletionToolsCopilot auth`: show the device code and open GitHub login.
+- `:CompletionToolsCopilot status`: show startup and server status/errors.
+- `:CompletionToolsCopilot disable` / `enable`: control completion globally.
+- `:CompletionToolsCopilot restart`: stop the client; the next request starts it.
+- `:CompletionToolsCopilot signout`: sign out through the official server.
+
+Remove the `copilot.lua` plugin spec and `require("copilot").setup()` when
+migrating. Replace `:Copilot auth` with `:CompletionToolsCopilot auth`.
+The server starts only on a Copilot request or explicit authentication; default
+completion-tools setup starts no Copilot process. Missing executables produce a
+warning with installation guidance; other completion sources keep working.
 
 Requests debounce independently (150 ms by default; 0 disables it). Typing,
 hiding the menu and disposal cancel pending timers and in-flight requests.
 The cycling API requests alternatives; duplicates are removed and at most
 `copilot.max_items` (default 3) are retained. The service may return fewer.
-Copilot menu fields use the purple `CompletionToolsCopilot` highlight (`#cba6f7`),
-preserving the selected background and match emphasis. Override that group to
-customize the color; ordinary Text candidates retain their own highlighting.
-Generated candidates are never reused across edits. UTF-16 replacement ranges
-and multiline text are preserved; the menu shows the first nonempty line and
-the documentation shows the full insertion. Acceptance reports the selected
-suggestion's UUID to Copilot. Command-line completion never requests Copilot.
+Copilot fields use `CompletionToolsCopilot` (purple, `#cba6f7`), preserving the
+selected background and match emphasis. Generated candidates are never reused
+across edits. UTF-16 ranges and multiline literal text are preserved. Acceptance
+reports the selected suggestion to Copilot. Command-line completion never
+requests Copilot. `copilot.show_status` (default `true`) displays the former Copilot
+status icons in the completion window footer: `` ready, `` disabled, `` warning
+or unavailable, and `` sign-in required. Waiting, startup and generation show
+`` with an animated dots spinner; an idle state with no suggestions uses a muted
+``. The animation advances every 80 ms while visible and stops on completion,
+hide or disposal. With no candidates, a small status-only window appears. Icons
+never become candidates; animation changes only the border, preserving selection,
+menu contents and geometry. Status notifications never reopen a dismissed menu.
+Set `show_status = false` to hide it. `:CompletionToolsStatus` and `:checkhealth completion_tools`
+also include the native client's status.
+
+Buffers attached to the native client are synchronized in full on open and then
+incrementally on edits through Neovim's LSP client. Completion requests contain
+the document URI/version and cursor position, so the local Copilot server has
+context both before and after the cursor. The current keyword only controls menu
+triggering/filtering. The official server prepares the final model prompt; this
+plugin does not choose an exact cloud context window.
 
 ## Menu and highlighting
 

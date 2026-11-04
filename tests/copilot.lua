@@ -5,12 +5,6 @@ local factory = require("completion_tools.sources.copilot")
 require("completion-tools").setup()
 assert(not package.loaded["copilot.client"], "Default setup must not load optional Copilot")
 require("completion-tools").dispose()
-local unavailable
-factory.new({ debounce_ms = 0 }).complete({}, function(result)
-  unavailable = result
-end)
-eq({}, unavailable.items)
-
 local disabled, attached, sent = false, true, true
 local requests, cancellations, accepted = {}, {}, {}
 local client = { initialized = true }
@@ -20,34 +14,30 @@ end
 function client:cancel_request(id)
   cancellations[#cancellations + 1] = id
 end
-package.loaded["copilot.client"] = {
-  get = function()
-    return client
-  end,
-  is_disabled = function()
-    return disabled
-  end,
-  buf_is_attached = function()
-    return attached
-  end,
-}
-package.loaded["copilot.util"] = {
-  get_doc_params = function(overrides)
-    return { bufnr = overrides.bufnr, doc = { position = { line = 0, character = 8 } } }
-  end,
-}
-package.loaded["copilot.api"] = {
-  get_completions_cycling = function(c, params, callback)
-    eq(client, c)
-    requests[#requests + 1] = { params = params, callback = callback }
-    return sent, #requests
-  end,
-  notify_accepted = function(c, params, callback)
-    eq(client, c)
+function client:request(method, params, callback, buf)
+  if method == "notifyAccepted" then
     accepted[#accepted + 1] = params.uuid
     callback()
-  end,
-}
+    return true
+  end
+  eq("getCompletionsCycling", method)
+  requests[#requests + 1] = { params = params, callback = callback, buf = buf }
+  return sent, #requests
+end
+local native = require("completion_tools.copilot")
+local real_new = native.new
+native.new = function()
+  return {
+    eligible = function()
+      return not disabled and attached
+    end,
+    ensure = function(_, cb)
+      cb(client.initialized and client or nil)
+      return function() end
+    end,
+    dispose = function() end,
+  }
+end
 vim.o.virtualedit = "onemore"
 vim.bo.filetype = "lua"
 local line = "中😀 = pr"
@@ -80,7 +70,9 @@ for _, state in ipairs({ "disabled", "detached", "uninitialized" }) do
 end
 disabled, attached, client.initialized = false, true, true
 complete()
-eq(ctx.bufnr, requests[1].params.bufnr)
+eq(ctx.bufnr, requests[1].buf)
+eq(8, requests[1].params.position.character)
+eq(vim.uri_from_bufnr(ctx.bufnr), requests[1].params.textDocument.uri)
 requests[1].callback(nil, {
   completions = {
     {
@@ -225,6 +217,34 @@ end
 for _, value in ipairs({ -1, 0, 0.5, "three" }) do
   assert(not pcall(require("completion_tools.config").validate, { copilot = { max_items = value } }))
 end
+native.new = real_new
+local format = require("completion_tools.copilot_status").format
+for _, case in ipairs({
+  { {}, { status = "pending" }, 0, "Waiting" },
+  { { running = true }, { status = "pending" }, 0, "Starting" },
+  { { running = true, initialized = true }, { status = "pending" }, 0, "Generating" },
+  { {}, { status = "done" }, 3, "Ready" },
+  { {}, { status = "done" }, 0, "No suggestions" },
+  { {}, { status = "timeout" }, 0, "Timed out" },
+  { { enabled = false }, {}, 0, "Disabled" },
+  { { server = { kind = "Error" } }, {}, 0, "Sign in required" },
+  { { last_error = "offline" }, {}, 0, "Unavailable" },
+}) do
+  local status = format(case[1], case[2], case[3])
+  eq(case[4], status.label)
+  assert(not status.text:find("Copilot:", 1, true))
+  if case[4] == "Waiting" or case[4] == "Starting" or case[4] == "Generating" then
+    eq("", status.text)
+    eq(10, #status.frames)
+    assert(status.frames[1] ~= status.frames[2])
+  else
+    eq(nil, status.frames)
+  end
+end
+eq("", format({}, { status = "done" }, 3).text)
+eq("", format({ enabled = false }, {}, 0).text)
+eq("", format({ last_error = "offline" }, {}, 0).text)
+eq("", format({ server = { kind = "Error" } }, {}, 0).text)
 print(
-  "copilot: optional loading, eligibility, UTF-16 multiline edits, literal text, cancellation and debounce passed"
+  "copilot: native requests, eligibility, UTF-16 multiline edits, literal text, cancellation and debounce passed"
 )

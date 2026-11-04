@@ -146,11 +146,30 @@ local function documentation(force)
   end
 end
 
+local function update_menu_status()
+  local ctx = state.context
+  local provider = state.providers.copilot
+  if
+    ctx
+    and ctx.mode == "insert"
+    and state.config.copilot.show_status
+    and vim.tbl_contains(state.source_ids or {}, "copilot")
+  then
+    local record = state.run and state.run.records.copilot
+    local client = provider and provider.get_status and provider.get_status()
+    local count = state.groups.copilot and #state.groups.copilot.items or 0
+    ui.set_status(require("completion_tools.copilot_status").format(client, record, count))
+  else
+    ui.set_status(nil)
+  end
+end
+
 local function render(pending)
   local ctx = state.context
   if not ctx or not context.same(ctx, current()) then
     return
   end
+  update_menu_status()
   local groups = {}
   local matcher = require("completion_tools.matcher")
   local match_options = {
@@ -404,6 +423,7 @@ local function request(manual, override)
   })
   state.run = run
   state.diagnostics.update(run.records)
+  queue_render()
   state.cancels[#state.cancels + 1] = function()
     close_timer(render_timer)
     render_timer = nil
@@ -600,6 +620,16 @@ function M.setup(opts)
       end
     end,
   })
+  vim.api.nvim_create_autocmd("User", {
+    group = group,
+    pattern = "CompletionToolsCopilotStatus",
+    callback = function()
+      if ui.visible() and state.context and context.same(state.context, current()) then
+        update_menu_status()
+        ui.reposition(state.context, state.config)
+      end
+    end,
+  })
   vim.api.nvim_create_autocmd("VimResized", {
     group = group,
     callback = function()
@@ -737,6 +767,9 @@ function M.get_status()
     end
     item.timeout_ms = options.timeout_ms or (state.config and state.config.timeout_ms)
     item.max_items = options.max_items
+    if id == "copilot" and state.providers[id] and state.providers[id].get_status then
+      item.client = state.providers[id].get_status()
+    end
   end
   local ok, active = pcall(enabled)
   return {
@@ -758,7 +791,12 @@ function M.show_status()
   return status
 end
 local function select(direction, opts)
-  if not state.ready or not ui.visible() or not context.same(state.context, current()) then
+  if
+    #state.items == 0
+    or not state.ready
+    or not ui.visible()
+    or not context.same(state.context, current())
+  then
     return false
   end
   -- Navigation follows screen direction; only the painted row order is reversed.
@@ -902,7 +940,7 @@ function M.snippet_backward()
 end
 function M._can(action)
   if action == "show" then
-    return not M.is_menu_visible() and enabled()
+    return (not M.is_menu_visible() or #state.items == 0) and enabled()
   end
   if action == "hide" then
     return M.is_menu_visible()
@@ -911,7 +949,7 @@ function M._can(action)
     return state.ready and selected_entry() ~= nil and context.same(state.context, current())
   end
   if action == "select_next" or action == "select_prev" then
-    return state.ready and M.is_menu_visible() and context.same(state.context, current())
+    return #state.items > 0 and state.ready and M.is_menu_visible() and context.same(state.context, current())
   end
   if action == "show_documentation" then
     return selected_entry() ~= nil

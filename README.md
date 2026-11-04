@@ -49,20 +49,28 @@ is available during server setup. `get_lsp_capabilities(base)` preserves other c
 
 ### Copilot completions
 
-Install and configure [copilot.lua](https://github.com/zbirenbaum/copilot.lua), then
-add `"copilot"` to `sources`:
+The built-in source connects directly to GitHub's
+[Copilot Language Server](https://github.com/github/copilot-language-server-release).
+Install the server once (or use your package manager/Mason):
+
+```sh
+npm install -g @github/copilot-language-server
+```
 
 ```lua
-require("copilot").setup({ suggestion = { enabled = false }, panel = { enabled = false } })
 require("completion-tools").setup({
   sources = { "copilot", "lsp", "path", "buffer", "snippets" },
 })
 ```
 
-Authenticate with `:Copilot auth`. Suggestions appear in the normal menu and use
-the same accept keys, including multiline edits. See the
-[Copilot configuration](doc/configuration.md#copilot) for lazy loading and debounce.
-Up to three unique suggestions appear in purple; the service may return fewer.
+Run `:CompletionToolsCopilot auth` to sign in; follow the displayed device code
+and browser flow. `:CompletionToolsCopilot status` shows the client state.
+No `copilot.lua`, Blink or nvim-cmp adapter is needed. When migrating, remove
+`copilot.lua` from your plugin configuration and its `require("copilot").setup()`.
+This integration provides completion only, using the normal menu with up to
+three purple suggestions. Its status uses Copilot icons in the completion window
+footer, with an animated spinner while waiting for suggestions. See [Copilot configuration](doc/configuration.md#copilot)
+for server paths, filetype policies and controls.
 
 ## Everyday keys
 

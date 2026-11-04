@@ -6,7 +6,7 @@ function M.check()
   else
     vim.health.error("Neovim 0.11 or newer is required")
   end
-  vim.health.ok("Pure Lua; no build step or external runtime dependencies")
+  vim.health.ok("Pure Lua completion engine; no build step")
   if package.loaded["blink.cmp"] or package.loaded.cmp then
     vim.health.warn("Another completion engine is loaded; disable it before enabling completion-tools")
   end
@@ -16,6 +16,16 @@ function M.check()
     return
   end
   vim.health.info("Engine state: " .. status.reason)
+  if status.sources.copilot then
+    local client = status.sources.copilot.client
+    if client and client.last_error then
+      vim.health.warn("Copilot: " .. client.last_error)
+    elseif client and client.running then
+      vim.health.ok("Copilot Language Server running")
+    else
+      vim.health.info("Copilot starts on demand; use :CompletionToolsCopilot status/auth")
+    end
+  end
   local ids = vim.tbl_keys(status.sources)
   table.sort(ids)
   for _, id in ipairs(ids) do

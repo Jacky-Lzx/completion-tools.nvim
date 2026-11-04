@@ -108,6 +108,9 @@ function M.format(status)
       item.timeouts or 0,
       item.errors or 0
     )
+    if item.client then
+      lines[#lines + 1] = "  client: " .. vim.inspect(item.client):gsub("\n", " ")
+    end
     if item.last_error then
       lines[#lines + 1] = "  " .. item.last_error
     end

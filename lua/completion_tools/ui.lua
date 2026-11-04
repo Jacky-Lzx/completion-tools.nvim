@@ -2,10 +2,11 @@ local M = {}
 local ns = vim.api.nvim_create_namespace("completion-tools-menu")
 local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
-local geometry, doc_item
+local geometry, doc_item, menu_status
 local frame_items, frame_selected
 local frame_layout, frame_lines, frame_spans, frame_config
 local shrink_timer, shrink_token
+local status_timer, status_token, status_frame = nil, nil, 1
 local render = require("completion_tools.render")
 
 local function cancel_shrink()
@@ -19,6 +20,58 @@ end
 
 local function valid(id)
   return id and vim.api.nvim_win_is_valid(id)
+end
+local function stop_status_animation()
+  status_token = nil
+  if status_timer and not status_timer:is_closing() then
+    status_timer:stop()
+    status_timer:close()
+  end
+  status_timer, status_frame = nil, 1
+end
+local function status_text()
+  if not menu_status then
+    return ""
+  end
+  local frame = menu_status.frames and menu_status.frames[status_frame] or nil
+  return menu_status.text .. (frame and " " .. frame or "")
+end
+local function status_footer(width)
+  if not menu_status then
+    return ""
+  end
+  local label = require("completion_tools.text").truncate(status_text(), width - 2)
+  return { { " " .. label .. " ", menu_status.highlight } }
+end
+local function sync_status_animation()
+  if not valid(win) or not menu_status or not menu_status.frames then
+    stop_status_animation()
+    return
+  end
+  if status_timer then
+    return
+  end
+  local token = {}
+  status_token = token
+  status_timer = vim.uv.new_timer()
+  status_timer:start(
+    80,
+    80,
+    vim.schedule_wrap(function()
+      if status_token ~= token then
+        return
+      end
+      if not valid(win) or not menu_status or not menu_status.frames then
+        stop_status_animation()
+        return
+      end
+      status_frame = status_frame % #menu_status.frames + 1
+      local footer = status_footer(vim.api.nvim_win_get_width(win))
+      -- Animation changes only the border, leaving text, selection and geometry intact.
+      vim.api.nvim_win_set_config(win, { footer = footer, footer_pos = "right" })
+      frame_config.footer = footer
+    end)
+  )
 end
 local function close(id)
   if valid(id) then
@@ -59,7 +112,13 @@ function M.hide_documentation()
   close(doc_win)
   doc_win, doc_item = nil, nil
 end
+function M.set_status(status)
+  menu_status = status
+  sync_status_animation()
+end
 function M.hide()
+  stop_status_animation()
+  menu_status = nil
   cancel_shrink()
   close(win)
   win, viewport, geometry = nil, 1, nil
@@ -132,6 +191,9 @@ local function placement(count, width, ctx, config)
   if height < 1 then
     return
   end
+  if menu_status then
+    width = math.max(width, vim.fn.strdisplaywidth(status_text()) + 2)
+  end
   width = math.min(width, opts.max_width, vim.o.columns - 4)
   -- Both the contents and the bottom border must end before the input row.
   local row = upwards and input_top - height - 2 or input_bottom + 1
@@ -147,7 +209,12 @@ local function placement(count, width, ctx, config)
     border = opts.border,
     focusable = false,
     zindex = 100,
+    footer = status_footer(width),
+    footer_pos = "right",
   }
+  if menu_status and (opts.border == "none" or opts.border == "shadow") then
+    window_config.border = { "", "", "", "", "", "─", "", "" }
+  end
   local next_geometry = {
     row = math.max(0, row),
     col = col,
@@ -228,6 +295,7 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
   geometry = next_geometry
   frame_items, frame_selected = items, selected
   frame_layout, frame_lines, frame_spans, frame_config = layout, lines, spans, window_config
+  sync_status_animation()
   if moved and valid(doc_win) and doc_item then
     M.documentation(doc_item, config)
   end
@@ -240,13 +308,13 @@ end
 
 local function draw(items, selected, ctx, config, settled)
   cancel_shrink()
-  if #items == 0 or vim.o.columns < 8 or vim.o.lines < 6 then
+  if (#items == 0 and not menu_status) or vim.o.columns < 8 or vim.o.lines < 6 then
     M.hide()
     return
   end
   local opts = config.menu
   local layout = render.prepare(items, opts, vim.o.columns - 4, frame_layout)
-  local window_config, next_geometry = placement(#items, layout.width, ctx, config)
+  local window_config, next_geometry = placement(math.max(1, #items), layout.width, ctx, config)
   if not window_config then
     M.hide()
     return
@@ -305,7 +373,7 @@ function M.reposition(ctx, config)
     paint(frame_items, frame_selected, ctx, config, layout, wc, next_geometry)
     return true
   end
-  if not vim.deep_equal(geometry, next_geometry) then
+  if not vim.deep_equal(frame_config, wc) then
     vim.api.nvim_win_set_config(win, wc)
     frame_config = wc
     geometry = next_geometry

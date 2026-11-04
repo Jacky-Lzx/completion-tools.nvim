@@ -68,7 +68,14 @@ M.defaults = {
     suggest_when_correct = false,
   },
   snippets = { preset = "default", collection = {} },
-  copilot = { debounce_ms = 150, max_items = 3 },
+  copilot = {
+    debounce_ms = 150,
+    max_items = 3,
+    show_status = true,
+    command = { "copilot-language-server", "--stdio" },
+    filetypes = {},
+    settings = {},
+  },
   cmdline = {
     enabled = false,
     auto_show = true,
@@ -91,6 +98,9 @@ function M.validate(opts)
   assert(type(opts) == "table", "completion-tools: setup expects a table")
   local config = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
   -- Lists and keymaps are replacements. An empty table must disable them.
+  if opts.copilot and opts.copilot.command ~= nil then
+    config.copilot.command = vim.deepcopy(opts.copilot.command)
+  end
   if opts.sources ~= nil then
     config.sources = opts.sources
   end
@@ -214,6 +224,27 @@ function M.validate(opts)
   assert(integer(menu.update_interval_ms, 0), "completion-tools: invalid menu.update_interval_ms")
   assert(integer(config.copilot.debounce_ms, 0), "completion-tools: invalid copilot.debounce_ms")
   assert(integer(config.copilot.max_items, 1), "completion-tools: invalid copilot.max_items")
+  local copilot = config.copilot
+  assert(type(copilot.show_status) == "boolean", "completion-tools: invalid copilot.show_status")
+  assert(
+    type(copilot.command) == "table" and #copilot.command > 0,
+    "completion-tools: invalid copilot.command"
+  )
+  for _, arg in ipairs(copilot.command) do
+    assert(type(arg) == "string" and arg ~= "", "completion-tools: invalid copilot.command argument")
+  end
+  assert(type(copilot.filetypes) == "table", "completion-tools: invalid copilot.filetypes")
+  for ft, value in pairs(copilot.filetypes) do
+    assert(
+      type(ft) == "string" and type(value) == "boolean",
+      "completion-tools: invalid copilot.filetypes entry"
+    )
+  end
+  assert(type(copilot.settings) == "table", "completion-tools: invalid copilot.settings")
+  assert(
+    copilot.should_attach == nil or type(copilot.should_attach) == "function",
+    "completion-tools: invalid copilot.should_attach"
+  )
   assert(
     menu.inverse == "auto" or type(menu.inverse) == "boolean",
     'completion-tools: menu.inverse must be "auto", true or false'

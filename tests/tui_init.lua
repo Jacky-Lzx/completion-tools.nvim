@@ -139,50 +139,49 @@ function _G.completion_tui_copilot()
   function client:cancel_request()
     completion_copilot.cancelled = completion_copilot.cancelled + 1
   end
-  package.loaded["copilot.client"] = {
-    get = function()
-      return client
-    end,
-    is_disabled = function()
-      return false
-    end,
-    buf_is_attached = function()
-      return true
-    end,
-  }
-  package.loaded["copilot.util"] = {
-    get_doc_params = function(overrides)
-      return vim.tbl_extend("force", vim.lsp.util.make_position_params(0, "utf-16"), overrides)
-    end,
-  }
-  package.loaded["copilot.api"] = {
-    get_completions_cycling = function(_, params, callback)
-      completion_copilot.requests = completion_copilot.requests + 1
-      local id = completion_copilot.requests
-      local stale = params.position.character == 8
-      vim.defer_fn(function()
-        local items = {}
-        for i, name in ipairs({ "print", "printf", "printlog", "print_more" }) do
-          items[i] = {
-            text = "中😀 = " .. name .. '("' .. (stale and "stale" or "fresh") .. '")\nprint("$1")',
-            uuid = tostring(id) .. ":" .. name,
-            range = { start = { line = 0, character = 0 }, ["end"] = params.position },
-          }
-        end
-        callback(nil, { completions = items })
-      end, stale and 300 or 60)
-      return true, id
-    end,
-    notify_accepted = function(_, params, callback)
+  function client:request(method, params, callback)
+    if method == "notifyAccepted" then
       table.insert(completion_copilot.accepted, params.uuid)
       callback()
-    end,
-  }
+      return true
+    end
+    assert(method == "getCompletionsCycling")
+    completion_copilot.requests = completion_copilot.requests + 1
+    local id = completion_copilot.requests
+    local stale = params.position.character == 8
+    vim.defer_fn(function()
+      local items = {}
+      for i, name in ipairs({ "print", "printf", "printlog", "print_more" }) do
+        items[i] = {
+          text = "中😀 = " .. name .. '("' .. (stale and "stale" or "fresh") .. '")\nprint("$1")',
+          uuid = tostring(id) .. ":" .. name,
+          range = { start = { line = 0, character = 0 }, ["end"] = params.position },
+        }
+      end
+      callback(nil, { completions = items })
+    end, stale and 300 or 60)
+    return true, id
+  end
+  local native = require("completion_tools.copilot")
+  local real_new = native.new
+  native.new = function()
+    return {
+      eligible = function()
+        return true
+      end,
+      ensure = function(_, cb)
+        cb(client)
+        return function() end
+      end,
+      dispose = function() end,
+    }
+  end
   require("completion-tools").setup({
     sources = { "copilot" },
     copilot = { debounce_ms = 20 },
     documentation = { delay_ms = 0 },
   })
+  native.new = real_new
 end
 function _G.completion_tui_triggers()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })

@@ -123,27 +123,52 @@ cycles are rejected. Timeouts/errors can release fallback sources. Synchronous
 Lua callbacks and native getcompletion() cannot be interrupted by deadlines.
 
                                                    *completion-tools-copilot*
-Add "copilot" to sources and install/configure zbirenbaum/copilot.lua.
-Disable copilot.lua's suggestion and panel to use only this menu:
+Add "copilot" to sources. Install GitHub's official Copilot Language Server:
 >
-    require("copilot").setup({
-      suggestion = { enabled = false }, panel = { enabled = false },
-    })
+    npm install -g @github/copilot-language-server
+<
+No copilot.lua dependency or chat UI is needed. Remove its plugin specification
+and require("copilot").setup() when migrating.
+>
     require("completion-tools").setup({
       sources = { "copilot", "lsp", "path", "buffer", "snippets" },
-      copilot = { debounce_ms = 150, max_items = 3 },
+      copilot = {
+        command = { "copilot-language-server", "--stdio" },
+        debounce_ms = 150, max_items = 3, show_status = true,
+        filetypes = {}, settings = {},
+      },
     })
 <
-Authenticate with :Copilot auth. Only initialized, attached clients are used;
-Copilot's disable/detach and filetype policies are respected. No forced attach.
-Copilot loads only when its source is requested; lazy.nvim module loading works.
+:CompletionToolsCopilot auth       Display device code and open GitHub login.
+:CompletionToolsCopilot status     Inspect the native client and errors.
+:CompletionToolsCopilot disable    Disable globally and detach buffers.
+:CompletionToolsCopilot enable     Enable again.
+:CompletionToolsCopilot restart    Stop; restart on the next request.
+:CompletionToolsCopilot signout    Sign out through the official server.
+
+The server starts on demand. Normal listed buffers are eligible by default.
+filetypes={markdown=false} excludes Markdown; ["*"]=false excludes unlisted
+filetypes. should_attach(bufnr) may further restrict attachment. command is a
+complete argv list; use an absolute executable path for Mason outside PATH.
+settings are forwarded to the server (e.g. http.proxy). The server manages
+credentials; GitHub Copilot access is required.
 Requests debounce independently, cancel on edits/hide/dispose and are not reused.
-The cycling API requests alternatives, retaining up to max_items unique edits
-(default 3); the service may return fewer. Copilot fields are purple (#cba6f7)
-through CompletionToolsCopilot, preserving matches and selected backgrounds.
-The first nonempty line appears in the menu, with the full insertion in docs.
-UTF-16 ranges and multiline edits are preserved. Acceptance notifies Copilot.
-There is no Copilot source in command-line mode. No Blink/nvim-cmp adapter needed.
+Cycling requests retain up to max_items unique edits (default 3); the service may
+return fewer. Copilot fields are purple (#cba6f7) through CompletionToolsCopilot.
+The first nonempty line appears in the menu, with full insertion in docs.
+UTF-16 ranges and multiline literal edits are preserved; acceptance is reported.
+There is no Copilot source in command-line mode.
+show_status=true displays Copilot icons in the completion window footer:
+ ready (muted when no suggestions),  disabled,  warning/unavailable,  sign-in
+required. Waiting/startup/generation show  with an animated dots spinner (80 ms).
+Animation stops on completion/hide/dispose and changes only the border. With no
+candidates, a small status-only window appears. Icons cannot be selected/accepted;
+notifications preserve selection and never reopen a dismissed menu. Set
+show_status=false to hide the footer.
+Attached buffers sync full contents on open, then incremental edits. Requests
+identify the document/version/cursor; the local server can use both sides of the
+cursor. The official server prepares the cloud prompt; the current keyword only
+controls triggering/filtering, not the transmitted document context.
 
                                                    *completion-tools-cmdline*
 cmdline = { enabled=false, auto_show=true, fuzzy=true, min_keyword_length=1,
