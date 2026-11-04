@@ -81,8 +81,12 @@ end
 
 -- Measure all retained candidates once so columns stay aligned while scrolling.
 -- Highlighting/parsing is deferred until a row actually becomes visible.
-function M.prepare(items, opts, available)
+function M.prepare(items, opts, available, previous)
   local rows, columns, seen = {}, {}, {}
+  local retained = {}
+  for _, column in ipairs(previous and previous.columns or {}) do
+    retained[column.name] = column
+  end
   for i, entry in ipairs(items) do
     rows[i] = fields(entry, opts)
   end
@@ -104,7 +108,7 @@ function M.prepare(items, opts, available)
         for _, row in ipairs(rows) do
           width = math.max(width, vim.fn.strdisplaywidth(row[name]))
         end
-        if width > 0 or not group.automatic then
+        if width > 0 or not group.automatic or retained[name] then
           columns[#columns + 1] = {
             name = name,
             width = width,
@@ -118,6 +122,25 @@ function M.prepare(items, opts, available)
   end
   local limit = math.min(available, opts.max_width)
   local padding = math.min(opts.padding, math.floor(limit / 2))
+  if previous then
+    -- Existing columns own their space for the lifetime of the menu. Grow into
+    -- spare cells instead of moving every following column when results change.
+    -- A smaller editor is allowed to reclaim space using the clipping below.
+    local reserved = padding * 2
+    for _, column in ipairs(columns) do
+      local old = retained[column.name]
+      reserved = reserved + (old and old.width + old.gap or 0)
+    end
+    local spare = math.max(0, limit - reserved)
+    for _, column in ipairs(columns) do
+      local old = retained[column.name]
+      local width, gap = old and old.width or 0, old and old.gap or 0
+      local grow_gap = math.min(spare, math.max(0, column.gap - gap))
+      spare, column.gap = spare - grow_gap, gap + grow_gap
+      local grow_width = math.min(spare, math.max(0, column.width - width))
+      spare, column.width = spare - grow_width, width + grow_width
+    end
+  end
   local natural = padding * 2
   for _, column in ipairs(columns) do
     natural = natural + column.width + column.gap

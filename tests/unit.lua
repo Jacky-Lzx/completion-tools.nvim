@@ -105,12 +105,15 @@ test("configuration preserves empty source and keymap lists", function()
   assert(not pcall(require("completion_tools.config").validate, { max_items = 0 }))
   assert(not pcall(require("completion_tools.config").validate, { buffer = { batch_lines = 0 } }))
 end)
-test("menu shrink delay accepts zero and rejects invalid timers", function()
+test("menu timers accept zero and reject invalid values", function()
   local validate = require("completion_tools.config").validate
   eq(50, validate({}).menu.shrink_delay_ms)
+  eq(16, validate({}).menu.update_interval_ms)
+  eq(0, validate({ menu = { update_interval_ms = 0 } }).menu.update_interval_ms)
   eq(0, validate({ menu = { shrink_delay_ms = 0 } }).menu.shrink_delay_ms)
   for _, value in ipairs({ -1, 1.5, "120", false, math.huge }) do
     assert(not pcall(validate, { menu = { shrink_delay_ms = value } }))
+    assert(not pcall(validate, { menu = { update_interval_ms = value } }))
   end
 end)
 test("menu inverse defaults to automatic and accepts explicit overrides", function()

@@ -125,6 +125,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
                         "initial tall menu")
         window = snapshot["menu"]["win"]
         assert snapshot["menu"]["row"] < snapshot["input_row"], snapshot
+        width, source_col = snapshot["menu"]["width"], snapshot["menu_source_col"]
         prefix = "a"
         steps = []
         for char in b"bcdefgh":
@@ -139,12 +140,14 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
             while time.monotonic() < deadline:
                 snapshot = wait(lambda s: s.get("prefix") == expected, "continuous height sampling")
                 assert snapshot["menu"]["win"] == window and snapshot["menu"]["height"] == 12, snapshot
+                assert snapshot["menu"]["width"] == width and snapshot["menu_source_col"] == source_col, snapshot
                 assert snapshot["menu"]["row"] < snapshot["input_row"], snapshot
                 if expected + "Slow" not in "".join(snapshot["menu_rows"]):
                     assert all(row == "" for row in snapshot["menu_rows"][:-2]), snapshot
                     assert not snapshot["menu_blank_screen"].strip(), snapshot
         snapshot = wait(lambda s: s.get("menu", {}).get("height") == 2, "height shrinks after quiet input")
         assert snapshot["menu"]["win"] == window and snapshot["menu"]["row"] < snapshot["input_row"], snapshot
+        assert snapshot["menu"]["width"] == width and snapshot["menu_source_col"] == source_col, snapshot
         os.write(primary, b"\x0e\t!\x1b")
         wait(lambda s: s["mode"] == "n" and s["line"] == "abcdefghFast2!" and not s["visible"],
              "accept current candidate after delayed shrink")

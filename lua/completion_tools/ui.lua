@@ -4,6 +4,7 @@ local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
 local geometry, doc_item
 local frame_items, frame_selected
+local frame_layout, frame_lines, frame_spans, frame_config
 local shrink_timer, shrink_token
 local render = require("completion_tools.render")
 
@@ -63,6 +64,7 @@ function M.hide()
   close(win)
   win, viewport, geometry = nil, 1, nil
   frame_items, frame_selected = nil, nil
+  frame_layout, frame_lines, frame_spans, frame_config = nil, nil, nil, nil
   M.hide_documentation()
 end
 function M.visible()
@@ -181,20 +183,35 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
     end
     lines[#lines + 1], spans[#spans + 1] = line, marks
   end
+  local old_buf = buf
   buf = scratch(buf, "completion-tools-menu")
-  vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-  vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+  local replace = buf ~= old_buf or not frame_lines or #frame_lines ~= #lines
+  if replace then
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+    vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+  end
   for i, marks in ipairs(spans) do
-    for _, span in ipairs(marks) do
-      vim.api.nvim_buf_set_extmark(buf, ns, i - 1, span[1], {
-        end_col = span[2],
-        hl_group = span[3],
-        priority = span[4],
-      })
+    local changed = replace or frame_lines[i] ~= lines[i]
+    if changed and not replace then
+      vim.api.nvim_buf_set_lines(buf, i - 1, i, false, { lines[i] })
+    end
+    if changed or not vim.deep_equal(frame_spans[i], marks) then
+      if not replace then
+        vim.api.nvim_buf_clear_namespace(buf, ns, i - 1, i)
+      end
+      for _, span in ipairs(marks) do
+        vim.api.nvim_buf_set_extmark(buf, ns, i - 1, span[1], {
+          end_col = span[2],
+          hl_group = span[3],
+          priority = span[4],
+        })
+      end
     end
   end
   if valid(win) then
-    vim.api.nvim_win_set_config(win, window_config)
+    if not vim.deep_equal(frame_config, window_config) then
+      vim.api.nvim_win_set_config(win, window_config)
+    end
   else
     win = vim.api.nvim_open_win(buf, false, window_config)
     vim.wo[win].winhighlight =
@@ -210,6 +227,7 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
   local moved = not vim.deep_equal(geometry, next_geometry)
   geometry = next_geometry
   frame_items, frame_selected = items, selected
+  frame_layout, frame_lines, frame_spans, frame_config = layout, lines, spans, window_config
   if moved and valid(doc_win) and doc_item then
     M.documentation(doc_item, config)
   end
@@ -227,7 +245,7 @@ local function draw(items, selected, ctx, config, settled)
     return
   end
   local opts = config.menu
-  local layout = render.prepare(items, opts, vim.o.columns - 4)
+  local layout = render.prepare(items, opts, vim.o.columns - 4, frame_layout)
   local window_config, next_geometry = placement(#items, layout.width, ctx, config)
   if not window_config then
     M.hide()
@@ -278,12 +296,13 @@ function M.reposition(ctx, config)
     return false
   end
   if next_geometry.inverse ~= geometry.inverse or next_geometry.height ~= geometry.height then
-    local layout = render.prepare(frame_items, config.menu, vim.o.columns - 4)
+    local layout = render.prepare(frame_items, config.menu, vim.o.columns - 4, frame_layout)
     paint(frame_items, frame_selected, ctx, config, layout, wc, next_geometry)
     return true
   end
   if not vim.deep_equal(geometry, next_geometry) then
     vim.api.nvim_win_set_config(win, wc)
+    frame_config = wc
     geometry = next_geometry
     if valid(doc_win) and doc_item then
       M.documentation(doc_item, config)

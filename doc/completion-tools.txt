@@ -297,12 +297,20 @@ menu.highlight: enabled=true, treesitter=true, max_bytes=1024, cache_size=512.
 Only visible rows are highlighted; plain words do not create parsers.
 File/folder candidates retain kind and match emphasis without code syntax colors.
 Missing parsers/queries and incomplete signatures keep the lexical fallback.
-menu.shrink_delay_ms=50 delays height reduction while candidates update
-immediately. Input/results reset the delay; growth is immediate. Extra rows are
+menu.update_interval_ms=16 combines asynchronous results within a fixed interval
+after the previous publication. The first useful result for each input is
+immediate; continuous streaming cannot postpone subsequent updates indefinitely.
+Set to 0 to publish every event-loop batch. Navigation/acceptance use displayed
+candidates without this delay. Width and column allocations are retained until
+the menu closes, growing into spare space without shrinking for shorter results.
+New metadata may be truncated to preserve existing columns. A smaller editor may
+reclaim space. Unchanged rows/highlights are preserved on redraw.
+menu.shrink_delay_ms=50 delays height reduction after results are published.
+Input/results reset the delay; growth is immediate. Extra rows are
 blank and unselectable. Set to 0 for immediate shrinking. The opening direction
 uses menu.max_height (default 12), independent of current result count: below
 when it fits, otherwise the side with more space (ties prefer below). Input
-movement/resize recalculates placement. Final empty results close immediately.
+movement/resize recalculates placement. Final empty results close when published.
 
 menu.inverse="auto" reverses menus above the input by default, keeping the
 first-ranked item nearest the input. Set true to always reverse, false to always

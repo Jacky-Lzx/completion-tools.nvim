@@ -108,6 +108,25 @@ test("separate details, disabled icons, controls and bounded text", function()
   local cleaned = require("completion_tools.text").clean(string.rep("中文", 10000), 64)
   assert(#cleaned <= 64 and vim.str_utfindex(cleaned) > 0)
 end)
+test("session columns retain space across changing results and fit after resize", function()
+  local menu = config.validate({ menu = { max_width = 72 } }).menu
+  local long = { entry({ label = "alphaLongName", kind = 25, labelDetails = { description = "module" } }) }
+  local short = { entry({ label = "alpha", kind = 1 }) }
+  local layout = render.prepare(long, menu, 100)
+  local retained = render.prepare(short, menu, 100, layout)
+  eq(layout.width, retained.width)
+  eq(layout.columns, retained.columns)
+  local crowded = render.prepare({ entry({ label = string.rep("a", 200) }) }, menu, 100, retained)
+  for i, column in ipairs(retained.columns) do
+    assert(crowded.columns[i].width >= column.width, "new label displaced an existing column")
+  end
+  for available = 4, 90 do
+    local resized = render.prepare(short, menu, available, crowded)
+    local line = render.row(resized, 1, short[1], ctx, menu)
+    eq(resized.width, vim.fn.strdisplaywidth(line))
+    assert(resized.width <= available)
+  end
+end)
 test("file metadata aligns, preserves names and path tails, and never becomes code", function()
   local root = vim.fn.getcwd()
   local items = {

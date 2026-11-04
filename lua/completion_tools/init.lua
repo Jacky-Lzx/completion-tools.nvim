@@ -207,6 +207,7 @@ local function render(pending)
   end
   ui.render(items, state.selected, ctx, state.config)
   documentation(false)
+  return #items > 0 or not pending
 end
 
 local function source_ids(ctx, override)
@@ -284,7 +285,7 @@ local function request(manual, override)
   else
     ui.reposition(ctx, state.config)
   end
-  local render_queued, run = false, nil
+  local render_queued, run, render_timer, last_render = false, nil, nil, nil
   local function queue_render()
     if run then
       state.diagnostics.update(run.records)
@@ -293,12 +294,24 @@ local function request(manual, override)
       return
     end
     render_queued = true
-    vim.schedule(function()
+    local function flush()
+      render_timer = nil
       render_queued = false
       if valid(generation, ctx) then
-        render(run and run.pending() or false)
+        if render(run and run.pending() or false) then
+          last_render = vim.uv.hrtime()
+        end
       end
-    end)
+    end
+    -- The first useful frame for each input is immediate. Later publications
+    -- share a fixed deadline; streaming providers cannot keep postponing it.
+    local interval = state.config.menu.update_interval_ms
+    local remaining = last_render and interval - (vim.uv.hrtime() - last_render) / 1e6 or 0
+    if remaining > 0 then
+      render_timer = vim.defer_fn(flush, math.ceil(remaining))
+    else
+      vim.schedule(flush)
+    end
   end
   local options, priorities = {}, {}
   for priority, id in ipairs(ids) do
@@ -392,6 +405,8 @@ local function request(manual, override)
   state.run = run
   state.diagnostics.update(run.records)
   state.cancels[#state.cancels + 1] = function()
+    close_timer(render_timer)
+    render_timer = nil
     run.cancel()
     state.diagnostics.update(run.records)
   end

@@ -954,6 +954,146 @@ local ok, err = xpcall(function()
     lua("require('completion_tools').hide()")
     rpc("nvim_ui_try_resize", 120, 36)
   end)
+  test("session width and columns survive streaming results, edits and reset on hide", function()
+    lua([[
+      require('completion_tools').setup({sources={'test'},documentation={auto_show=false},
+        providers={test={complete=function(ctx,cb)
+          width_reply=cb
+          cb({items={{label=ctx.prefix..'LongName',kind=25,labelDetails={description='module'}}},pending=true})
+        end}}})
+      function width_menu()
+        for _,w in ipairs(vim.api.nvim_list_wins()) do
+          local b=vim.api.nvim_win_get_buf(w)
+          if vim.bo[b].filetype=='completion-tools-menu' then
+            return {win=w,width=vim.api.nvim_win_get_width(w),lines=vim.api.nvim_buf_get_lines(b,0,-1,false)}
+          end
+        end
+      end
+    ]])
+    input("ia")
+    wait("return require('completion_tools')._can('accept')")
+    local original = lua("return width_menu()")
+    lua("width_reply({items={{label='alpha',kind=1}},pending=true})")
+    wait("return require('completion_tools').get_selected_item().label=='alpha'")
+    local short = lua("return width_menu()")
+    eq(original.width, short.width)
+    eq(original.win, short.win)
+    eq(original.lines[1]:find("test", 1, true), short.lines[1]:find("test", 1, true))
+    input("l")
+    wait("return require('completion_tools').get_selected_item().label=='alLongName'")
+    assert(lua("return width_menu().width") >= original.width)
+    lua("width_reply({items={{label='alpha',kind=1}}})")
+    wait("return require('completion_tools').get_selected_item().label=='alpha'")
+    lua([[
+      require('completion_tools').hide();require('completion_tools').show()
+      width_reply({items={{label='alpha',kind=1}}})
+    ]])
+    wait("return require('completion_tools')._can('accept')")
+    assert(lua("return width_menu().width") < original.width, "hidden menu retained its previous width")
+    input("<Tab>!")
+    wait("return vim.api.nvim_get_current_line()=='alpha!'")
+  end)
+  test("unchanged frames preserve buffer text and highlight marks", function()
+    lua([[
+      require('completion_tools').setup({sources={'test'},documentation={auto_show=false},
+        providers={test={complete=function(_,cb) cb({items={{label='alpha'},{label='alpine'}}}) end}}})
+    ]])
+    input("ia")
+    wait("return require('completion_tools')._can('accept')")
+    lua([[
+      local b
+      for _,w in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-menu' then b=vim.api.nvim_win_get_buf(w) end
+      end
+      local ns=vim.api.nvim_create_namespace('completion-tools-menu')
+      local tick,marks=vim.api.nvim_buf_get_changedtick(b),vim.api.nvim_buf_get_extmarks(b,ns,0,-1,{details=true})
+      require('completion_tools').select_next();require('completion_tools').select_prev()
+      assert(tick==vim.api.nvim_buf_get_changedtick(b),'selection rewrote unchanged text')
+      assert(vim.deep_equal(marks,vim.api.nvim_buf_get_extmarks(b,ns,0,-1,{details=true})),'selection replaced unchanged highlights')
+    ]])
+  end)
+  test("changed rows and highlight-only updates preserve neighboring marks", function()
+    lua([[
+      row_color='String'
+      require('completion_tools').setup({sources={'test'},documentation={auto_show=false},
+        menu={min_width=30,label_details=false,columns={{'label'}},highlight={custom=function(_,_,text)
+          return {{0,#text,row_color,220}}
+        end}},providers={test={complete=function(_,cb)
+          row_reply=cb;cb({items={{label='alpha'},{label='alpine'}},pending=true})
+        end}}})
+      function row_snapshot()
+        for _,w in ipairs(vim.api.nvim_list_wins()) do
+          local b=vim.api.nvim_win_get_buf(w)
+          if vim.bo[b].filetype=='completion-tools-menu' then
+            return {tick=vim.api.nvim_buf_get_changedtick(b),marks=vim.api.nvim_buf_get_extmarks(
+              b,vim.api.nvim_create_namespace('completion-tools-menu'),{1,0},{1,-1},{details=true})}
+          end
+        end
+      end
+    ]])
+    input("ia")
+    wait("return require('completion_tools')._can('accept')")
+    local original = lua("return row_snapshot()")
+    lua("row_reply({items={{label='atlas'},{label='alpine'}},pending=true})")
+    wait("return require('completion_tools').get_selected_item().label=='atlas'")
+    local changed = lua("return row_snapshot()")
+    assert(changed.tick > original.tick)
+    eq(original.marks, changed.marks)
+    lua("row_color='Special';row_reply({items={{label='atlas'},{label='alpine'}}})")
+    wait([[
+      for _,m in ipairs(row_snapshot().marks) do if m[4].hl_group=='Special' then return true end end
+      return false
+    ]])
+    eq(changed.tick, lua("return row_snapshot().tick"))
+  end)
+  test("streaming bursts coalesce with a bounded deadline and cancel on hide", function()
+    lua([[
+      burst_paints={}
+      local ui=require('completion_tools.ui');burst_render=ui.render
+      ui.render=function(items,...)
+        burst_paints[#burst_paints+1]=items[1] and items[1].item.label or ''
+        return burst_render(items,...)
+      end
+      require('completion_tools').setup({sources={'test'},menu={update_interval_ms=200},
+        documentation={auto_show=false},providers={test={complete=function(ctx,cb)
+          burst_reply=cb;cb({items={{label=ctx.prefix..'First'}},pending=true})
+        end}}})
+    ]])
+    input("ia")
+    wait("return require('completion_tools')._can('accept')")
+    lua([[
+      for i=1,12 do vim.defer_fn(function()
+        burst_reply({items={{label='aBurst'..i}},pending=true})
+        if i==12 then burst_at_end=#burst_paints end
+      end,i*3) end
+    ]])
+    wait("return burst_at_end~=nil")
+    eq(1, lua("return burst_at_end"))
+    wait("return require('completion_tools').get_selected_item().label=='aBurst12'")
+    eq({ "aFirst", "aBurst12" }, lua("return burst_paints"))
+    lua([[
+      for i=1,120 do vim.defer_fn(function()
+        burst_reply({items={{label='aContinuous'..i}},pending=true})
+        if i==120 then burst_during_stream=#burst_paints end
+      end,i*5) end
+    ]])
+    wait("return burst_during_stream~=nil")
+    assert(lua("return burst_during_stream>=4"), "continuous publications postponed every frame")
+    wait("return require('completion_tools').get_selected_item().label=='aContinuous120'")
+    lua("burst_reply({items={{label='aStale'}}})")
+    input("l")
+    wait("return require('completion_tools').get_selected_item().label=='alFirst'")
+    lua(
+      "burst_reply({items={{label='alCancelled'}}});require('completion_tools').hide();burst_before_hide=#burst_paints"
+    )
+    vim.wait(250)
+    assert(not lua("return require('completion_tools').is_menu_visible()"))
+    lua([[
+      assert(#burst_paints==burst_before_hide)
+      assert(not vim.tbl_contains(burst_paints,'aStale') and not vim.tbl_contains(burst_paints,'alCancelled'))
+    ]])
+    lua("require('completion_tools.ui').render=burst_render")
+  end)
   local function height_fixture(delay)
     lua(
       [[

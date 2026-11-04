@@ -340,7 +340,11 @@ function _G.completion_tui_height()
         complete = function(ctx, cb)
           local items = {}
           for i = 1, (ctx.prefix == "a" and 12 or 2) do
-            items[i] = { label = ctx.prefix .. "Fast" .. i }
+            items[i] = {
+              label = ctx.prefix .. "Fast" .. i .. (ctx.prefix == "a" and string.rep("Long", 6) or ""),
+              kind = ctx.prefix == "a" and 25 or 1,
+              labelDetails = ctx.prefix == "a" and { description = "module" } or nil,
+            }
           end
           cb({ items = items })
         end,
@@ -484,7 +488,13 @@ timer:start(
         if vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "completion-tools-menu" then
           local geometry = vim.api.nvim_win_get_config(win)
           local selected_row = vim.api.nvim_win_get_cursor(win)[1]
-          data.menu = { row = geometry.row, height = geometry.height, win = win, cursor = selected_row }
+          data.menu = {
+            row = geometry.row,
+            height = geometry.height,
+            width = geometry.width,
+            win = win,
+            cursor = selected_row,
+          }
           local b = vim.api.nvim_win_get_buf(win)
           local line = vim.api.nvim_buf_get_lines(b, selected_row - 1, selected_row, false)[1]
           local top = vim.fn.screenpos(win, 1, 1)
@@ -517,6 +527,9 @@ timer:start(
               data.copilot_marks[row] = (data.copilot_marks[row] or 0) + 1
             end
             if mark[2] == selected_row - 1 and mark[4].hl_group == "CompletionToolsSource" then
+              if line:sub(mark[3] + 1, mark[4].end_col) == "fast" then
+                data.menu_source_col = mark[3]
+              end
               local cell = vim.fn.strdisplaywidth(line:sub(1, mark[3]))
               data.menu_source_attrs[#data.menu_source_attrs + 1] = vim.fn.screenattr(at.row, at.col + cell)
             end

@@ -27,7 +27,7 @@ require("completion-tools").setup({
   sources = { "lsp", "path", "buffer", "snippets" },
   providers = {},
   menu = {
-    max_height = 12, inverse = "auto", shrink_delay_ms = 50,
+    max_height = 12, inverse = "auto", shrink_delay_ms = 50, update_interval_ms = 16,
     min_width = 18, max_width = 72, border = "single",
     columns = { { "kind_icon" }, { "label", gap = 1 }, { "kind" }, { "source" } },
     column_gap = 1, padding = 1,
@@ -652,14 +652,26 @@ cannot be accepted. A fast empty source does not close the menu while another is
 pending. Empty input or a context change closes it. Retained menus follow the cursor;
 documentation remains for the same selection.
 
-Candidate contents update immediately. The menu grows immediately and waits for
+The first useful result for each input is displayed immediately. Subsequent
+asynchronous results are combined within `menu.update_interval_ms` (default `16`)
+of the previous publication. The deadline is fixed, so continuous streaming cannot
+postpone updates indefinitely. Set `0` to publish every event-loop batch.
+Navigation and acceptance act on the displayed candidates without this delay.
+
+Width and column allocations are retained while the menu is open: columns grow
+into available space, and shorter results do not pull the border or following
+columns back. This can leave spare space or truncate new metadata until the next
+session. Resizing to a smaller editor may reclaim column space. Hiding the menu
+resets these allocations. Unchanged rows and highlights are preserved on redraw.
+
+When results are published, the menu grows immediately and waits for
 `menu.shrink_delay_ms` (default `50`) of quiet input/results before shrinking.
 Extra rows are cleared and cannot be selected. Set this option to `0` to shrink
 immediately. Placement reserves `menu.max_height` regardless of the current result
 count: prefer below when it fits, otherwise choose the side with more space
 (below wins ties). Small initial results and later growth/shrinkage therefore use
 the same side. Moving/resizing the input can change the direction. Hiding resets
-the retained height. Final empty results close the menu immediately.
+the retained height. Final empty results close the menu when published.
 
 `menu.inverse` controls the visible row order in Insert and command-line modes:
 

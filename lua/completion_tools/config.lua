@@ -31,6 +31,7 @@ M.defaults = {
     max_height = 12,
     inverse = "auto",
     shrink_delay_ms = 50,
+    update_interval_ms = 16,
     min_width = 18,
     max_width = 72,
     border = "single",
@@ -209,6 +210,7 @@ function M.validate(opts)
     "completion-tools: invalid ranking.history.path"
   )
   assert(integer(menu.shrink_delay_ms, 0), "completion-tools: invalid menu.shrink_delay_ms")
+  assert(integer(menu.update_interval_ms, 0), "completion-tools: invalid menu.update_interval_ms")
   assert(integer(config.copilot.debounce_ms, 0), "completion-tools: invalid copilot.debounce_ms")
   assert(integer(config.copilot.max_items, 1), "completion-tools: invalid copilot.max_items")
   assert(
