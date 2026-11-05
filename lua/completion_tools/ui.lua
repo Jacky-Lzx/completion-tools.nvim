@@ -88,13 +88,9 @@ local function scratch(id, filetype)
 end
 function M.highlights()
   for name, target in pairs({
-    CompletionToolsMenu = "Pmenu",
-    CompletionToolsBorder = "FloatBorder",
     CompletionToolsSelected = "PmenuSel",
     CompletionToolsSource = "Comment",
-    CompletionToolsDoc = "NormalFloat",
     CompletionToolsDocCode = "String",
-    CompletionToolsDocSeparator = "FloatBorder",
   }) do
     vim.api.nvim_set_hl(0, name, { default = true, link = target })
   end
@@ -457,7 +453,7 @@ function M.documentation(item, config)
     vim.api.nvim_win_set_config(doc_win, wc)
   else
     doc_win = vim.api.nvim_open_win(doc_buf, false, wc)
-    vim.wo[doc_win].winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsBorder"
+    vim.wo[doc_win].winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsDocBorder"
       .. ",Search:None,IncSearch:None,CurSearch:None"
     vim.wo[doc_win].wrap = true
   end

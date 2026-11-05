@@ -627,7 +627,9 @@ All 25 LSP kind groups are available as `CompletionToolsKindFunction`,
 and related groups. Unknown kinds use `CompletionToolsKindUnknown`. Other groups:
 `CompletionToolsMatch`, `CompletionToolsDeprecated`, `CompletionToolsSource`,
 `CompletionToolsMenu`, `CompletionToolsSelected`, `CompletionToolsBorder`,
-`CompletionToolsDoc` and `CompletionToolsDocCode`. Defaults are recreated after
+`CompletionToolsDoc`, `CompletionToolsDocBorder` and `CompletionToolsDocCode`.
+Menu borders match the menu background; documentation borders match the float
+background. Defaults are recreated after
 ColorScheme events while preserving explicit overrides.
 
 `menu.highlight.custom(entry, ctx, text)` can return additional spans:

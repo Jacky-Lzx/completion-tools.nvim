@@ -138,3 +138,9 @@ belong to theme-tools; no extra icon dependency is needed for this integration.
 Without theme-tools, existing standalone defaults remain available.
 Local icon-disable options still apply. Configure shared overrides through
 `require("theme_tools").setup({ icons = { overrides = { ... } } })`.
+
+## Theme surfaces
+
+Menu and documentation borders use their own surface backgrounds. Override
+`CompletionToolsBorder` and `CompletionToolsDocBorder` independently; explicit
+highlight definitions take precedence over shared theme defaults.
