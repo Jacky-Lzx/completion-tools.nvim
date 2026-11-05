@@ -300,6 +300,78 @@ local ok, err = xpcall(function()
     input("<Tab><CR>")
     wait("return vim.api.nvim_get_mode().mode=='n' and vim.fn.getreg('/')=='bravo'")
   end)
+  test("delayed search candidates paint while typing is paused", function()
+    lua([[
+      vim.o.hlsearch,vim.o.incsearch=true,true
+      vim.api.nvim_buf_set_lines(0,0,-1,false,{'normalized'})
+      require('completion_tools').setup({sources={},cmdline={enabled=true},documentation={auto_show=false},
+        providers={buffer={complete=function(_,cb)
+          vim.defer_fn(function() cb({items={{label='normDeferred'}}}) end,60)
+        end}}})
+    ]])
+    input("/norm")
+    wait("return require('completion_tools').is_menu_visible()")
+    wait(
+      [[
+      for _,win in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='completion-tools-menu' then
+          local p=vim.fn.screenpos(win,1,1);local text=''
+          for col=p.col,p.col+vim.api.nvim_win_get_width(win)-1 do text=text..vim.fn.screenstring(p.row,col) end
+          return text:find('normDeferred',1,true)~=nil
+        end
+      end
+      return false
+    ]],
+      "delayed search candidate is visible without another key"
+    )
+  end)
+  test("native search leaves menu selection, match styling and documentation colors intact", function()
+    lua([[
+      vim.o.hlsearch=true
+      vim.api.nvim_buf_set_lines(0,0,-1,false,{'FixtureNormalized'})
+      vim.fn.setreg('/','unmatched-search-pattern');vim.v.hlsearch=1
+      require('completion_tools').setup({cmdline={enabled=true},documentation={auto_show=false},
+        providers={cmdline={complete=function(_,cb)
+          cb({items={{label='FixtureNormalized',documentation='FixtureNormalized documentation'},
+            {label='FixtureNormalizer'}}})
+        end}}})
+      function fixture_colors()
+        vim.cmd.redraw()
+        local result={}
+        for _,win in ipairs(vim.api.nvim_list_wins()) do
+          local buf=vim.api.nvim_win_get_buf(win)
+          local ft=vim.bo[buf].filetype
+          if ft=='completion-tools-menu' or ft=='markdown' then
+            local colors={}
+            for row,line in ipairs(vim.api.nvim_buf_get_lines(buf,0,-1,false)) do
+              local start=line:find('FixtureNorm',1,true)
+              if start then
+                for col=start,start+#'FixtureNorm'-1 do
+                  local p=vim.fn.screenpos(win,row,col)
+                  colors[#colors+1]=vim.fn.screenattr(p.row,p.col)
+                end
+              end
+            end
+            if #colors>0 then result[ft]=colors end
+          end
+        end
+        return result
+      end
+    ]])
+    input(":FixtureNorm")
+    wait("return require('completion_tools').is_menu_visible()")
+    lua("assert(require('completion_tools').show_documentation())")
+    wait("return fixture_colors().markdown~=nil")
+    local before = lua("return fixture_colors()")
+    assert(before["completion-tools-menu"] and before.markdown)
+    local source = lua("local p=vim.fn.screenpos(0,1,1);return vim.fn.screenattr(p.row,p.col)")
+    lua("vim.fn.setreg('/','FixtureNorm');vim.v.hlsearch=1")
+    eq(before, lua("return fixture_colors()"))
+    assert(
+      source ~= lua("local p=vim.fn.screenpos(0,1,1);return vim.fn.screenattr(p.row,p.col)"),
+      "fixture did not enable native source search highlighting"
+    )
+  end)
   test("shell commands and input prompts preserve previous command-line mappings", function()
     lua([[
       fallback_hits=0

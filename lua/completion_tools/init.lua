@@ -718,6 +718,11 @@ function M.setup(opts)
     vim.api.nvim_create_autocmd("CmdlineChanged", {
       group = group,
       callback = function()
+        -- Repainting an unchanged search through setcmdline() must retain the
+        -- current request and manual selection instead of starting them again.
+        if context.same(state.context, current()) then
+          return
+        end
         if config.cmdline.auto_show then
           queue()
         else

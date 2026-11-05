@@ -281,8 +281,8 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
     end
   else
     win = vim.api.nvim_open_win(buf, false, window_config)
-    vim.wo[win].winhighlight =
-      "Normal:CompletionToolsMenu,FloatBorder:CompletionToolsBorder,CursorLine:CompletionToolsSelected"
+    vim.wo[win].winhighlight = "Normal:CompletionToolsMenu,FloatBorder:CompletionToolsBorder,CursorLine:CompletionToolsSelected"
+      .. ",Search:None,IncSearch:None,CurSearch:None"
     vim.wo[win].wrap, vim.wo[win].scrolloff = false, 0
   end
   vim.wo[win].cursorline = selected ~= nil
@@ -300,9 +300,14 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
     M.documentation(doc_item, config)
   end
   if ctx.mode == "cmdline" then
-    -- Native command-line input can defer float painting until another key.
-    -- Flush the new colors and contents even when the user pauses typing.
-    vim.cmd.redraw()
+    if ctx.cmdtype == "/" or ctx.cmdtype == "?" then
+      -- Ask the native input loop to repaint the unchanged search and floats
+      -- together. A direct screen flush drops incsearch's current-match color.
+      vim.fn.setcmdline(vim.fn.getcmdline(), vim.fn.getcmdpos())
+    else
+      -- Native command-line input can defer float painting until another key.
+      vim.cmd.redraw()
+    end
   end
 end
 
@@ -448,6 +453,7 @@ function M.documentation(item, config)
   else
     doc_win = vim.api.nvim_open_win(doc_buf, false, wc)
     vim.wo[doc_win].winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsBorder"
+      .. ",Search:None,IncSearch:None,CurSearch:None"
     vim.wo[doc_win].wrap = true
   end
   vim.wo[doc_win].conceallevel = 2
