@@ -304,6 +304,11 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
       -- Ask the native input loop to repaint the unchanged search and floats
       -- together. A direct screen flush drops incsearch's current-match color.
       vim.fn.setcmdline(vim.fn.getcmdline(), vim.fn.getcmdpos())
+      if vim.fn.has("nvim-0.12") == 0 then
+        -- 0.11 does not process setcmdline() as a native input change. Its
+        -- redraw path restores incsearch highlighting after flushing floats.
+        vim.cmd.redraw()
+      end
     else
       -- Native command-line input can defer float painting until another key.
       vim.cmd.redraw()

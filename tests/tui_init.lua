@@ -524,6 +524,30 @@ function _G.completion_tui_cmdline()
     vim.g.completion_tui_executed = "alpine"
   end, {})
 end
+function _G.completion_tui_search()
+  completion_search_active, completion_search_replied = true, false
+  vim.o.hlsearch, vim.o.incsearch = true, true
+  vim.api.nvim_set_hl(0, "Search", { bg = "#442200" })
+  vim.api.nvim_set_hl(0, "IncSearch", { bg = "#004488" })
+  vim.api.nvim_set_hl(0, "CurSearch", { bg = "#004488" })
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "normalized normalized" })
+  vim.api.nvim_win_set_cursor(0, { 1, 10 })
+  require("completion-tools").setup({
+    sources = {},
+    cmdline = { enabled = true },
+    documentation = { auto_show = false },
+    providers = {
+      buffer = {
+        complete = function(_, cb)
+          vim.defer_fn(function()
+            completion_search_replied = true
+            cb({ items = { { label = "normDeferred" } } })
+          end, 200)
+        end,
+      },
+    },
+  })
+end
 local timer = vim.uv.new_timer()
 timer:start(
   10,
@@ -545,6 +569,15 @@ timer:start(
       can_accept = cmp._can("accept") == true,
     }
     if data.mode == "c" then
+      if completion_search_active then
+        local p = vim.fn.screenpos(0, 1, 1)
+        data.search_colors = {
+          vim.fn.screenattr(p.row, p.col),
+          vim.fn.screenattr(p.row, p.col + 5),
+          vim.fn.screenattr(p.row, p.col + 11),
+        }
+        data.search_replied = completion_search_replied
+      end
       data.cmdline_screen = ""
       for col = 1, vim.o.columns do
         data.cmdline_screen = data.cmdline_screen .. vim.fn.screenstring(vim.o.lines, col)

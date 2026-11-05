@@ -473,6 +473,26 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
              "diagnostic rejection survives leaving Insert mode")
         os.write(primary, b":silent CompletionToolsStatus\r")
         wait(lambda s: s["mode"] == "n", "terminal diagnostic command")
+        for cmdtype in (b"/", b"?"):
+            os.write(primary, b":lua completion_tui_search()\r")
+            wait(lambda s: s["mode"] == "n" and s["line"] == "normalized normalized", "search fixture")
+            os.write(primary, cmdtype + b"norm")
+            snapshot = wait(lambda s: s["mode"] == "c" and s["cmdline"] == "norm"
+                            and not s.get("search_replied", True)
+                            and len(set(s.get("search_colors", []))) == 3, "native search highlights before results")
+            colors = snapshot["search_colors"]
+
+            def search_painted(s):
+                assert s.get("search_colors") == colors, s
+                return s["visible"] and "normDeferred" in s.get("menu_screen", "")
+
+            wait(search_painted, "delayed search menu paints without input or lost source highlights")
+            until = time.monotonic() + 0.08
+            while time.monotonic() < until:
+                snapshot = wait(search_painted, "idle search menu retains native highlights")
+                assert snapshot["cmdline"] == "norm", snapshot
+            os.write(primary, b"\x1b")
+            wait(lambda s: s["mode"] == "n" and not s["visible"], "leave search")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:

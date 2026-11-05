@@ -300,31 +300,50 @@ local ok, err = xpcall(function()
     input("<Tab><CR>")
     wait("return vim.api.nvim_get_mode().mode=='n' and vim.fn.getreg('/')=='bravo'")
   end)
-  test("delayed search candidates paint while typing is paused", function()
-    lua([[
-      vim.o.hlsearch,vim.o.incsearch=true,true
-      vim.api.nvim_buf_set_lines(0,0,-1,false,{'normalized'})
-      require('completion_tools').setup({sources={},cmdline={enabled=true},documentation={auto_show=false},
-        providers={buffer={complete=function(_,cb)
-          vim.defer_fn(function() cb({items={{label='normDeferred'}}}) end,60)
-        end}}})
-    ]])
-    input("/norm")
-    wait("return require('completion_tools').is_menu_visible()")
-    wait(
-      [[
-      for _,win in ipairs(vim.api.nvim_list_wins()) do
-        if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='completion-tools-menu' then
-          local p=vim.fn.screenpos(win,1,1);local text=''
-          for col=p.col,p.col+vim.api.nvim_win_get_width(win)-1 do text=text..vim.fn.screenstring(p.row,col) end
-          return text:find('normDeferred',1,true)~=nil
+  for _, cmdtype in ipairs({ "/", "?" }) do
+    test("delayed " .. cmdtype .. " candidates paint while preserving search highlights", function()
+      lua([[
+        vim.o.hlsearch,vim.o.incsearch=true,true
+        vim.api.nvim_set_hl(0,'Search',{bg='#442200'})
+        vim.api.nvim_set_hl(0,'IncSearch',{bg='#004488'})
+        vim.api.nvim_set_hl(0,'CurSearch',{bg='#004488'})
+        vim.api.nvim_buf_set_lines(0,0,-1,false,{'normalized normalized'})
+        vim.api.nvim_win_set_cursor(0,{1,10})
+        search_reply=nil
+        function search_colors()
+          local p=vim.fn.screenpos(0,1,1)
+          return {vim.fn.screenattr(p.row,p.col),vim.fn.screenattr(p.row,p.col+5),
+            vim.fn.screenattr(p.row,p.col+11)}
         end
-      end
-      return false
-    ]],
-      "delayed search candidate is visible without another key"
-    )
-  end)
+        require('completion_tools').setup({sources={},cmdline={enabled=true},documentation={auto_show=false},
+          providers={buffer={complete=function(_,cb) search_reply=cb end}}})
+      ]])
+      input(cmdtype .. "norm")
+      wait("return vim.fn.getcmdline()=='norm' and search_reply~=nil")
+      wait(
+        "local c=search_colors();return c[1]~=c[2] and c[3]~=c[2] and c[1]~=c[3]",
+        "native search and current-match highlights are visible"
+      )
+      local before = lua("return search_colors()")
+      lua([[vim.defer_fn(function() search_reply({items={{label='normDeferred'}}}) end,60)]])
+      wait("return require('completion_tools').is_menu_visible()")
+      wait(
+        [[
+        for _,win in ipairs(vim.api.nvim_list_wins()) do
+          if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='completion-tools-menu' then
+            local p=vim.fn.screenpos(win,1,1);local text=''
+            for col=p.col,p.col+vim.api.nvim_win_get_width(win)-1 do text=text..vim.fn.screenstring(p.row,col) end
+            return text:find('normDeferred',1,true)~=nil
+          end
+        end
+        return false
+      ]],
+        "delayed search candidate is visible without another key"
+      )
+      eq(before, lua("return search_colors()"))
+      eq({ "norm", 5 }, lua("return {vim.fn.getcmdline(),vim.fn.getcmdpos()}"))
+    end)
+  end
   test("native search leaves menu selection, match styling and documentation colors intact", function()
     lua([[
       vim.o.hlsearch=true
