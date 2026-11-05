@@ -190,6 +190,35 @@ function _G.completion_tui_copilot(staged)
   })
   native.new = real_new
 end
+function _G.completion_tui_empty_menu()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  completion_empty_menu = { phase = "idle", samples = 0, blank = 0 }
+  require("completion-tools").setup({
+    sources = { "copilot" },
+    timeout_ms = 1000,
+    documentation = { auto_show = false },
+    copilot = { show_status = true },
+    providers = {
+      copilot = {
+        complete = function(_, callback)
+          completion_empty_menu.phase = "pending"
+          vim.defer_fn(function()
+            callback({ items = {}, pending = true })
+          end, 80)
+          vim.defer_fn(function()
+            completion_empty_menu.phase = "ready"
+            callback({ items = { { label = "print" } }, pending = true })
+          end, 250)
+          vim.defer_fn(function()
+            completion_empty_menu.phase = "empty"
+            callback({ items = {} })
+          end, 500)
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_triggers()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.bo.filetype = "lua"
@@ -679,6 +708,16 @@ timer:start(
         end
       end
     end
+    if completion_empty_menu and data.mode == "i" and ctx then
+      local stats = completion_empty_menu
+      stats.samples = stats.samples + 1
+      if
+        data.visible and (#cmp.get_items() == 0 or vim.trim(table.concat(data.menu_rows or {}, "")) == "")
+      then
+        stats.blank = stats.blank + 1
+      end
+    end
+    data.empty_menu = completion_empty_menu
     data.handoff = completion_handoff
     data.flicker = completion_flicker
     data.manual = completion_manual

@@ -556,8 +556,9 @@ status icons in the completion window footer: `` ready, `` disabled, ``
 or unavailable, and `` sign-in required. Waiting, startup and generation show
 `` with an animated dots spinner; an idle state with no suggestions uses a muted
 ``. The animation advances every 80 ms while visible and stops on completion,
-hide or disposal. With no candidates, a small status-only window appears. Icons
-never become candidates; animation changes only the border, preserving selection,
+hide or disposal. The menu opens only when actual candidates exist; waiting,
+empty results and timeouts do not leave an empty status-only window. Icons never
+become candidates; animation changes only the border, preserving selection,
 menu contents and geometry. Status notifications never reopen a dismissed menu.
 Set `show_status = false` to hide it. `:CompletionToolsStatus` and `:checkhealth completion_tools`
 also include the native client's status.

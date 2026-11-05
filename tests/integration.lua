@@ -2377,10 +2377,61 @@ local ok, err = xpcall(function()
       and requests[2].params.textDocument.uri==vim.uri_from_bufnr(0)]]))
     lua("vim.fn.delete(copilot_rename_log)")
   end)
-  test("Copilot status-only pane updates without becoming a completion", function()
+  test("Copilot without candidates never opens an empty menu", function()
+    lua([[
+      empty_calls=0
+      require('completion_tools').setup({sources={'copilot'},timeout_ms=500,
+        documentation={auto_show=false},copilot={show_status=true},
+        providers={copilot={complete=function(_,cb) empty_calls=empty_calls+1;empty_reply=cb end}}})
+      function empty_menu_closed()
+        local c=require('completion_tools')
+        if c.is_menu_visible() or #c.get_items()>0 or c._can('accept') then return false end
+        for _,win in ipairs(vim.api.nvim_list_wins()) do
+          if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='completion-tools-menu' then return false end
+        end
+        return true
+      end
+    ]])
+    input("ipr")
+    wait(
+      "return empty_calls==1 and require('completion_tools').get_status().sources.copilot.status=='pending'"
+    )
+    vim.wait(100)
+    assert(lua("return empty_menu_closed()"), "pending Copilot opened an empty menu")
+    lua("empty_reply({items={},pending=true})")
+    vim.wait(40)
+    assert(lua("return empty_menu_closed()"), "empty partial opened a menu")
+    lua("empty_reply({items={{label='print'}},pending=true})")
+    wait(
+      "return require('completion_tools').is_menu_visible() and #require('completion_tools').get_items()==1"
+    )
+    lua("empty_reply({items={}})")
+    wait("return require('completion_tools').get_status().sources.copilot.status=='done'")
+    vim.wait(180)
+    assert(lua("return empty_menu_closed()"), "final empty result left a status-only menu")
+    lua("require('completion_tools').show()")
+    wait(
+      "return empty_calls==2 and require('completion_tools').get_status().sources.copilot.status=='timeout'"
+    )
+    assert(lua("return empty_menu_closed()"), "timed-out Copilot left an empty menu")
+    lua([[
+      empty_reply({items={{label='printLate'}}})
+      vim.api.nvim_exec_autocmds('User',{pattern='CompletionToolsCopilotStatus'})
+    ]])
+    vim.wait(100)
+    assert(lua("return empty_menu_closed()"), "late result or status notification reopened an empty menu")
+    lua("require('completion_tools').show()")
+    wait("return empty_calls==3")
+    lua("empty_reply({items={{label='printFresh'}}})")
+    wait(
+      "return require('completion_tools').is_menu_visible() and require('completion_tools')._can('accept')"
+    )
+    eq("printFresh", lua("return require('completion_tools').get_selected_item().label"))
+  end)
+  test("Copilot footer updates while real candidates remain visible", function()
     lua([[
       copilot_status_log=vim.fn.tempname()
-      require('completion_tools').setup({sources={'copilot'},
+      require('completion_tools').setup({sources={'copilot','local_words'},providers={local_words={complete=function(_,cb) cb({items={{label='prLocal'}}}) end}},
         copilot={debounce_ms=80,command={'python3','tests/fixtures/copilot_server.py',copilot_status_log,'0.5'}}})
       vim.api.nvim_buf_set_lines(0,0,-1,false,{'中😀 = )'})
       vim.api.nvim_win_set_cursor(0,{1,#'中😀 = '})
@@ -2398,12 +2449,12 @@ local ok, err = xpcall(function()
     ]])
     input("ipr")
     wait(
-      [[return fixture_footer():find(' ',1,true)~=nil and #require('completion_tools').get_items()==0]],
+      [[return fixture_footer():find(' ',1,true)~=nil and #require('completion_tools').get_items()==1]],
       "Copilot loading icon"
     )
     assert(
       lua(
-        [[local c=require('completion_tools');return #c.get_items()==0 and not c.accept() and not c.select_next() and c._can('show')]]
+        [[local c=require('completion_tools');return #c.get_items()==1 and c.get_items()[1].label=='prLocal' and c._can('accept')]]
       )
     )
     local status_win = lua("local _,win=fixture_footer();return win")
@@ -2414,8 +2465,8 @@ local ok, err = xpcall(function()
       end, 5),
       "Copilot spinner did not advance while idle"
     )
-    assert(lua("return #require('completion_tools').get_items()==0"))
-    wait([[return vim.trim(fixture_footer())=='' and #require('completion_tools').get_items()==3]])
+    assert(lua("return #require('completion_tools').get_items()==1"))
+    wait([[return vim.trim(fixture_footer())=='' and #require('completion_tools').get_items()==4]])
     eq(status_win, lua("local _,win=fixture_footer();return win"))
     local ready_frame = lua("return fixture_footer()")
     local selected_label = lua("return require('completion_tools').get_selected_item().label")

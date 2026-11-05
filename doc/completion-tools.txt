@@ -181,9 +181,10 @@ There is no Copilot source in command-line mode.
 show_status=true displays Copilot icons in the completion window footer:
  ready (muted when no suggestions),  disabled,  warning/unavailable,  sign-in
 required. Waiting/startup/generation show  with an animated dots spinner (80 ms).
-Animation stops on completion/hide/dispose and changes only the border. With no
-candidates, a small status-only window appears. Icons cannot be selected/accepted;
-notifications preserve selection and never reopen a dismissed menu. Set
+Animation stops on completion/hide/dispose and changes only the border. The menu
+opens only when actual candidates exist; waiting or empty results never open a
+status-only window. Icons cannot be selected/accepted; notifications preserve
+selection and never reopen a dismissed menu. Set
 show_status=false to hide the footer.
 Attached buffers sync full contents on open, then incremental edits. Requests
 identify the document/version/cursor; the local server can use both sides of the

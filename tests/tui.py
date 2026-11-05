@@ -385,6 +385,20 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         snapshot = wait(lambda s: s["mode"] == "n" and s.get("lines") ==
                         ['中😀 = print("fresh")', 'print("$1")!)'], "accept staged first candidate")
         assert snapshot["copilot"]["accepted"] == ["1:print"], snapshot
+        os.write(primary, b":lua completion_tui_empty_menu()\r")
+        wait(lambda s: s["mode"] == "n" and s.get("empty_menu", {}).get("phase") == "idle",
+             "empty-menu fixture")
+        os.write(primary, b"ipr")
+        snapshot = wait(lambda s: s.get("empty_menu", {}).get("phase") == "pending"
+                        and s.get("prefix") == "pr", "Copilot pending without candidates")
+        assert not snapshot["visible"], snapshot
+        snapshot = wait(lambda s: s.get("empty_menu", {}).get("phase") == "ready" and s["can_accept"]
+                        and "print" in s.get("menu_screen", ""), "real candidate paints in terminal")
+        snapshot = wait(lambda s: s.get("empty_menu", {}).get("phase") == "empty" and not s["visible"],
+                        "final empty result closes terminal menu")
+        assert snapshot["empty_menu"]["samples"] >= 5 and snapshot["empty_menu"]["blank"] == 0, snapshot
+        os.write(primary, b"\x1b")
+        wait(lambda s: s["mode"] == "n" and not s["visible"], "empty-menu cleanup")
         for attempt in range(5):
             os.write(primary, b":lua completion_tui_manual()\r")
             wait(lambda s: s["mode"] == "n" and s.get("manual", {}).get("calls") == 0,

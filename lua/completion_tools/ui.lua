@@ -313,13 +313,13 @@ end
 
 local function draw(items, selected, ctx, config, settled)
   cancel_shrink()
-  if (#items == 0 and not menu_status) or vim.o.columns < 8 or vim.o.lines < 6 then
+  if #items == 0 or vim.o.columns < 8 or vim.o.lines < 6 then
     M.hide()
     return
   end
   local opts = config.menu
   local layout = render.prepare(items, opts, vim.o.columns - 4, frame_layout)
-  local window_config, next_geometry = placement(math.max(1, #items), layout.width, ctx, config)
+  local window_config, next_geometry = placement(#items, layout.width, ctx, config)
   if not window_config then
     M.hide()
     return
