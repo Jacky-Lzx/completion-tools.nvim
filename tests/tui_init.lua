@@ -179,6 +179,8 @@ function _G.completion_tui_copilot(staged)
       dispose = function() end,
     }
   end
+  -- Standalone completion follows the theme's Statement instead of a fixed RGB.
+  vim.api.nvim_set_hl(0, "Statement", { fg = "#a566dd" })
   require("completion-tools").setup({
     sources = { "copilot" },
     copilot = { debounce_ms = 20, request_mode = staged and "staged" or "cycling" },

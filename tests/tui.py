@@ -335,7 +335,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         assert len(rows) == 3 and all("print_more" not in row for row in rows), snapshot
         assert len(snapshot["copilot_marks"]) == 3 and all(
             count == 4 for count in snapshot["copilot_marks"].values()), snapshot
-        wait(lambda s: b"38;2;203;166;247" in output, "purple Copilot RGB emitted to terminal")
+        wait(lambda s: b"38;2;165;102;221" in output, "theme-derived Copilot RGB emitted to terminal")
         os.write(primary, b"\x0e")
         wait(lambda s: s.get("selected") == 'printf("fresh")', "Copilot candidate navigation")
         # The cancelled response deliberately arrives late; it must not replace selection.
