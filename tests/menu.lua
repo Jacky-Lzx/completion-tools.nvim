@@ -221,7 +221,10 @@ test("Copilot fields stay purple with match styles and custom theme overrides", 
   local _, buffer_spans = render.row(layout, 1, e, ctx, opts)
   eq(0, #span_for(buffer_spans, "CompletionToolsCopilot"))
   require("completion_tools.ui").highlights()
-  eq(0xcba6f7, vim.api.nvim_get_hl(0, { name = "CompletionToolsCopilot" }).fg)
+  eq(
+    vim.api.nvim_get_hl(0, { name = "Statement", link = false }).fg,
+    vim.api.nvim_get_hl(0, { name = "CompletionToolsCopilot", link = false }).fg
+  )
   vim.api.nvim_set_hl(0, "CompletionToolsCopilot", { fg = "#aa66ff" })
   require("completion_tools.ui").highlights()
   eq(0xaa66ff, vim.api.nvim_get_hl(0, { name = "CompletionToolsCopilot" }).fg)

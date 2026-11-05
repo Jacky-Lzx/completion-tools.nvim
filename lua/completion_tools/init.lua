@@ -735,7 +735,10 @@ function M.setup(opts)
   vim.api.nvim_create_autocmd("User", {
     group = group,
     pattern = { "ThemeToolsIconsChanged", "ThemeToolsReady" },
-    callback = function()
+    callback = function(event)
+      if event.match == "ThemeToolsReady" then
+        ui.highlights()
+      end
       if state.context and M.is_menu_visible() then
         ui.refresh_icons(state.items, state.selected, state.context, state.config)
       end
