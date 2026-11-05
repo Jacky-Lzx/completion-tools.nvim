@@ -496,7 +496,8 @@ local function request(manual, override)
         context = ctx,
         reusable = response.reusable and not response.pending,
         incomplete = response.is_incomplete,
-        response = state.providers[id].reuse and not response.pending and response or nil,
+        response = state.providers[id].reuse and (not response.pending or response.stable) and response
+          or nil,
         cursor_col = ctx.col,
       }
       return require("completion_tools.matcher").has_match(result, ctx, {

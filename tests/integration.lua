@@ -108,6 +108,30 @@ local function copilot_cache_fixture(texts, preselect)
   end
   wait("return require('completion_tools')._can('accept')")
 end
+local function copilot_staged_fixture()
+  lua([[
+    copilot_staged_log=vim.fn.tempname()
+    vim.api.nvim_buf_set_lines(0,0,-1,false,{'中😀 = )'})
+    vim.api.nvim_win_set_cursor(0,{1,#'中😀 = '})
+    require('completion_tools').setup({sources={'copilot'},providers={copilot={timeout_ms=3000}},
+      copilot={request_mode='staged',debounce_ms=0,
+        command={'python3','tests/fixtures/copilot_server.py',copilot_staged_log,'0.3'}}})
+    function staged_count(method)
+      local count=0
+      for _,line in ipairs(vim.fn.filereadable(copilot_staged_log)==1 and vim.fn.readfile(copilot_staged_log) or {}) do
+        if vim.json.decode(line).method==method then count=count+1 end
+      end
+      return count
+    end
+  ]])
+  input("ipr")
+  wait(
+    [[return require('completion_tools')._can('accept') and #require('completion_tools').get_items()==1
+    and require('completion_tools').get_status().sources.copilot.status=='pending']],
+    "first-stage candidate",
+    3000
+  )
+end
 local ok, err = xpcall(function()
   rpc("nvim_ui_attach", 120, 36, { rgb = true })
   lua(
@@ -2174,6 +2198,50 @@ local ok, err = xpcall(function()
       if m.method=='notifyAccepted' and m.params.uuid=='candidate-1' then return true end
     end return false]])
     lua("vim.fn.delete(copilot_protocol_log)")
+  end)
+  test("staged Copilot shows a first candidate and preserves selection when alternatives arrive", function()
+    copilot_staged_fixture()
+    input("<C-n>")
+    lua(
+      [[require('completion_tools').show(); vim.api.nvim_exec_autocmds('LspAttach',{buffer=0,data={client_id=999999}})]]
+    )
+    wait(
+      "return #require('completion_tools').get_items()==3 and require('completion_tools').get_status().sources.copilot.status=='done'"
+    )
+    eq("print(1)", lua("return require('completion_tools').get_selected_item().label"))
+    eq(1, lua("return staged_count('getCompletions')"))
+    eq(1, lua("return staged_count('getCompletionsCycling')"))
+    lua("vim.fn.delete(copilot_staged_log)")
+  end)
+  test("staged Copilot accepts partial and full suggestions before alternatives finish", function()
+    copilot_staged_fixture()
+    lua("assert(require('completion_tools').accept_word())")
+    wait(
+      [[return vim.api.nvim_get_current_line()=='中😀 = print)' and require('completion_tools')._can('accept')]]
+    )
+    input("<Tab>!")
+    wait(
+      [[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),{'中😀 = print(1)','print("done")!)'})]]
+    )
+    vim.wait(350)
+    assert(lua("return not require('completion_tools').is_menu_visible()"))
+    eq(1, lua("return staged_count('getCompletions')"))
+    eq(1, lua("return staged_count('getCompletionsCycling')"))
+    wait("return staged_count('notifyAccepted')==2")
+    lua("vim.fn.delete(copilot_staged_log)")
+  end)
+  test("typing along a first-stage Copilot candidate reuses it and cancels alternatives", function()
+    copilot_staged_fixture()
+    input("i")
+    wait(
+      [[return require('completion_tools').get_context().prefix=='pri' and require('completion_tools')._can('accept')
+      and require('completion_tools').get_status().sources.copilot.cache_hits==1]]
+    )
+    vim.wait(350)
+    eq(1, lua("return #require('completion_tools').get_items()"))
+    eq(1, lua("return staged_count('getCompletions')"))
+    eq(1, lua("return staged_count('getCompletionsCycling')"))
+    lua("vim.fn.delete(copilot_staged_log)")
   end)
   test("renaming a document cancels Copilot and ignores its old URI response", function()
     lua([[

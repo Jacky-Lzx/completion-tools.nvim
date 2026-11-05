@@ -127,7 +127,7 @@ function _G.completion_tui_manual()
     },
   })
 end
-function _G.completion_tui_copilot()
+function _G.completion_tui_copilot(staged)
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "中😀 = )" })
   vim.api.nvim_win_set_cursor(0, { 1, #"中😀 = " })
   vim.bo.filetype = "lua"
@@ -145,10 +145,10 @@ function _G.completion_tui_copilot()
       callback()
       return true
     end
-    assert(method == "getCompletionsCycling")
+    assert(method == "getCompletionsCycling" or (staged and method == "getCompletions"))
     completion_copilot.requests = completion_copilot.requests + 1
     local id = completion_copilot.requests
-    local stale = params.position.character == 8
+    local stale = not staged and params.position.character == 8
     vim.defer_fn(function()
       local items = {}
       for i, name in ipairs({ "print", "printf", "printlog", "print_more" }) do
@@ -157,9 +157,12 @@ function _G.completion_tui_copilot()
           uuid = tostring(id) .. ":" .. name,
           range = { start = { line = 0, character = 0 }, ["end"] = params.position },
         }
+        if method == "getCompletions" then
+          break
+        end
       end
       callback(nil, { completions = items })
-    end, stale and 300 or 60)
+    end, staged and (method == "getCompletions" and 30 or 250) or (stale and 300 or 60))
     return true, id
   end
   local native = require("completion_tools.copilot")
@@ -178,7 +181,7 @@ function _G.completion_tui_copilot()
   end
   require("completion-tools").setup({
     sources = { "copilot" },
-    copilot = { debounce_ms = 20 },
+    copilot = { debounce_ms = 20, request_mode = staged and "staged" or "cycling" },
     keymap = vim.tbl_extend("force", require("completion_tools.config").defaults.keymap, {
       ["<C-l>"] = { "accept_word", "fallback" },
       ["<C-j>"] = { "accept_line", "fallback" },

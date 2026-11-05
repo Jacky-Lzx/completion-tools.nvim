@@ -12,15 +12,20 @@ local function normalise(raw, ctx, client)
   -- same replacement (and the cursor finishes after the closing delimiters).
   if
     not text:find("\n", 1, true)
+    and ctx.col < #ctx.line
     and range["end"].line == ctx.row
     and range["end"].character == vim.str_utfindex(ctx.line, "utf-16", ctx.col, false)
   then
     local suffix = ctx.line:sub(ctx.col + 1)
     for offset in text:gmatch("()[%z\1-\127\194-\244][\128-\191]*") do
-      local tail = text:sub(offset)
-      if suffix:sub(1, #tail) == tail then
-        range["end"].character = range["end"].character + vim.str_utfindex(tail, "utf-16", #tail, false)
-        break
+      -- Only suffixes short enough to overlap can match. Avoid allocating
+      -- progressively shorter copies of a long generated line.
+      if #text - offset + 1 <= #suffix then
+        local tail = text:sub(offset)
+        if suffix:sub(1, #tail) == tail then
+          range["end"].character = range["end"].character + vim.str_utfindex(tail, "utf-16", #tail, false)
+          break
+        end
       end
     end
   end
@@ -83,6 +88,9 @@ function M.new(opts)
   local function subscribe(record, callback)
     local token = {}
     record.callbacks[token] = callback
+    if record.response then
+      callback(record.response)
+    end
     return function(next_context)
       record.callbacks[token] = nil
       -- The engine can transfer the same pending request into its next run.
@@ -105,7 +113,8 @@ function M.new(opts)
     end
     local context = require("completion_tools.context")
     if context.same(old, ctx) then
-      return response
+      -- A same-snapshot refresh must subscribe to the pending second stage.
+      return not response.pending and response or nil
     end
     if not context.advances(old, ctx) then
       return
@@ -156,7 +165,8 @@ function M.new(opts)
     end
     cancel_active()
     local record = { context = ctx, params = params(ctx), callbacks = {} }
-    local cancelled, finished, timer, client, request_id, cancel_start = false, false, nil, nil, nil, nil
+    local cancelled, timer, client, cancel_start = false, nil, nil, nil
+    local requests = {}
     local function cancel()
       if cancelled then
         return
@@ -171,18 +181,24 @@ function M.new(opts)
       if cancel_start then
         cancel_start()
       end
-      if client and request_id and not finished then
-        client:cancel_request(request_id)
+      if client then
+        for _, request in ipairs(requests) do
+          if request.id and not request.done then
+            client:cancel_request(request.id)
+          end
+        end
       end
     end
     record.cancel = cancel
     active = record
     local unsubscribe = subscribe(record, callback)
     local function publish(response)
-      finished, record.finished = true, true
-      local callbacks = record.callbacks
-      record.callbacks = {}
-      for _, cb in pairs(callbacks) do
+      record.finished, record.response = not response.pending, response
+      local callbacks = vim.tbl_values(record.callbacks)
+      if record.finished then
+        record.callbacks = {}
+      end
+      for _, cb in ipairs(callbacks) do
         cb(response)
       end
     end
@@ -207,33 +223,28 @@ function M.new(opts)
       end
       local request_params = params(ctx)
       record.params = request_params
-      local sent
-      -- Cycling requests ask Copilot for alternatives instead of only its first suggestion.
-      sent, request_id = client:request("getCompletionsCycling", request_params, function(err, result)
-        if cancelled then
-          return
+      local function merge(previous, err, result)
+        local items, seen = vim.list_extend({}, previous), {}
+        local function key(item)
+          local range = item.textEdit.range
+          return item.textEdit.newText
+            .. "\0"
+            .. table.concat(
+              { range.start.line, range.start.character, range["end"].line, range["end"].character },
+              ":"
+            )
         end
-        if copilot.record_error then
-          copilot.record_error(err)
+        for _, item in ipairs(items) do
+          seen[key(item)] = true
         end
-        local items, seen = {}, {}
         if not err and result and result ~= vim.NIL then
-          for i, raw in ipairs(result.completions or {}) do
+          for _, raw in ipairs(result.completions or {}) do
             local item = normalise(raw, ctx, client)
             if item then
-              local edit = item.textEdit
-              local range = edit.range
-              local key = edit.newText
-                .. "\0"
-                .. table.concat({
-                  range.start.line,
-                  range.start.character,
-                  range["end"].line,
-                  range["end"].character,
-                }, ":")
-              if not seen[key] then
-                seen[key] = true
-                item.sortText = string.format("%06d", i)
+              local identity = key(item)
+              if not seen[identity] then
+                seen[identity] = true
+                item.sortText = string.format("%06d", #items + 1)
                 items[#items + 1] = item
                 if #items >= (opts.max_items or 3) then
                   break
@@ -242,11 +253,47 @@ function M.new(opts)
             end
           end
         end
-        -- Reuse is opt-in per candidate through source.reuse, never fuzzy prefix caching.
-        publish({ items = items })
-      end, ctx.bufnr)
-      if not sent and not finished then
-        publish({ items = {} })
+        return items
+      end
+      local function issue(method, receive)
+        if cancelled then
+          return
+        end
+        local request = {}
+        requests[#requests + 1] = request
+        local function done(err, result)
+          request.done = true
+          if cancelled then
+            return
+          end
+          if copilot.record_error then
+            copilot.record_error(err)
+          end
+          receive(err, result)
+        end
+        local sent, id = client:request(method, request_params, done, ctx.bufnr)
+        request.id = id
+        if not sent and not request.done then
+          done({ message = "Copilot request could not be sent" })
+        end
+      end
+      local function cycling(items)
+        issue("getCompletionsCycling", function(err, result)
+          publish({ items = merge(items, err, result) })
+        end)
+      end
+      if opts.request_mode == "staged" then
+        issue("getCompletions", function(err, result)
+          local items = merge({}, err, result)
+          if err or #items >= (opts.max_items or 3) then
+            publish({ items = items })
+          else
+            publish({ items = items, pending = true, stable = true })
+            cycling(items)
+          end
+        end)
+      else
+        cycling({})
       end
     end
     if (opts.debounce_ms or 150) == 0 then

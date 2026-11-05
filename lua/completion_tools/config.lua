@@ -70,6 +70,7 @@ M.defaults = {
   snippets = { preset = "default", collection = {} },
   copilot = {
     debounce_ms = 150,
+    request_mode = "cycling",
     max_items = 3,
     show_status = true,
     command = { "copilot-language-server", "--stdio" },
@@ -230,6 +231,10 @@ function M.validate(opts)
   assert(integer(config.copilot.debounce_ms, 0), "completion-tools: invalid copilot.debounce_ms")
   assert(integer(config.copilot.max_items, 1), "completion-tools: invalid copilot.max_items")
   local copilot = config.copilot
+  assert(
+    copilot.request_mode == "cycling" or copilot.request_mode == "staged",
+    "completion-tools: invalid copilot.request_mode"
+  )
   assert(type(copilot.show_status) == "boolean", "completion-tools: invalid copilot.show_status")
   assert(
     type(copilot.command) == "table" and #copilot.command > 0,

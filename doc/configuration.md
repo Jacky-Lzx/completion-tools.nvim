@@ -495,6 +495,15 @@ warning with installation guidance; other completion sources keep working.
 
 New requests debounce independently (150 ms by default; 0 disables it). Typing,
 hiding the menu and disposal cancel pending timers and in-flight requests.
+`copilot.request_mode = "cycling"` (default) fetches alternatives in one request.
+The optional `"staged"` mode first uses `getCompletions`, publishes those candidates
+immediately, then fills remaining slots with `getCompletionsCycling`. Duplicates
+are removed and the first candidate keeps its identity/position. First-stage
+candidates can be accepted or reused while alternatives are pending; typing along
+one cancels the remaining request. Identical refreshes subscribe to the current
+stage instead of restarting it. If alternatives fail, available first-stage
+candidates remain usable. Staged mode can use two requests per uncached snapshot;
+its latency benefit depends on the server, so it is opt-in.
 Refreshes at an identical document/cursor snapshot share one pending Copilot
 request, including its original debounce deadline. Each subscriber can cancel
 independently; hiding or changing the snapshot cancels unused work immediately.
@@ -661,7 +670,7 @@ source.dispose()                                  -- Optional
 ```
 
 `complete` publishes `{ items = CompletionItem[], start_col?, reusable?,
-is_incomplete?, pending? }`. `start_col` is a zero-based byte column in the current
+is_incomplete?, pending?, stable? }`. `start_col` is a zero-based byte column in the current
 line, defaulting to the keyword start. TextEdit ranges take precedence. Custom
 edits default to UTF-8; items may override `_encoding`.
 
@@ -676,7 +685,11 @@ the new context, individual candidates and replacement ranges. Returning `nil`
 discards that cache and calls `complete` under the normal trigger policy. This
 cache permits only uninterrupted same-line insertions at the last cursor and is
 cleared on hide; it is independent of ordinary `reusable=true` word-list caching.
-Only final responses are passed to `reuse`. A valid response can continue through
+Only final responses, or pending responses explicitly marked `stable=true`, are
+passed to `reuse`. A stable publication promises that its candidates remain valid
+while the source fetches additional choices. Same-snapshot reuse of a pending list
+must return `nil` so `complete` can re-subscribe to the remaining publications.
+A valid response can continue through
 otherwise blocked characters without starting other sources at those characters.
 `resolve_on_accept=false` limits resolve to documentation, avoiding delayed acceptance edits.
 

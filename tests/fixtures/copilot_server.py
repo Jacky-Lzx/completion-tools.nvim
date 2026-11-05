@@ -33,14 +33,14 @@ while True:
         send(request_id, {"capabilities": {"positionEncoding": "utf-16", "textDocumentSync": 2,
              "workspace": {"workspaceFolders": {"supported": True, "changeNotifications": True}},
              "executeCommandProvider": {"commands": ["fixture.finishDeviceFlow"]}}})
-    elif method == "getCompletionsCycling":
-        if len(sys.argv) > 2:
+    elif method in ("getCompletions", "getCompletionsCycling"):
+        if len(sys.argv) > 2 and method == "getCompletionsCycling":
             time.sleep(float(sys.argv[2]))
         row = params["position"]["line"]
         send(request_id, {"completions": [
             {"text": f'print({i})\nprint("done")', "uuid": f"candidate-{i}",
              "range": {"start": {"line": row, "character": 6}, "end": params["position"]}}
-            for i in range(1, 4)]})
+            for i in range(1, 2 if method == "getCompletions" else 4)]})
     elif method == "signIn":
         send(request_id, {"userCode": "TEST-CODE", "command": {
              "command": "fixture.finishDeviceFlow", "arguments": [], "title": "Sign in"}})

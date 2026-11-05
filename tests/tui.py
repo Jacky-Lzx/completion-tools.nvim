@@ -347,6 +347,22 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
                         "Unicode multiline Copilot acceptance and continued typing")
         assert snapshot["copilot"]["accepted"] == ["2:printf"] * 3, snapshot
         assert not snapshot["visible"], snapshot
+        os.write(primary, b":lua completion_tui_copilot(true)\r")
+        wait(lambda s: s["mode"] == "n" and s.get("copilot", {}).get("requests") == 0, "staged Copilot fixture")
+        os.write(primary, b"ipr")
+        snapshot = wait(lambda s: s["can_accept"] and s.get("copilot", {}).get("requests") == 2
+                        and len([r for r in s.get("menu_rows", []) if "Copilot" in r]) == 1,
+                        "staged first candidate is visible while alternatives are pending")
+        window = snapshot["menu"]["win"]
+        os.write(primary, b"\x0e")
+        snapshot = wait(lambda s: len([r for r in s.get("menu_rows", []) if "Copilot" in r]) == 3,
+                        "staged alternatives fill the terminal menu")
+        assert snapshot["selected"] == 'print("fresh")' and snapshot["menu"]["win"] == window, snapshot
+        assert snapshot["copilot"]["requests"] == 2, snapshot
+        os.write(primary, b"\t!\x1b")
+        snapshot = wait(lambda s: s["mode"] == "n" and s.get("lines") ==
+                        ['中😀 = print("fresh")', 'print("$1")!)'], "accept staged first candidate")
+        assert snapshot["copilot"]["accepted"] == ["1:print"], snapshot
         for attempt in range(5):
             os.write(primary, b":lua completion_tui_manual()\r")
             wait(lambda s: s["mode"] == "n" and s.get("manual", {}).get("calls") == 0,

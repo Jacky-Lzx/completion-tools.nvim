@@ -73,6 +73,9 @@ footer, with an animated spinner while waiting for suggestions. Exact forward
 typing reuses matching suggestions immediately without another request; input
 that diverges uses the normal 150 ms debounce. See [Copilot configuration](doc/configuration.md#copilot)
 for server paths, filetype policies and controls.
+Optional `copilot.request_mode = "staged"` shows first-stage results before
+fetching alternatives. `accept_word` and `accept_line` actions accept part of a
+suggestion while keeping the remainder; configure their keys as desired.
 
 ## Everyday keys
 

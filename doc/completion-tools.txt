@@ -168,6 +168,11 @@ including matching spaces/punctuation. Matching candidates stay selectable and
 their UTF-16 ranges are updated without another request. A miss uses the normal
 trigger rules and debounce. Deletion, newline, cursor movement, other edits,
 hiding or leaving the buffer/window/insert mode invalidate the cache.
+request_mode="cycling" is the default. Optional "staged" publishes getCompletions
+results first, then fills up to max_items via getCompletionsCycling. First-stage
+choices remain usable and their identities survive merging. Matching input reuses
+them and cancels alternatives. A second-stage error retains the first choices.
+This mode may use two requests per snapshot; latency benefits depend on the server.
 Cycling requests retain up to max_items unique edits (default 3); the service may
 return fewer. Copilot fields are purple (#cba6f7) through CompletionToolsCopilot.
 The first nonempty line appears in the menu, with full insertion in docs.
@@ -229,7 +234,7 @@ Source functions use dot calls:
     reuse(ctx, response, previous_ctx) -> response? -- optional, validated reuse
     dispose()                           -- optional
 <
-complete callbacks receive {items, start_col?, reusable?, is_incomplete?, pending?}.
+complete callbacks receive {items, start_col?, reusable?, is_incomplete?, pending?, stable?}.
 start_col is a zero-based byte column; item TextEdits take precedence.
 LSP clients carry their negotiated encoding; custom edits default to UTF-8.
 resolve callbacks receive a CompletionItem.
@@ -242,8 +247,10 @@ provider does not honour cancellation. The provider owns external resources.
 Set pending=true while more results are expected; omit or clear it on the final
 response. Only complete, non-pending reusable lists are cached for forward typing.
 For generated edits, reuse may validate each candidate and return an updated
-response, or nil to discard the cache and use normal completion. Only final
-responses qualify. This cache allows uninterrupted same-line insertions at the
+response, or nil to discard the cache and use normal completion. Final responses
+and pending lists explicitly marked stable=true qualify. Same-snapshot reuse of
+a pending list must return nil so complete re-subscribes to the remaining results.
+This cache allows uninterrupted same-line insertions at the
 last cursor and clears on hide. Validated candidates may continue through blocked
 characters without starting other sources there; reusable=true is independent.
 During typing/backspace within one keyword, the previous menu remains visible
