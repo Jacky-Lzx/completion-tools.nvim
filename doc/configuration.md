@@ -511,6 +511,15 @@ replacement ranges and multiline suggestions retain their server-defined meaning
 Renaming a file or saving an unnamed buffer closes the old document before
 opening its new URI. Filetype changes reattach the document with its new language;
 old suggestions are invalidated during these transitions.
+The client registers each eligible buffer's project root as a workspace, reusing
+one server across projects. `copilot.root_dir` accepts a directory or a function
+`(bufnr) -> directory?`; by default the nearest `.git` root (or cwd) is used.
+`copilot.workspace_folders` lists additional directories. Canonical paths are
+deduplicated, and new roots are announced to servers supporting workspace folders.
+Request `doc.relativePath` is relative to that buffer's project root.
+Language IDs normalize common Neovim filetypes (for example `sh` to `shellscript`
+and `text` to `plaintext`), including dotted filetypes. Override individual names
+with `copilot.language_ids = { ["my.ft"] = "server-language" }`.
 The cycling API requests alternatives; duplicates are removed and at most
 `copilot.max_items` (default 3) are retained. The service may return fewer.
 Copilot fields use `CompletionToolsCopilot` (purple, `#cba6f7`), preserving the

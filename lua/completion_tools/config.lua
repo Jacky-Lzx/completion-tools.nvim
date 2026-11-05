@@ -75,6 +75,8 @@ M.defaults = {
     command = { "copilot-language-server", "--stdio" },
     filetypes = {},
     settings = {},
+    workspace_folders = {},
+    language_ids = {},
   },
   cmdline = {
     enabled = false,
@@ -100,6 +102,9 @@ function M.validate(opts)
   -- Lists and keymaps are replacements. An empty table must disable them.
   if opts.copilot and opts.copilot.command ~= nil then
     config.copilot.command = vim.deepcopy(opts.copilot.command)
+  end
+  if opts.copilot and opts.copilot.workspace_folders ~= nil then
+    config.copilot.workspace_folders = vim.deepcopy(opts.copilot.workspace_folders)
   end
   if opts.sources ~= nil then
     config.sources = opts.sources
@@ -241,6 +246,23 @@ function M.validate(opts)
     )
   end
   assert(type(copilot.settings) == "table", "completion-tools: invalid copilot.settings")
+  assert(
+    copilot.root_dir == nil
+      or type(copilot.root_dir) == "function"
+      or (type(copilot.root_dir) == "string" and copilot.root_dir ~= ""),
+    "completion-tools: invalid copilot.root_dir"
+  )
+  assert(type(copilot.workspace_folders) == "table", "completion-tools: invalid copilot.workspace_folders")
+  for _, path in ipairs(copilot.workspace_folders) do
+    assert(type(path) == "string" and path ~= "", "completion-tools: invalid copilot.workspace_folders entry")
+  end
+  assert(type(copilot.language_ids) == "table", "completion-tools: invalid copilot.language_ids")
+  for ft, language in pairs(copilot.language_ids) do
+    assert(
+      type(ft) == "string" and type(language) == "string" and language ~= "",
+      "completion-tools: invalid copilot.language_ids entry"
+    )
+  end
   assert(
     copilot.should_attach == nil or type(copilot.should_attach) == "function",
     "completion-tools: invalid copilot.should_attach"

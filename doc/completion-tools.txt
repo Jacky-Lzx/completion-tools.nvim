@@ -152,6 +152,11 @@ filetypes. should_attach(bufnr) may further restrict attachment. command is a
 complete argv list; use an absolute executable path for Mason outside PATH.
 settings are forwarded to the server (e.g. http.proxy). The server manages
 credentials; GitHub Copilot access is required.
+root_dir accepts a directory or function(bufnr); defaults to the nearest .git or
+cwd. Each eligible project's root is registered with the shared server, plus any
+workspace_folders directories. Canonical paths are deduplicated. Language IDs
+normalize common Neovim filetypes; language_ids maps filetype names to overrides.
+Renames and first saves close the old URI before opening the new document.
 New requests debounce independently and cancel on edits/hide/dispose. Completed
 suggestions are reused immediately during exact forward typing on the same line,
 including matching spaces/punctuation. Matching candidates stay selectable and

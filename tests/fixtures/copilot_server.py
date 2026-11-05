@@ -31,6 +31,7 @@ while True:
     if method == "initialize":
         time.sleep(0.05)
         send(request_id, {"capabilities": {"positionEncoding": "utf-16", "textDocumentSync": 2,
+             "workspace": {"workspaceFolders": {"supported": True, "changeNotifications": True}},
              "executeCommandProvider": {"commands": ["fixture.finishDeviceFlow"]}}})
     elif method == "getCompletionsCycling":
         if len(sys.argv) > 2:

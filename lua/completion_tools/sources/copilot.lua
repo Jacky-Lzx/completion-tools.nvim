@@ -63,6 +63,9 @@ function M.new(opts)
   opts = opts or {}
   local native = require("completion_tools.copilot")
   local copilot = native.new(opts)
+  local function params(ctx)
+    return copilot.params and copilot.params(ctx) or native.params(ctx)
+  end
   local source, active = { score_offset = 50 }, nil
   local function cancel_active()
     if active then
@@ -72,7 +75,7 @@ function M.new(opts)
   end
   local function matches(record, ctx)
     return require("completion_tools.context").same(record.context, ctx)
-      and vim.deep_equal(record.params, native.params(ctx))
+      and vim.deep_equal(record.params, params(ctx))
   end
   local function subscribe(record, callback)
     local token = {}
@@ -148,7 +151,7 @@ function M.new(opts)
       return subscribe(active, callback)
     end
     cancel_active()
-    local record = { context = ctx, params = native.params(ctx), callbacks = {} }
+    local record = { context = ctx, params = params(ctx), callbacks = {} }
     local cancelled, finished, timer, client, request_id, cancel_start = false, false, nil, nil, nil, nil
     local function cancel()
       if cancelled then
@@ -198,11 +201,11 @@ function M.new(opts)
         publish({ items = {} })
         return
       end
-      local params = native.params(ctx)
-      record.params = params
+      local request_params = params(ctx)
+      record.params = request_params
       local sent
       -- Cycling requests ask Copilot for alternatives instead of only its first suggestion.
-      sent, request_id = client:request("getCompletionsCycling", params, function(err, result)
+      sent, request_id = client:request("getCompletionsCycling", request_params, function(err, result)
         if cancelled then
           return
         end

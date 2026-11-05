@@ -3,7 +3,7 @@
 local M = {}
 local instance = 0
 
-function M.params(ctx)
+function M.params(ctx, root)
   local buf = ctx.bufnr
   local tabsize = vim.bo[buf].shiftwidth
   if tabsize == 0 then
@@ -12,7 +12,9 @@ function M.params(ctx)
   local doc = {
     uri = vim.uri_from_bufnr(buf),
     version = vim.lsp.util.buf_versions[buf] or 0,
-    relativePath = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":."),
+    relativePath = root
+        and require("completion_tools.copilot_context").relative(vim.api.nvim_buf_get_name(buf), root)
+      or vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":."),
     position = { line = ctx.row, character = vim.str_utfindex(ctx.line, "utf-16", ctx.col, false) },
     tabSize = tabsize,
     indentSize = tabsize,
@@ -33,6 +35,8 @@ function M.new(opts)
   local client, disposed, disabled = nil, false, false
   local pending, sequence, last_error, status = {}, 0, nil, nil
   local documents, renaming = {}, {}
+  local folders = {}
+  local context = require("completion_tools.copilot_context")
   local command = "CompletionToolsCopilot"
   instance = instance + 1
   local group = vim.api.nvim_create_augroup("CompletionToolsCopilot" .. instance, { clear = true })
@@ -82,8 +86,29 @@ function M.new(opts)
       vim.lsp.buf_detach_client(buf, c.id)
     end
   end
+  local function add_folder(path, c)
+    local uri = vim.uri_from_fname(context.directory(path))
+    for _, folder in ipairs(folders) do
+      if folder.uri == uri then
+        return
+      end
+    end
+    local folder = { uri = uri, name = context.directory(path) }
+    folders[#folders + 1] = folder
+    if c then
+      c.workspace_folders = vim.deepcopy(folders)
+      local workspace = c.server_capabilities.workspace or {}
+      if workspace.workspaceFolders and workspace.workspaceFolders.supported then
+        c:notify("workspace/didChangeWorkspaceFolders", { event = { added = { folder }, removed = {} } })
+      end
+    end
+  end
+  function manager.params(ctx)
+    return M.params(ctx, context.root(ctx.bufnr, opts))
+  end
   local function attach(buf, c)
     if manager.eligible(buf) then
+      add_folder(context.root(buf, opts), c)
       local document = documents[buf]
       local uri, filetype = vim.uri_from_bufnr(buf), vim.bo[buf].filetype
       if document and (document.uri ~= uri or document.filetype ~= filetype) then
@@ -130,14 +155,25 @@ function M.new(opts)
         end
         drain(nil, err)
       else
+        folders = {}
+        local root = context.root(buf, opts)
+        add_folder(root)
+        for _, path in ipairs(opts.workspace_folders or {}) do
+          add_folder(path)
+        end
         local caps = vim.lsp.protocol.make_client_capabilities()
         caps.general = caps.general or {}
         caps.general.positionEncodings = { "utf-16" }
         caps.textDocument.inlineCompletion = { dynamicRegistration = false }
+        caps.workspace.workspaceFolders = true
         local id = vim.lsp.start({
           name = "completion-tools-copilot",
           cmd = cmd,
-          root_dir = vim.fs.root(buf, { ".git" }) or vim.fn.getcwd(),
+          root_dir = root,
+          workspace_folders = vim.deepcopy(folders),
+          get_language_id = function(_, filetype)
+            return context.language(filetype, opts.language_ids)
+          end,
           offset_encoding = "utf-16",
           capabilities = caps,
           init_options = {
@@ -167,6 +203,7 @@ function M.new(opts)
             if not disposed and client and client.id == id then
               client = nil
               documents, renaming = {}, {}
+              folders = {}
               last_error = "Server exited (" .. code .. ")"
               drain(nil, last_error)
               changed()
@@ -198,6 +235,7 @@ function M.new(opts)
       initialized = client ~= nil and client.initialized or false,
       server = status and vim.deepcopy(status) or nil,
       attached_buffers = client and vim.deepcopy(client.attached_buffers) or {},
+      workspace_folders = vim.deepcopy(folders),
       last_error = last_error,
     }
   end
@@ -224,6 +262,7 @@ function M.new(opts)
       end
       status, last_error = nil, nil
       documents, renaming = {}, {}
+      folders = {}
       changed()
       drain(nil)
       return
