@@ -69,7 +69,9 @@ No `copilot.lua`, Blink or nvim-cmp adapter is needed. When migrating, remove
 `copilot.lua` from your plugin configuration and its `require("copilot").setup()`.
 This integration provides completion only, using the normal menu with up to
 three purple suggestions. Its status uses Copilot icons in the completion window
-footer, with an animated spinner while waiting for suggestions. See [Copilot configuration](doc/configuration.md#copilot)
+footer, with an animated spinner while waiting for suggestions. Exact forward
+typing reuses matching suggestions immediately without another request; input
+that diverges uses the normal 150 ms debounce. See [Copilot configuration](doc/configuration.md#copilot)
 for server paths, filetype policies and controls.
 
 ## Everyday keys

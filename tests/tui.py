@@ -321,6 +321,18 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         while time.monotonic() < until:
             snapshot = wait(lambda s: s.get("selected") == 'printf("fresh")', "late Copilot reply ignored")
             assert "stale" not in snapshot.get("menu_screen", ""), snapshot
+        window = snapshot["menu"]["win"]
+        for text, selected in ((b"nt", 'print("fresh")'), (b"f", 'printf("fresh")'), (b"(", '"fresh")')):
+            os.write(primary, text)
+            snapshot = wait(lambda s: s["can_accept"] and s.get("selected") == selected
+                            and s["line"].endswith(text.decode() + ")"), "cached Copilot continuation")
+            assert snapshot["copilot"]["requests"] == 2, snapshot
+            assert snapshot["menu"]["win"] == window, snapshot
+            assert "stale" not in snapshot.get("menu_screen", ""), snapshot
+        until = time.monotonic() + 0.1
+        while time.monotonic() < until:
+            snapshot = wait(lambda s: s["can_accept"], "cached candidates stay usable after debounce")
+            assert snapshot["copilot"]["requests"] == 2, snapshot
         os.write(primary, b"\t!\x1b")
         snapshot = wait(lambda s: s["mode"] == "n" and s.get("lines") ==
                         ['中😀 = printf("fresh")', 'print("$1")!)'],

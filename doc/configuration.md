@@ -493,14 +493,20 @@ The server starts only on a Copilot request or explicit authentication; default
 completion-tools setup starts no Copilot process. Missing executables produce a
 warning with installation guidance; other completion sources keep working.
 
-Requests debounce independently (150 ms by default; 0 disables it). Typing,
+New requests debounce independently (150 ms by default; 0 disables it). Typing,
 hiding the menu and disposal cancel pending timers and in-flight requests.
+Completed suggestions are reused immediately while forward typing on the same
+line exactly follows their generated text. Each edit keeps only matching
+candidates and adjusts their UTF-16 replacement ranges; the candidates remain
+selectable without another request. Matching spaces and punctuation can continue
+a cached suggestion even when they would not trigger a new request. A cache miss
+uses the normal trigger rules and debounce. Deletion, newline, cursor movement,
+other edits, hiding and leaving the buffer/window/insert mode invalidate this cache.
 The cycling API requests alternatives; duplicates are removed and at most
 `copilot.max_items` (default 3) are retained. The service may return fewer.
 Copilot fields use `CompletionToolsCopilot` (purple, `#cba6f7`), preserving the
-selected background and match emphasis. Generated candidates are never reused
-across edits. UTF-16 ranges and multiline literal text are preserved. Acceptance
-reports the selected suggestion to Copilot. Command-line completion never
+selected background and match emphasis. UTF-16 ranges and multiline literal text
+are preserved. Acceptance reports the selected suggestion to Copilot. Command-line completion never
 requests Copilot. `copilot.show_status` (default `true`) displays the former Copilot
 status icons in the completion window footer: `` ready, `` disabled, `` warning
 or unavailable, and `` sign-in required. Waiting, startup and generation show
@@ -615,6 +621,7 @@ source.complete(ctx, callback) -> cancel_function?
 source.resolve(entry, callback) -> cancel_function? -- Optional
 source.execute(entry, ctx)                         -- Optional; after the primary edit
 source.trigger(ctx) -> boolean                    -- Optional
+source.reuse(ctx, response, previous_ctx) -> response? -- Optional; validated reuse
 source.dispose()                                  -- Optional
 ```
 
@@ -629,6 +636,13 @@ the final response. The engine schedules callbacks and rejects stale results.
 Only complete, stable, non-pending lists can be reusable for forward typing in
 the same context. Backspace, newline, edits on other lines or InsertLeave invalidate
 reuse. Providers should cancel promptly and own their external resources.
+For generated edits, `reuse` may return an updated response only after validating
+the new context, individual candidates and replacement ranges. Returning `nil`
+discards that cache and calls `complete` under the normal trigger policy. This
+cache permits only uninterrupted same-line insertions at the last cursor and is
+cleared on hide; it is independent of ordinary `reusable=true` word-list caching.
+Only final responses are passed to `reuse`. A valid response can continue through
+otherwise blocked characters without starting other sources at those characters.
 `resolve_on_accept=false` limits resolve to documentation, avoiding delayed acceptance edits.
 
 Entries contain `item`, `context` (the originating context), `start_col` and `source_id`.

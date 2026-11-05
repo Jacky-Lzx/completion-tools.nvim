@@ -194,6 +194,74 @@ end)
 requests[#requests].callback(nil, { completions = alternatives })
 limited.dispose()
 
+-- Reuse validates literal generated text, not the fuzzy filterText used by the menu.
+local function forward(old, suffix)
+  local next = vim.deepcopy(old)
+  next.before = old.before .. suffix
+  next.col = #next.before
+  next.line = next.before .. old.line:sub(old.col + 1)
+  next.prefix = vim.fn.matchstr(next.before, [[\k*$]])
+  next.start_col = next.col - #next.prefix
+  next.tick = old.tick + 1
+  return next
+end
+eq(result, source.reuse(ctx, result, ctx))
+local typed = forward(ctx, "int")
+local reused = assert(source.reuse(typed, result, ctx))
+eq(1, #reused.items)
+eq(item.textEdit.newText, reused.items[1].textEdit.newText)
+eq(11, reused.items[1].textEdit.range["end"].character)
+eq("chosen", reused.items[1]._copilot_uuid)
+eq(8, item.textEdit.range["end"].character) -- The original snapshot stays immutable.
+local punctuation = forward(typed, "(")
+local punct_result = assert(source.reuse(punctuation, reused, typed))
+eq('"$1")\nprint("done")', punct_result.items[1].textEdit.newText)
+eq(12, punct_result.items[1].textEdit.range.start.character)
+for _, suffix in ipairs({ "X", "INT", "xint", 'int("$1")\nprint("done")' }) do
+  eq(nil, source.reuse(forward(ctx, suffix), result, ctx))
+end
+for field, value in pairs({ row = 1, bufnr = -1, winid = -1, mode = "cmdline", filetype = "python" }) do
+  local changed = vim.tbl_extend("force", typed, { [field] = value })
+  eq(nil, source.reuse(changed, result, ctx))
+end
+local changed = vim.tbl_extend("force", typed, { line = typed.before .. "different suffix" })
+eq(nil, source.reuse(changed, result, ctx))
+eq(nil, source.reuse(ctx, reused, typed)) -- Backspace is not forward typing.
+disabled = true
+eq(nil, source.reuse(typed, result, ctx))
+disabled = false
+client.initialized = false
+eq(nil, source.reuse(typed, result, ctx))
+client.initialized = true
+
+-- Insertions at the cursor, Unicode input and replacement of following lines.
+local unicode = vim.deepcopy(item)
+unicode.textEdit = {
+  range = { start = { line = 0, character = 8 }, ["end"] = { line = 1, character = 3 } },
+  newText = "😀 中文\nnext",
+}
+local unicode_ctx = forward(ctx, "😀 ")
+local unicode_result = assert(source.reuse(unicode_ctx, { items = { unicode } }, ctx))
+eq(11, unicode_result.items[1].textEdit.range.start.character)
+eq({ line = 1, character = 3 }, unicode_result.items[1].textEdit.range["end"])
+eq("中文\nnext", unicode_result.items[1].textEdit.newText)
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { unicode_ctx.line, "old tail" })
+require("completion_tools.edits").apply(
+  { item = unicode_result.items[1], context = unicode_ctx },
+  unicode_ctx,
+  require("completion_tools.config").defaults
+)
+eq({ "中😀 = pr😀 中文", "next tail" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+local before_cursor = vim.deepcopy(unicode)
+before_cursor.textEdit.range["end"] = { line = 0, character = 7 }
+eq(nil, source.reuse(unicode_ctx, { items = { before_cursor } }, ctx))
+local earlier_line = vim.deepcopy(unicode)
+earlier_line.textEdit.range.start.line = -1
+eq(nil, source.reuse(unicode_ctx, { items = { earlier_line } }, ctx))
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { ctx.line })
+vim.api.nvim_win_set_cursor(0, { 1, ctx.col })
+ctx.tick = vim.api.nvim_buf_get_changedtick(0)
+
 local debounced = factory.new({ debounce_ms = 30 })
 local count = #requests
 debounced.complete(ctx, function() end)()

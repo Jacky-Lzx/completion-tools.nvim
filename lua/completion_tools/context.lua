@@ -72,6 +72,20 @@ function M.same(a, b)
     and a.tick == b.tick
 end
 
+-- Literal forward typing can cross keyword boundaries, unlike word-list reuse.
+function M.advances(old, new)
+  return old
+    and new
+    and old.bufnr == new.bufnr
+    and old.winid == new.winid
+    and old.filetype == new.filetype
+    and old.mode == new.mode
+    and old.row == new.row
+    and new.col > old.col
+    and new.before:sub(1, old.col) == old.before
+    and old.line:sub(old.col + 1) == new.line:sub(new.col + 1)
+end
+
 -- Visual continuity only. Cache reuse deliberately keeps the stricter extends()
 -- check, since cached edits are not safe across arbitrary prefix replacements.
 function M.continues(old, new)

@@ -53,6 +53,53 @@ function M.new(opts)
       active = nil
     end
   end
+  -- Only carry suggestions through literal forward typing. Fuzzy matching is
+  -- useful for a menu, but cannot establish that an old generated edit is safe.
+  function source.reuse(ctx, response, old)
+    if not copilot.eligible(ctx.bufnr) or ctx.mode ~= "insert" then
+      return
+    end
+    local items = response.items or {}
+    local client = items[1] and items[1]._copilot_client
+    if not client or not client.initialized or client:is_stopped() then
+      return
+    end
+    local context = require("completion_tools.context")
+    if context.same(old, ctx) then
+      return response
+    end
+    if not context.advances(old, ctx) then
+      return
+    end
+    local retained = {}
+    local cursor = vim.str_utfindex(old.line, "utf-16", old.col, false)
+    for _, item in ipairs(items) do
+      local edit, range = item.textEdit, item.textEdit.range
+      local finish = range["end"]
+      if
+        range.start.line == old.row
+        and range.start.character <= cursor
+        and (finish.line > old.row or (finish.line == old.row and finish.character >= cursor))
+      then
+        local start = vim.str_byteindex(old.line, "utf-16", range.start.character, false)
+        local typed = ctx.before:sub(start + 1)
+        if #edit.newText > #typed and edit.newText:sub(1, #typed) == typed then
+          local candidate = normalise({
+            text = edit.newText,
+            range = require("completion_tools.edits").rebase(range, old, ctx, "utf-16"),
+            uuid = item._copilot_uuid,
+          }, ctx, client)
+          if candidate then
+            candidate.sortText = item.sortText
+            retained[#retained + 1] = candidate
+          end
+        end
+      end
+    end
+    if #retained > 0 then
+      return { items = retained }
+    end
+  end
   function source.complete(ctx, callback)
     cancel_active()
     if ctx.mode == "cmdline" then
@@ -138,7 +185,7 @@ function M.new(opts)
             end
           end
         end
-        -- Never reuse generated edits after typing, even for longer prefixes.
+        -- Reuse is opt-in per candidate through source.reuse, never fuzzy prefix caching.
         callback({ items = items })
       end, ctx.bufnr)
       if not sent and not finished then

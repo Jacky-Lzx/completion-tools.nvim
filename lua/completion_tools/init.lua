@@ -71,6 +71,28 @@ local function watch(buf)
   local token = {}
   state.watched[buf] = token
   vim.api.nvim_buf_attach(buf, false, {
+    on_bytes = function(_, _, _, row, col, _, old_rows, _, old_bytes, new_rows, new_col)
+      if state.watched[buf] ~= token then
+        return true
+      end
+      for id, cache in pairs(state.cache) do
+        if cache.response and cache.context.bufnr == buf then
+          -- Custom reuse requires an uninterrupted series of insertions at the
+          -- last cursor. Even an edit that is later undone must invalidate it.
+          if
+            row ~= cache.context.row
+            or col ~= cache.cursor_col
+            or old_rows ~= 0
+            or old_bytes ~= 0
+            or new_rows ~= 0
+          then
+            state.cache[id] = nil
+          else
+            cache.cursor_col = col + new_col
+          end
+        end
+      end
+    end,
     on_lines = function(_, _, _, first, old_last, new_last)
       if state.watched[buf] ~= token then
         return true
@@ -248,6 +270,48 @@ local function request(manual, override)
     M.hide(ctx and "native_completion" or "unsupported_context")
     return false
   end
+  local ids = source_ids(ctx, override)
+  local options, reused = {}, {}
+  for _, id in ipairs(ids) do
+    local configured = state.config.providers[id] or {}
+    local active = configured.enabled
+    if active == nil then
+      active = true
+    end
+    local err
+    if type(active) == "function" then
+      local ok, value = pcall(active, ctx)
+      active = ok and value
+      if not ok then
+        err = tostring(value)
+        report(id .. ": " .. err)
+      end
+    end
+    local provider, old = state.providers[id], state.cache[id]
+    options[id] = {
+      enabled = provider ~= nil and active,
+      error = err,
+      timeout_ms = configured.timeout_ms or state.config.timeout_ms,
+      fallback_for = configured.fallback_for,
+    }
+    if not options[id].enabled and old and old.response then
+      state.cache[id] = nil
+    end
+    if options[id].enabled and provider.reuse and old and old.response then
+      local ok, response = pcall(provider.reuse, ctx, old.response, old.context)
+      if ok then
+        reused[id] = response
+      else
+        report(id .. ": " .. tostring(response))
+      end
+      if not reused[id] then
+        state.cache[id] = nil
+      end
+    end
+  end
+  local cached_ids = vim.tbl_filter(function(id)
+    return reused[id] ~= nil
+  end, ids)
   local character_trigger = false
   if not manual then
     local allowed
@@ -257,8 +321,13 @@ local function request(manual, override)
       allowed = ctx.before:find("%S") ~= nil
     end
     if not allowed then
-      M.hide("trigger_filtered")
-      return false
+      if #cached_ids == 0 then
+        M.hide("trigger_filtered")
+        return false
+      end
+      -- A cached literal continuation may cross spaces and punctuation, but
+      -- that must not launch other providers at otherwise blocked characters.
+      ids = cached_ids
     end
   end
   if not manual and context.same(state.accepted, ctx) then
@@ -266,7 +335,6 @@ local function request(manual, override)
     return false
   end
   state.accepted = nil
-  local ids = source_ids(ctx, override)
   local triggered = character_trigger or ctx.argument_trigger or false
   for _, id in ipairs(ids) do
     local provider = state.providers[id]
@@ -278,8 +346,11 @@ local function request(manual, override)
   local minimum = ctx.mode == "cmdline" and state.config.cmdline.min_keyword_length
     or state.config.min_keyword_length
   if not manual and #ctx.prefix < minimum and not triggered and not ctx.before:match("[/\\][^%s]*$") then
-    M.hide("min_keyword_length")
-    return false
+    if #cached_ids == 0 then
+      M.hide("min_keyword_length")
+      return false
+    end
+    ids = cached_ids
   end
   state.generation = state.generation + 1
   local generation = state.generation
@@ -296,7 +367,11 @@ local function request(manual, override)
   state.manual = manual
   state.ready = false
   state.reason = "pending"
-  if not context.same(previous_context, ctx) and not context.continues(previous_context, ctx) then
+  if
+    #cached_ids == 0
+    and not context.same(previous_context, ctx)
+    and not context.continues(previous_context, ctx)
+  then
     state.items, state.selected = {}, nil
     state.selection_manual = false
     state.doc_entry = nil
@@ -332,27 +407,8 @@ local function request(manual, override)
       vim.schedule(flush)
     end
   end
-  local options, priorities = {}, {}
+  local priorities = {}
   for priority, id in ipairs(ids) do
-    local configured = state.config.providers[id] or {}
-    local active = configured.enabled
-    if active == nil then
-      active = true
-    end
-    if type(active) == "function" then
-      local ok, value = pcall(active, ctx)
-      active = ok and value
-      if not ok then
-        options[id] = { error = tostring(value) }
-        report(id .. ": " .. tostring(value))
-      end
-    end
-    options[id] = {
-      enabled = state.providers[id] ~= nil and active,
-      error = options[id] and options[id].error,
-      timeout_ms = configured.timeout_ms or state.config.timeout_ms,
-      fallback_for = configured.fallback_for,
-    }
     priorities[id] = priority
   end
   run = require("completion_tools.scheduler").run({
@@ -364,9 +420,11 @@ local function request(manual, override)
     end,
     start = function(id, receive)
       local old = state.cache[id]
-      local cached = old and old.reusable and context.extends(old.context, ctx)
+      local cached = reused[id] or (old and old.reusable and context.extends(old.context, ctx))
       state.diagnostics.start(id, cached)
-      if cached then
+      if reused[id] then
+        receive(reused[id])
+      elseif cached then
         receive({ cached = old })
       else
         ctx.incomplete = old and old.incomplete or false
@@ -415,6 +473,8 @@ local function request(manual, override)
         context = ctx,
         reusable = response.reusable and not response.pending,
         incomplete = response.is_incomplete,
+        response = state.providers[id].reuse and not response.pending and response or nil,
+        cursor_col = ctx.col,
       }
       return require("completion_tools.matcher").has_match(result, ctx, {
         max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
@@ -439,6 +499,13 @@ local function queue()
   end
   local ctx = current()
   local same = context.same(state.context, ctx)
+  local cached_forward = false
+  for _, cache in pairs(state.cache) do
+    if cache.response and context.advances(cache.context, ctx) then
+      cached_forward = true
+      break
+    end
+  end
   -- LSP attachment and other background refreshes do not create a new edit.
   -- Keep an explicit session's trigger policy and source override at that snapshot.
   local manual = same and state.manual or false
@@ -452,7 +519,7 @@ local function queue()
   if not same then
     state.selection_manual = false
   end
-  if same or context.continues(state.context, ctx) then
+  if same or cached_forward or context.continues(state.context, ctx) then
     ui.reposition(ctx, state.config)
   else
     ui.hide()
@@ -713,6 +780,11 @@ function M.hide(reason)
   cancel_requests()
   cancel_doc()
   stop_timer(timer)
+  for id, cache in pairs(state.cache) do
+    if cache.response then
+      state.cache[id] = nil
+    end
+  end
   state.items, state.selected, state.context, state.groups, state.ready = {}, nil, nil, {}, false
   state.selection_manual = false
   state.reason = reason or "hidden"

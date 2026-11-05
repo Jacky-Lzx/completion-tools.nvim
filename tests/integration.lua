@@ -49,6 +49,51 @@ local function test(name, run)
   passed = passed + 1
   print("input: " .. name)
 end
+local function copilot_cache_fixture(texts)
+  lua(
+    [[
+    local texts=...
+    vim.api.nvim_buf_set_lines(0,0,-1,false,{'中😀 = )','untouched'})
+    vim.api.nvim_win_set_cursor(0,{1,#'中😀 = '})
+    cache_requests, cache_accepted, cache_allowed, cache_enabled = 0, {}, true, true
+    cache_other_calls, cache_with_other = 0, false
+    local client={initialized=true}
+    function client:is_stopped() return false end
+    function client:cancel_request() end
+    function client:request(method,params,cb)
+      if method=='notifyAccepted' then cache_accepted[#cache_accepted+1]=params.uuid; cb(); return true end
+      cache_requests=cache_requests+1
+      local id=cache_requests
+      vim.defer_fn(function()
+        local items={}
+        for i,text in ipairs(texts) do
+          items[i]={text='中😀 = '..text,uuid=id..':'..i,
+            range={start={line=0,character=0},['end']=params.position}}
+        end
+        cb(nil,{completions=items})
+      end,30)
+      return true,id
+    end
+    local native=require('completion_tools.copilot')
+    local original=native.new
+    native.new=function() return {
+      eligible=function() return cache_allowed end,
+      ensure=function(_,cb) cb(client); return function() end end,
+      dispose=function() end,
+    } end
+    require('completion_tools').setup({
+      sources=function() return cache_with_other and {'copilot','other'} or {'copilot'} end,
+      copilot={debounce_ms=150}, providers={
+        copilot={enabled=function() return cache_enabled end},
+        other={complete=function(_,cb) cache_other_calls=cache_other_calls+1; cb({items={}}) end},
+      }})
+    native.new=original
+  ]],
+    texts or { "print(1)\nfinish()", "printf(2)\nfinish()", "prune(3)\nfinish()" }
+  )
+  input("ipr")
+  wait("return cache_requests==1 and require('completion_tools')._can('accept')")
+end
 local ok, err = xpcall(function()
   rpc("nvim_ui_attach", 120, 36, { rgb = true })
   lua(
@@ -1896,7 +1941,129 @@ local ok, err = xpcall(function()
     )
     lua("vim.wo.spell=false")
   end)
-  test("native Copilot server startup, three candidates and multiline acceptance", function()
+  test("Copilot cache prunes alternatives and accepts before another debounce", function()
+    copilot_cache_fixture()
+    input("i")
+    wait("return require('completion_tools').get_status().sources.copilot.cache_hits==1")
+    eq(2, lua("return #require('completion_tools').get_items()"))
+    input("ntf(")
+    wait("return require('completion_tools')._can('accept') and #require('completion_tools').get_items()==1")
+    eq("2)", lua("return require('completion_tools').get_selected_item().label"))
+    vim.wait(220)
+    eq(1, lua("return cache_requests"))
+    input("<Tab>!")
+    wait(
+      [[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),{'中😀 = printf(2)','finish()!)','untouched'})]]
+    )
+    eq({ "1:2" }, lua("return cache_accepted"))
+  end)
+  test("Copilot cache miss waits for debounce and rejects old acceptance", function()
+    copilot_cache_fixture()
+    input("i")
+    wait("return require('completion_tools').get_status().sources.copilot.cache_hits==1")
+    input("X")
+    wait(
+      "return vim.api.nvim_get_current_line()=='中😀 = priX)' and not require('completion_tools')._can('accept')"
+    )
+    eq(1, lua("return cache_requests"))
+    wait("return cache_requests==2 and require('completion_tools')._can('accept')")
+    eq(1, lua("return require('completion_tools').get_status().sources.copilot.cache_hits"))
+  end)
+  test("Copilot cache follows Unicode and spaces across keyword boundaries", function()
+    copilot_cache_fixture({ "pr😀 中文\nfinish()" })
+    input("😀 ")
+    wait(
+      [[return require('completion_tools')._can('accept') and require('completion_tools').get_selected_item().label=='中文']]
+    )
+    input("中")
+    wait(
+      [[return require('completion_tools').get_context().prefix=='中' and require('completion_tools')._can('accept')]]
+    )
+    eq(1, lua("return cache_requests"))
+    input("<Tab>!")
+    wait(
+      [[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),{'中😀 = pr😀 中文','finish()!)','untouched'})]]
+    )
+    eq({ "1:1" }, lua("return cache_accepted"))
+  end)
+  test("Copilot cached punctuation does not start other providers", function()
+    copilot_cache_fixture()
+    lua("cache_with_other=true")
+    input("i")
+    wait("return cache_other_calls==1 and require('completion_tools')._can('accept')")
+    input("nt(")
+    wait(
+      [[return require('completion_tools')._can('accept') and require('completion_tools').get_selected_item().label=='1)']]
+    )
+    eq(1, lua("return cache_other_calls"))
+    eq(1, lua("return cache_requests"))
+  end)
+  for _, invalidation in ipairs({
+    {
+      "backspace",
+      function()
+        input("i<BS>i")
+      end,
+    },
+    {
+      "cursor movement",
+      function()
+        input("<Left>")
+        wait("return not require('completion_tools').is_menu_visible()")
+        input("<Right>i")
+      end,
+    },
+    {
+      "edits elsewhere on the same line",
+      function()
+        lua([[vim.api.nvim_buf_set_text(0,0,0,0,0,{'x'}); vim.api.nvim_buf_set_text(0,0,0,0,1,{})]])
+        input("i")
+      end,
+    },
+    {
+      "edits on another line",
+      function()
+        lua([[vim.api.nvim_buf_set_text(0,1,0,1,0,{'x'}); vim.api.nvim_buf_set_text(0,1,0,1,1,{})]])
+        input("i")
+      end,
+    },
+    {
+      "leaving and reentering insert mode",
+      function()
+        input("<Esc>ai")
+      end,
+    },
+  }) do
+    test("Copilot cache invalidates after " .. invalidation[1], function()
+      copilot_cache_fixture()
+      invalidation[2]()
+      wait("return cache_requests==2 and require('completion_tools')._can('accept')")
+      eq(0, lua("return require('completion_tools').get_status().sources.copilot.cache_hits"))
+    end)
+  end
+  test("Copilot cache respects disabled eligibility", function()
+    copilot_cache_fixture()
+    lua("cache_allowed=false")
+    input("i")
+    wait(
+      "return #require('completion_tools').get_items()==0 and not require('completion_tools')._can('accept')"
+    )
+    eq(1, lua("return cache_requests"))
+    eq(0, lua("return require('completion_tools').get_status().sources.copilot.cache_hits"))
+  end)
+  test("Copilot provider disable discards cached results", function()
+    copilot_cache_fixture()
+    lua("cache_enabled=false")
+    input("i")
+    wait(
+      "return #require('completion_tools').get_items()==0 and not require('completion_tools')._can('accept')"
+    )
+    lua("cache_enabled=true")
+    input("n")
+    wait("return cache_requests==2 and require('completion_tools')._can('accept')")
+    eq(0, lua("return require('completion_tools').get_status().sources.copilot.cache_hits"))
+  end)
+  test("native Copilot server startup, cached UTF-16 edits and multiline acceptance", function()
     lua([[
       copilot_protocol_log=vim.fn.tempname()
       vim.api.nvim_buf_set_lines(0,0,-1,false,{'中😀 = )'})
@@ -1909,6 +2076,17 @@ local ok, err = xpcall(function()
     wait("return #require('completion_tools').get_items()==3", "native Copilot menu", 3000)
     eq("print(1)", lua("return require('completion_tools').get_selected_item().label"))
     assert(lua("return not package.loaded['copilot.client'] and not package.loaded['copilot.api']"))
+    input("int(")
+    wait(
+      [[return require('completion_tools')._can('accept') and require('completion_tools').get_selected_item().label=='1)']]
+    )
+    vim.wait(100)
+    eq(
+      1,
+      lua([[local count=0; for _,line in ipairs(vim.fn.readfile(copilot_protocol_log)) do
+      if vim.json.decode(line).method=='getCompletionsCycling' then count=count+1 end
+    end return count]])
+    )
     input("<Tab>!")
     wait(
       [[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),{'中😀 = print(1)','print("done")!)'})]]

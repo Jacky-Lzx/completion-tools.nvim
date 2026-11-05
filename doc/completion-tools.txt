@@ -152,7 +152,12 @@ filetypes. should_attach(bufnr) may further restrict attachment. command is a
 complete argv list; use an absolute executable path for Mason outside PATH.
 settings are forwarded to the server (e.g. http.proxy). The server manages
 credentials; GitHub Copilot access is required.
-Requests debounce independently, cancel on edits/hide/dispose and are not reused.
+New requests debounce independently and cancel on edits/hide/dispose. Completed
+suggestions are reused immediately during exact forward typing on the same line,
+including matching spaces/punctuation. Matching candidates stay selectable and
+their UTF-16 ranges are updated without another request. A miss uses the normal
+trigger rules and debounce. Deletion, newline, cursor movement, other edits,
+hiding or leaving the buffer/window/insert mode invalidate the cache.
 Cycling requests retain up to max_items unique edits (default 3); the service may
 return fewer. Copilot fields are purple (#cba6f7) through CompletionToolsCopilot.
 The first nonempty line appears in the menu, with full insertion in docs.
@@ -211,6 +216,7 @@ Source functions use dot calls:
     resolve(entry, callback) -> cancel?  -- optional
     execute(entry, ctx)                  -- optional, after primary edit
     trigger(ctx) -> boolean              -- optional
+    reuse(ctx, response, previous_ctx) -> response? -- optional, validated reuse
     dispose()                           -- optional
 <
 complete callbacks receive {items, start_col?, reusable?, is_incomplete?, pending?}.
@@ -225,6 +231,11 @@ Callbacks may publish more than once. Stale results are ignored even if a
 provider does not honour cancellation. The provider owns external resources.
 Set pending=true while more results are expected; omit or clear it on the final
 response. Only complete, non-pending reusable lists are cached for forward typing.
+For generated edits, reuse may validate each candidate and return an updated
+response, or nil to discard the cache and use normal completion. Only final
+responses qualify. This cache allows uninterrupted same-line insertions at the
+last cursor and clears on hide. Validated candidates may continue through blocked
+characters without starting other sources there; reusable=true is independent.
 During typing/backspace within one keyword, the previous menu remains visible
 until matching results arrive or all sources finish without matches. Stale items
 cannot be accepted. Empty input/context changes close the old menu immediately.
