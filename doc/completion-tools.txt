@@ -58,6 +58,9 @@ current menu contributions. Callback errors survive later successful requests.
 
 accept.mode="replace" is the default. "insert" preserves suffix text using an
 InsertReplaceEdit's insert range. accept({mode="insert"}) overrides one action.
+Plain Function/Method items insert complete () with the cursor inside, regardless
+of following text or pair mappings. Existing following ( and server snippets
+retain their layout.
 Ordinary TextEdit ranges are unchanged. LSP insertTextMode=1 preserves whitespace;
 2 adjusts continuation indentation. The advertised LSP default is 2. Native
 snippets and LuaSnip retain placeholders without double indentation.

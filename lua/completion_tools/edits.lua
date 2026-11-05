@@ -82,6 +82,11 @@ function M.apply(entry, ctx, config, opts)
   local range, encoding = M.range(entry, ctx, opts and opts.mode or config.accept.mode)
   local insert_mode = item.insertTextMode or (item._client_id and 2 or nil)
   local insertion = require("completion_tools.insertion")
+  local end_line = vim.api.nvim_buf_get_lines(ctx.bufnr, range["end"].line, range["end"].line + 1, false)[1]
+    or ""
+  local cursor_offset
+  text, cursor_offset =
+    insertion.brackets(text, item, end_line:sub(byte_col(ctx.bufnr, range["end"], encoding) + 1))
   local indentation = ctx.before:match("^[ \t]*")
   if insert_mode == 2 then
     text = insertion.indent(text, indentation)
@@ -138,7 +143,7 @@ function M.apply(entry, ctx, config, opts)
   end
   local position = vim.api.nvim_buf_get_extmark_by_id(ctx.bufnr, ns, mark, {})
   local row, col = position[1], position[2]
-  vim.api.nvim_win_set_cursor(ctx.winid, { row + 1, col })
+  vim.api.nvim_win_set_cursor(ctx.winid, { row + 1, col - cursor_offset })
   if snippet then
     local expanded, expand_err = pcall(insertion.expand, text, config, {
       insert_text_mode = insert_mode,

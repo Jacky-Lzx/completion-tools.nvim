@@ -1,6 +1,20 @@
 local M = {}
 local ns = vim.api.nvim_create_namespace("completion-tools-snippet-indent")
 
+-- Completion inserts delimiters as text, independently of insert-mode mappings.
+function M.brackets(text, item, suffix)
+  if item.insertTextFormat == 2 or (item.kind ~= 2 and item.kind ~= 3) or suffix:match("^%s*%(") then
+    return text, 0
+  end
+  if text ~= "" and not text:find("[()\n]") then
+    return text .. "()", 1
+  end
+  if text:sub(-1) == "(" and not text:sub(1, -2):find("[()\n]") then
+    return text .. ")", 1
+  end
+  return text, 0
+end
+
 -- Preserve relative indentation, shifting continuation lines from the first
 -- line's indentation to that of the receiving line before the cursor.
 function M.indent(text, indentation)

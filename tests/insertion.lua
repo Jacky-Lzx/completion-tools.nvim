@@ -7,6 +7,21 @@ end
 eq("foo\n      inner\n    end", insertion.indent("foo\n  inner\nend", "    "))
 eq("  foo\n      inner\n    end", insertion.indent("  foo\n    inner\n  end", "    "))
 eq("foo\n\n\tend", insertion.indent("foo\n\nend", "\t"))
+for _, kind in ipairs({ 2, 3 }) do
+  for _, suffix in ipairs({ "", " ", "value", ")", ",", "😀" }) do
+    local text, offset = insertion.brackets("foo", { kind = kind }, suffix)
+    eq({ "foo()", 1 }, { text, offset })
+  end
+  for _, body in ipairs({ "foo()", "foo(value)", "foo(${1:value})$0" }) do
+    eq(body, insertion.brackets(body, { kind = kind }, "value"))
+  end
+  eq("foo", insertion.brackets("foo", { kind = kind }, "(value)"))
+  eq("foo", insertion.brackets("foo", { kind = kind }, " (value)"))
+  local text, offset = insertion.brackets("foo(", { kind = kind }, "value")
+  eq({ "foo()", 1 }, { text, offset })
+end
+eq("foo", insertion.brackets("foo", { kind = 6 }, "value"))
+eq("foo$0", insertion.brackets("foo$0", { kind = 3, insertTextFormat = 2 }, "value"))
 assert(not pcall(config.validate, { accept = { mode = "invalid" } }))
 local line = "😀foTAIL"
 local ctx = {
@@ -56,4 +71,6 @@ eq("    ", seen[2].indentation)
 local caps = require("completion_tools").get_lsp_capabilities().textDocument.completion
 eq({ 1, 2 }, caps.completionItem.insertTextModeSupport.valueSet)
 eq(2, caps.insertTextMode)
-print("insertion: insert/replace UTF-16 ranges, relative indentation, engine options and capabilities passed")
+print(
+  "insertion: function brackets, insert/replace UTF-16 ranges, relative indentation, engine options and capabilities passed"
+)

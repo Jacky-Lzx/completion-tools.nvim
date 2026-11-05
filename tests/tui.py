@@ -228,7 +228,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         rgb_colors = (b"38;2;239;69;69", b"38;2;52;211;153", b"48;2;18;52;86")
         wait(lambda s: all(rgb in output for rgb in rgb_colors), "terminal RGB highlights flushed")
         os.write(primary, b"\t!\x1b")
-        wait(lambda s: s["line"] == "decode!" and s["mode"] == "n" and not s["visible"],
+        wait(lambda s: s["line"] == "decode(!)" and s["mode"] == "n" and not s["visible"],
              "display-only signature acceptance")
         os.write(primary, b":lua completion_tui_snippet()\r")
         wait(lambda s: s["line"] == "" and s["mode"] == "n", "snippet fixture")

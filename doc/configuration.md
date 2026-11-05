@@ -208,6 +208,11 @@ lazy dependency installs mappings to update fallbacks without resetting completi
 
 ### Acceptance and indentation
 
+Function and Method completions insert a complete `()` directly and place the
+cursor inside, even before non-whitespace text. This does not depend on pairs.nvim
+or other insert-mode mappings. An existing following `(` is reused; server snippets
+and completion text that already contains call parentheses retain their own layout.
+
 `accept = { mode = "replace" }` is the default. Set `mode = "insert"` to use
 the insert range of an LSP InsertReplaceEdit, preserving text after the cursor.
 A regular TextEdit always uses its server-provided range. Override one acceptance
@@ -813,7 +818,7 @@ Built-in sources do not require Blink. Update your own LSP dependencies and
 capability function references; this repository does not modify global configuration.
 
 There is no Blink source compatibility layer, built-in lazydev provider,
-automatic brackets, ghost text, signature help or persistent frecency. Custom
+ghost text, signature help or persistent frecency. Custom
 sources can extend the plugin, but it is not a drop-in replacement for every Blink setup.
 The matcher supports ASCII-insensitive prefixes, subsequences and camel-case
 boundary bonuses. It does not perform typo correction or Unicode case folding;

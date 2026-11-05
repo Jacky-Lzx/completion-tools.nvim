@@ -341,7 +341,7 @@ local ok, err = xpcall(function()
       assert(screen:find('decode(value: string): number',1,true),screen)
     ]])
     input("<Tab>!")
-    wait("return vim.api.nvim_get_current_line() == 'decode!'")
+    wait("return vim.api.nvim_get_current_line() == 'decode(!)'")
   end)
   test("only visible menu rows are highlighted", function()
     lua([[
@@ -567,7 +567,7 @@ local ok, err = xpcall(function()
     wait("return require('completion_tools').get_items()[1].data.id==2")
     eq(2, lua("return require('completion_tools').get_selected_item().data.id"))
     input("<Tab>!")
-    wait("return vim.api.nvim_get_current_line()=='open!' and accepted_overload==2")
+    wait("return vim.api.nvim_get_current_line()=='open(!)' and accepted_overload==2")
   end)
   test("acceptance learns history across setup without changing command-line sorting", function()
     lua([[history_path=vim.fn.tempname()..'/history.json'
@@ -1494,6 +1494,70 @@ local ok, err = xpcall(function()
     input("<C-e><Tab>")
     wait("return vim.api.nvim_get_current_line():find('\\t', 1, true) ~= nil")
   end)
+  for _, key in ipairs({ "<Tab>", "<CR>" }) do
+    test("function brackets bypass pair mappings with " .. key, function()
+      lua([[pair_calls=0
+        vim.keymap.set('i','(',function() pair_calls=pair_calls+1;return '(' end,{expr=true})]])
+      for _, case in ipairs({
+        { kind = 3, suffix = "value", body = "foo", expected = "foo()value" },
+        { kind = 2, suffix = ")", body = "foo", expected = "foo())" },
+        { kind = 3, suffix = ",", body = "foo(", expected = "foo()," },
+        { kind = 3, suffix = "😀", body = "foo", expected = "foo()😀" },
+        { kind = 3, suffix = "", body = "foo", expected = "foo()" },
+        { kind = 3, suffix = "(value)", body = "foo", expected = "foo(value)", offset = 0 },
+        { kind = 3, suffix = "value", body = "foo()", expected = "foo()value", offset = 0 },
+        { kind = 6, suffix = "value", body = "foo", expected = "foovalue", offset = 0 },
+        {
+          kind = 3,
+          suffix = "value",
+          body = "foo(${1:arg})$0",
+          format = 2,
+          expected = "foo(arg)value",
+          snippet = true,
+        },
+      }) do
+        if lua("return vim.api.nvim_get_mode().mode") ~= "n" then
+          input("<Esc>")
+          wait("return vim.api.nvim_get_mode().mode=='n'")
+        end
+        lua(
+          [[
+          local case=...
+          if vim.snippet.active() then vim.snippet.stop() end
+          require('completion_tools').setup({auto_show=false,sources={'test'},
+            keymap={['<C-Space>']={'show'},['<Tab>']={'accept'},['<CR>']={'accept'}},
+            providers={test={complete=function(_,cb)
+              cb({items={{label='foo',kind=case.kind,insertText=case.body,insertTextFormat=case.format}}})
+            end}}})
+          vim.api.nvim_buf_set_lines(0,0,-1,false,{'fo'..case.suffix})
+          vim.api.nvim_win_set_cursor(0,{1,2})
+        ]],
+          case
+        )
+        input((case.suffix == "" and "a" or "i") .. "<C-Space>")
+        wait("return require('completion_tools')._can('accept')")
+        input(key)
+        wait("return not require('completion_tools').is_menu_visible()")
+        eq(case.expected, lua("return vim.api.nvim_get_current_line()"))
+        if case.snippet then
+          wait("return vim.snippet.active() and vim.api.nvim_get_mode().mode=='s'")
+          input("changed")
+          wait("return vim.api.nvim_get_current_line()=='foo(changed)value'")
+        else
+          local col = #case.body + (case.offset == 0 and 0 or (case.body:sub(-1) == "(" and 0 or 1))
+          eq({ 1, col }, lua("return vim.api.nvim_win_get_cursor(0)"))
+          input("x")
+          wait("return vim.api.nvim_get_current_line():find('x',1,true)~=nil")
+          eq(
+            case.expected:sub(1, col) .. "x" .. case.expected:sub(col + 1),
+            lua("return vim.api.nvim_get_current_line()")
+          )
+        end
+        eq(0, lua("return pair_calls"))
+      end
+      lua("vim.snippet.stop();vim.keymap.del('i','(')")
+    end)
+  end
   test("UTF-16 InsertReplaceEdit and imports", function()
     lua(
       [[require('completion_tools').setup({ sources = {'test'}, providers = { test = { complete = function(ctx, cb) cb({ items = {{ label = 'foobar', _encoding = 'utf-16', textEdit = { newText = 'foobar', insert = {start={line=1,character=2}, ['end']={line=1,character=4}}, replace = {start={line=1,character=2}, ['end']={line=1,character=8}} }, additionalTextEdits = {{ range={start={line=0,character=0}, ['end']={line=0,character=0}}, newText='import thing\n' }} }} }) end } } }); vim.api.nvim_buf_set_lines(0,0,-1,false,{'header','😀foTAIL'}); vim.api.nvim_win_set_cursor(0,{2,6})]]
