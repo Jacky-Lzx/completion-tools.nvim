@@ -15,6 +15,7 @@ ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/insertion
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/diagnostics.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/copilot.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/copilot_edits.lua
+${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/copilot_requests.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/copilot_client.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/menu.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/documentation.lua

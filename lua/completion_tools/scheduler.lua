@@ -135,9 +135,9 @@ function M.run(args)
     end
     return false
   end
-  function run.cancel()
+  function run.cancel(keep)
     cancelled = true
-    for _, record in pairs(records) do
+    for id, record in pairs(records) do
       close(record)
       if record.status == "pending" or record.status == "waiting" then
         if record.started then
@@ -146,7 +146,7 @@ function M.run(args)
         record.status = "cancelled"
       end
       if record.cancel then
-        pcall(record.cancel)
+        pcall(record.cancel, keep and keep[id])
         record.cancel = nil
       end
     end

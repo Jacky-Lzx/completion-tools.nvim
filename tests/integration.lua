@@ -57,9 +57,10 @@ local function copilot_cache_fixture(texts)
     vim.api.nvim_win_set_cursor(0,{1,#'中😀 = '})
     cache_requests, cache_accepted, cache_allowed, cache_enabled = 0, {}, true, true
     cache_other_calls, cache_with_other = 0, false
+    cache_response_delay, cache_cancellations = 30, 0
     local client={initialized=true}
     function client:is_stopped() return false end
-    function client:cancel_request() end
+    function client:cancel_request() cache_cancellations=cache_cancellations+1 end
     function client:request(method,params,cb)
       if method=='notifyAccepted' then cache_accepted[#cache_accepted+1]=params.uuid; cb(); return true end
       cache_requests=cache_requests+1
@@ -71,7 +72,7 @@ local function copilot_cache_fixture(texts)
             range={start={line=0,character=0},['end']=params.position}}
         end
         cb(nil,{completions=items})
-      end,30)
+      end,cache_response_delay)
       return true,id
     end
     local native=require('completion_tools.copilot')
@@ -1968,6 +1969,26 @@ local ok, err = xpcall(function()
     eq(1, lua("return cache_requests"))
     wait("return cache_requests==2 and require('completion_tools')._can('accept')")
     eq(1, lua("return require('completion_tools').get_status().sources.copilot.cache_hits"))
+  end)
+  test("same-snapshot refreshes share pending Copilot requests", function()
+    copilot_cache_fixture()
+    lua("cache_response_delay=250")
+    input("X")
+    wait("return cache_requests==2")
+    lua([[
+      require('completion_tools').show()
+      vim.api.nvim_exec_autocmds('LspAttach',{buffer=0,data={client_id=999999}})
+      require('completion_tools').show()
+    ]])
+    wait("return require('completion_tools')._can('accept')")
+    eq(2, lua("return cache_requests"))
+    eq(0, lua("return cache_cancellations"))
+    input("Y")
+    wait("return cache_requests==3")
+    input("<C-e>")
+    wait("return cache_cancellations==1")
+    vim.wait(300)
+    assert(lua("return not require('completion_tools').is_menu_visible()"))
   end)
   test("Copilot cache follows Unicode and spaces across keyword boundaries", function()
     copilot_cache_fixture({ "pr😀 中文\nfinish()" })

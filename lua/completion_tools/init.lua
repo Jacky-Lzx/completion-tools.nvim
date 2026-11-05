@@ -29,9 +29,9 @@ local function close_timer(id)
     id:close()
   end
 end
-local function cancel_requests()
+local function cancel_requests(keep)
   for _, cancel in ipairs(state.cancels) do
-    pcall(cancel)
+    pcall(cancel, keep)
   end
   state.cancels = {}
 end
@@ -354,7 +354,13 @@ local function request(manual, override)
   end
   state.generation = state.generation + 1
   local generation = state.generation
-  cancel_requests()
+  local keep = {}
+  for _, id in ipairs(ids) do
+    if options[id].enabled then
+      keep[id] = ctx
+    end
+  end
+  cancel_requests(keep)
   cancel_doc()
   local previous_context = state.context
   if not context.same(previous_context, ctx) then
@@ -484,10 +490,10 @@ local function request(manual, override)
   state.run = run
   state.diagnostics.update(run.records)
   queue_render()
-  state.cancels[#state.cancels + 1] = function()
+  state.cancels[#state.cancels + 1] = function(preserve)
     close_timer(render_timer)
     render_timer = nil
-    run.cancel()
+    run.cancel(preserve)
     state.diagnostics.update(run.records)
   end
   return true
@@ -511,7 +517,9 @@ local function queue()
   local manual = same and state.manual or false
   local sources = manual and state.source_ids or nil
   state.generation = state.generation + 1
-  cancel_requests()
+  if not same then
+    cancel_requests()
+  end
   cancel_doc()
   state.ready = false
   state.reason = "pending"

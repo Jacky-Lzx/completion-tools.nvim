@@ -495,6 +495,9 @@ warning with installation guidance; other completion sources keep working.
 
 New requests debounce independently (150 ms by default; 0 disables it). Typing,
 hiding the menu and disposal cancel pending timers and in-flight requests.
+Refreshes at an identical document/cursor snapshot share one pending Copilot
+request, including its original debounce deadline. Each subscriber can cancel
+independently; hiding or changing the snapshot cancels unused work immediately.
 Completed suggestions are reused immediately while forward typing on the same
 line exactly follows their generated text. Each edit keeps only matching
 candidates and adjusts their UTF-16 replacement ranges; the candidates remain

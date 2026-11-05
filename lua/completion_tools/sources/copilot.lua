@@ -66,8 +66,24 @@ function M.new(opts)
   local source, active = { score_offset = 50 }, nil
   local function cancel_active()
     if active then
-      active()
+      active.cancel()
       active = nil
+    end
+  end
+  local function matches(record, ctx)
+    return require("completion_tools.context").same(record.context, ctx)
+      and vim.deep_equal(record.params, native.params(ctx))
+  end
+  local function subscribe(record, callback)
+    local token = {}
+    record.callbacks[token] = callback
+    return function(next_context)
+      record.callbacks[token] = nil
+      -- The engine can transfer the same pending request into its next run.
+      -- Hiding, disabling or moving to another snapshot cancels immediately.
+      if not next(record.callbacks) and not (next_context and matches(record, next_context)) then
+        record.cancel()
+      end
     end
   end
   -- Only carry suggestions through literal forward typing. Fuzzy matching is
@@ -118,21 +134,29 @@ function M.new(opts)
     end
   end
   function source.complete(ctx, callback)
-    cancel_active()
     if ctx.mode == "cmdline" then
+      cancel_active()
       callback({ items = {} })
       return
     end
     if not copilot.eligible(ctx.bufnr) then
+      cancel_active()
       callback({ items = {} })
       return
     end
+    if active and not active.finished and not active.cancelled and matches(active, ctx) then
+      return subscribe(active, callback)
+    end
+    cancel_active()
+    local record = { context = ctx, params = native.params(ctx), callbacks = {} }
     local cancelled, finished, timer, client, request_id, cancel_start = false, false, nil, nil, nil, nil
     local function cancel()
       if cancelled then
         return
       end
       cancelled = true
+      record.cancelled = true
+      record.callbacks = {}
       if timer and not timer:is_closing() then
         timer:stop()
         timer:close()
@@ -144,7 +168,17 @@ function M.new(opts)
         client:cancel_request(request_id)
       end
     end
-    active = cancel
+    record.cancel = cancel
+    active = record
+    local unsubscribe = subscribe(record, callback)
+    local function publish(response)
+      finished, record.finished = true, true
+      local callbacks = record.callbacks
+      record.callbacks = {}
+      for _, cb in pairs(callbacks) do
+        cb(response)
+      end
+    end
     local function send(ready_client)
       if cancelled then
         return
@@ -161,15 +195,14 @@ function M.new(opts)
         or vim.api.nvim_buf_get_changedtick(ctx.bufnr) ~= ctx.tick
         or not vim.deep_equal(vim.api.nvim_win_get_cursor(ctx.winid), { ctx.row + 1, ctx.col })
       then
-        finished = true
-        callback({ items = {} })
+        publish({ items = {} })
         return
       end
       local params = native.params(ctx)
+      record.params = params
       local sent
       -- Cycling requests ask Copilot for alternatives instead of only its first suggestion.
       sent, request_id = client:request("getCompletionsCycling", params, function(err, result)
-        finished = true
         if cancelled then
           return
         end
@@ -203,11 +236,10 @@ function M.new(opts)
           end
         end
         -- Reuse is opt-in per candidate through source.reuse, never fuzzy prefix caching.
-        callback({ items = items })
+        publish({ items = items })
       end, ctx.bufnr)
       if not sent and not finished then
-        finished = true
-        callback({ items = {} })
+        publish({ items = {} })
       end
     end
     if (opts.debounce_ms or 150) == 0 then
@@ -217,7 +249,7 @@ function M.new(opts)
         cancel_start = copilot.ensure(ctx.bufnr, send)
       end, opts.debounce_ms or 150)
     end
-    return cancel
+    return unsubscribe
   end
   function source.execute(entry)
     local item = entry.item
