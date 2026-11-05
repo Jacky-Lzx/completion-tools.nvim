@@ -32,6 +32,7 @@ function M.new(opts)
   local manager = {}
   local client, disposed, disabled = nil, false, false
   local pending, sequence, last_error, status = {}, 0, nil, nil
+  local documents, renaming = {}, {}
   local command = "CompletionToolsCopilot"
   instance = instance + 1
   local group = vim.api.nvim_create_augroup("CompletionToolsCopilot" .. instance, { clear = true })
@@ -69,17 +70,34 @@ function M.new(opts)
     end
     return not opts.should_attach or opts.should_attach(buf) == true
   end
-  local function attach(buf, c)
-    if manager.eligible(buf) then
-      if not vim.lsp.buf_is_attached(buf, c.id) then
-        vim.lsp.buf_attach_client(buf, c.id)
-      end
-      c:notify("textDocument/didFocus", { textDocument = { uri = vim.uri_from_bufnr(buf) } })
-      return vim.lsp.buf_is_attached(buf, c.id)
+  local function invalidate(buf)
+    local cmp = package.loaded.completion_tools
+    if cmp and vim.api.nvim_get_current_buf() == buf then
+      cmp.hide("copilot_document_changed")
     end
+  end
+  local function detach(buf, c)
+    documents[buf] = nil
     if vim.lsp.buf_is_attached(buf, c.id) then
       vim.lsp.buf_detach_client(buf, c.id)
     end
+  end
+  local function attach(buf, c)
+    if manager.eligible(buf) then
+      local document = documents[buf]
+      local uri, filetype = vim.uri_from_bufnr(buf), vim.bo[buf].filetype
+      if document and (document.uri ~= uri or document.filetype ~= filetype) then
+        invalidate(buf)
+        detach(buf, c)
+      end
+      if not vim.lsp.buf_is_attached(buf, c.id) then
+        vim.lsp.buf_attach_client(buf, c.id)
+      end
+      documents[buf] = { uri = uri, filetype = filetype }
+      c:notify("textDocument/didFocus", { textDocument = { uri = vim.uri_from_bufnr(buf) } })
+      return vim.lsp.buf_is_attached(buf, c.id)
+    end
+    detach(buf, c)
     return false
   end
   function manager.ensure(buf, callback, for_command)
@@ -148,6 +166,7 @@ function M.new(opts)
           on_exit = function(code, _, id)
             if not disposed and client and client.id == id then
               client = nil
+              documents, renaming = {}, {}
               last_error = "Server exited (" .. code .. ")"
               drain(nil, last_error)
               changed()
@@ -189,7 +208,7 @@ function M.new(opts)
       drain(nil)
       if client then
         for buf in pairs(client.attached_buffers) do
-          vim.lsp.buf_detach_client(buf, client.id)
+          detach(buf, client)
         end
       end
       require("completion_tools").hide()
@@ -204,6 +223,7 @@ function M.new(opts)
         client = nil
       end
       status, last_error = nil, nil
+      documents, renaming = {}, {}
       changed()
       drain(nil)
       return
@@ -259,6 +279,42 @@ function M.new(opts)
     callback = function(args)
       if client and client.initialized and not client:is_stopped() then
         attach(args.buf, client)
+      end
+    end,
+  })
+  vim.api.nvim_create_autocmd({ "BufFilePre", "BufWipeout" }, {
+    group = group,
+    callback = function(args)
+      local c = client
+      if not c or not vim.lsp.buf_is_attached(args.buf, c.id) then
+        return
+      end
+      -- Detach while Neovim still knows the old URI, flushing pending changes
+      -- before didClose. First :write uses BufWipeout/BufNew instead of BufFile*.
+      local token = {}
+      renaming[args.buf] = token
+      invalidate(args.buf)
+      detach(args.buf, c)
+      vim.schedule(function()
+        if renaming[args.buf] ~= token then
+          return
+        end
+        renaming[args.buf] = nil
+        -- A failed :file may have no BufFilePost. Actual wipeouts stay detached.
+        if not disposed and client == c and args.event == "BufFilePre" then
+          attach(args.buf, c)
+        end
+      end)
+    end,
+  })
+  vim.api.nvim_create_autocmd({ "BufFilePost", "BufNew" }, {
+    group = group,
+    callback = function(args)
+      if renaming[args.buf] then
+        renaming[args.buf] = nil
+        if client and client.initialized and not client:is_stopped() then
+          attach(args.buf, client)
+        end
       end
     end,
   })

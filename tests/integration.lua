@@ -2118,6 +2118,36 @@ local ok, err = xpcall(function()
     end return false]])
     lua("vim.fn.delete(copilot_protocol_log)")
   end)
+  test("renaming a document cancels Copilot and ignores its old URI response", function()
+    lua([[
+      copilot_rename_log=vim.fn.tempname()
+      vim.api.nvim_buf_set_name(0,vim.fn.tempname()..'.lua')
+      vim.api.nvim_buf_set_lines(0,0,-1,false,{'中😀 = '})
+      vim.api.nvim_win_set_cursor(0,{1,#'中😀 = '})
+      require('completion_tools').setup({sources={'copilot'},
+        copilot={debounce_ms=0,command={'python3','tests/fixtures/copilot_server.py',copilot_rename_log,'0.2'}}})
+    ]])
+    input("Apr")
+    wait(
+      [[for _,line in ipairs(vim.fn.filereadable(copilot_rename_log)==1 and vim.fn.readfile(copilot_rename_log) or {}) do
+      if vim.json.decode(line).method=='getCompletionsCycling' then return true end end return false]]
+    )
+    lua([[vim.cmd('file '..vim.fn.fnameescape(vim.fn.tempname()..'.lua'))]])
+    vim.wait(300)
+    assert(
+      lua(
+        "return not require('completion_tools').is_menu_visible() and not require('completion_tools')._can('accept')"
+      )
+    )
+    input("<C-Space>")
+    wait("return require('completion_tools')._can('accept')", "completion under new URI", 3000)
+    assert(lua([[local requests={}; for _,line in ipairs(vim.fn.readfile(copilot_rename_log)) do
+      local m=vim.json.decode(line)
+      if m.method=='getCompletionsCycling' then requests[#requests+1]=m end
+    end return #requests==2 and requests[1].params.textDocument.uri~=requests[2].params.textDocument.uri
+      and requests[2].params.textDocument.uri==vim.uri_from_bufnr(0)]]))
+    lua("vim.fn.delete(copilot_rename_log)")
+  end)
   test("Copilot status-only pane updates without becoming a completion", function()
     lua([[
       copilot_status_log=vim.fn.tempname()

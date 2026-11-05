@@ -508,6 +508,9 @@ other edits, hiding and leaving the buffer/window/insert mode invalidate this ca
 Single-line edits ending at the cursor consume an identical suffix already after
 the cursor (such as a closing parenthesis), avoiding duplicate delimiters. Explicit
 replacement ranges and multiline suggestions retain their server-defined meaning.
+Renaming a file or saving an unnamed buffer closes the old document before
+opening its new URI. Filetype changes reattach the document with its new language;
+old suggestions are invalidated during these transitions.
 The cycling API requests alternatives; duplicates are removed and at most
 `copilot.max_items` (default 3) are retained. The service may return fewer.
 Copilot fields use `CompletionToolsCopilot` (purple, `#cba6f7`), preserving the

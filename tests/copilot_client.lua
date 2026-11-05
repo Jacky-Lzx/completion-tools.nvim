@@ -80,6 +80,66 @@ end)
 local change = messages("textDocument/didChange")[1].params
 assert(change.contentChanges[1].range, "Expected incremental text sync")
 eq(change.textDocument.version, messages("getCompletionsCycling")[2].params.textDocument.version)
+local old_uri = vim.uri_from_bufnr(buf)
+local old_closes = #messages("textDocument/didClose")
+vim.api.nvim_buf_set_text(buf, 1, #"中😀 = pri", 1, #"中😀 = pri", { "nt" })
+vim.cmd("file " .. vim.fn.fnameescape(vim.fn.tempname() .. ".lua"))
+local renamed_uri = vim.uri_from_bufnr(buf)
+wait(function()
+  local opens = messages("textDocument/didOpen")
+  return opens[#opens].params.textDocument.uri == renamed_uri
+end)
+eq(old_closes + 1, #messages("textDocument/didClose"))
+eq(old_uri, messages("textDocument/didClose")[old_closes + 1].params.textDocument.uri)
+assert(messages("textDocument/didOpen")[2].params.textDocument.text:find("print", 1, true))
+local ordered = {}
+for _, line in ipairs(vim.fn.readfile(log)) do
+  local m = vim.json.decode(line)
+  if m.method == "textDocument/didChange" and m.params.textDocument.uri == old_uri then
+    ordered.change = #ordered + 1
+  elseif m.method == "textDocument/didClose" and m.params.textDocument.uri == old_uri then
+    ordered.close = #ordered + 1
+  elseif m.method == "textDocument/didOpen" and m.params.textDocument.uri == renamed_uri then
+    ordered.open = #ordered + 1
+  end
+  ordered[#ordered + 1] = m.method or "response"
+end
+assert(ordered.change < ordered.close and ordered.close < ordered.open)
+local opens_before_failure = #messages("textDocument/didOpen")
+vim.api.nvim_create_autocmd("BufFilePre", { once = true, command = "throw 'fixture rename failure'" })
+assert(not pcall(vim.cmd, "file " .. vim.fn.fnameescape(vim.fn.tempname() .. ".lua")))
+wait(function()
+  return vim.lsp.buf_is_attached(buf, client.id) and #messages("textDocument/didOpen") > opens_before_failure
+end)
+eq(
+  vim.uri_from_bufnr(buf),
+  messages("textDocument/didOpen")[#messages("textDocument/didOpen")].params.textDocument.uri
+)
+
+-- A new unnamed buffer is closed under its old URI before its first :write.
+vim.cmd("enew!")
+vim.bo.filetype = "lua"
+local unnamed = vim.api.nvim_get_current_buf()
+manager.ensure(unnamed, function(c)
+  eq(client.id, c.id)
+end)
+local unnamed_uri = vim.uri_from_bufnr(unnamed)
+vim.api.nvim_buf_set_lines(unnamed, 0, -1, false, { "local saved = true" })
+local saved_name = vim.fn.tempname() .. ".lua"
+vim.cmd("silent write " .. vim.fn.fnameescape(saved_name))
+local saved_uri = vim.uri_from_bufnr(unnamed)
+wait(function()
+  local opens = messages("textDocument/didOpen")
+  return opens[#opens].params.textDocument.uri == saved_uri
+end)
+assert(unnamed_uri ~= saved_uri and vim.lsp.buf_is_attached(unnamed, client.id))
+local closed_unnamed = false
+for _, m in ipairs(messages("textDocument/didClose")) do
+  closed_unnamed = closed_unnamed or m.params.textDocument.uri == unnamed_uri
+end
+assert(closed_unnamed)
+vim.fn.delete(saved_name)
+vim.api.nvim_set_current_buf(buf)
 local notify = vim.notify
 local notifications = {}
 vim.notify = function(message)
