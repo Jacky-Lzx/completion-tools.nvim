@@ -502,6 +502,9 @@ selectable without another request. Matching spaces and punctuation can continue
 a cached suggestion even when they would not trigger a new request. A cache miss
 uses the normal trigger rules and debounce. Deletion, newline, cursor movement,
 other edits, hiding and leaving the buffer/window/insert mode invalidate this cache.
+Single-line edits ending at the cursor consume an identical suffix already after
+the cursor (such as a closing parenthesis), avoiding duplicate delimiters. Explicit
+replacement ranges and multiline suggestions retain their server-defined meaning.
 The cycling API requests alternatives; duplicates are removed and at most
 `copilot.max_items` (default 3) are retained. The service may return fewer.
 Copilot fields use `CompletionToolsCopilot` (purple, `#cba6f7`), preserving the

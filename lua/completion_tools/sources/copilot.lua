@@ -6,6 +6,23 @@ local function normalise(raw, ctx, client)
     return
   end
   local range, text = vim.deepcopy(raw.range), raw.text:gsub("\r\n?", "\n")
+  -- Extend a cursor-ending single-line edit over an already present suffix.
+  -- Keep the generated text intact, so both acceptance and later reuse use the
+  -- same replacement (and the cursor finishes after the closing delimiters).
+  if
+    not text:find("\n", 1, true)
+    and range["end"].line == ctx.row
+    and range["end"].character == vim.str_utfindex(ctx.line, "utf-16", ctx.col, false)
+  then
+    local suffix = ctx.line:sub(ctx.col + 1)
+    for offset in text:gmatch("()[%z\1-\127\194-\244][\128-\191]*") do
+      local tail = text:sub(offset)
+      if suffix:sub(1, #tail) == tail then
+        range["end"].character = range["end"].character + vim.str_utfindex(tail, "utf-16", #tail, false)
+        break
+      end
+    end
+  end
   local start_col = ctx.start_col
   if range.start.line == ctx.row then
     start_col = vim.str_byteindex(ctx.line, "utf-16", range.start.character, false)
