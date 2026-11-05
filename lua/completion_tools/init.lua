@@ -64,6 +64,23 @@ end
 local function selected_entry()
   return state.selected and state.items[state.selected]
 end
+local function accepted_event(entry, ctx, extra)
+  local item, public = entry.resolved or entry.item, {}
+  for key, value in pairs(item) do
+    if type(key) == "string" and key:sub(1, 1) ~= "_" then
+      public[key] = value
+    end
+  end
+  vim.api.nvim_exec_autocmds("User", {
+    pattern = "CompletionToolsAccept",
+    modeline = false,
+    data = vim.tbl_extend(
+      "force",
+      { item = public, source = entry.source_id, client_id = item._client_id, bufnr = ctx.bufnr },
+      extra or {}
+    ),
+  })
+end
 local function watch(buf)
   if state.watched[buf] or not vim.api.nvim_buf_is_loaded(buf) then
     return
@@ -967,23 +984,68 @@ function M.accept(opts)
       end)
       state.accept_cancels[token] = type(cancel) == "function" and cancel or false
     end
-    local public_item = {}
-    for key, value in pairs(item) do
-      if type(key) == "string" and key:sub(1, 1) ~= "_" then
-        public_item[key] = value
-      end
-    end
-    vim.api.nvim_exec_autocmds("User", {
-      pattern = "CompletionToolsAccept",
-      modeline = false,
-      data = { item = public_item, source = entry.source_id, client_id = item._client_id, bufnr = ctx.bufnr },
-    })
+    accepted_event(entry, ctx)
     state.accepted = current()
   end)
   if not ok then
     report(err)
   end
   return true
+end
+local function accept_partial(part)
+  if not state.ready or not context.same(state.context, current()) or not ui.visible() then
+    return false
+  end
+  local entry, ctx = selected_entry(), state.context
+  local provider = entry and state.providers[entry.source_id]
+  if not provider or not provider.partial then
+    return false
+  end
+  local plan = provider.partial(entry, ctx, part)
+  if not plan then
+    return false
+  end
+  if plan.full then
+    return M.accept()
+  end
+  local ok, err = pcall(function()
+    state.generation = state.generation + 1
+    cancel_requests()
+    cancel_doc()
+    local partial = vim.tbl_extend("force", {}, entry, { item = plan.item, context = ctx, resolved = false })
+    require("completion_tools.edits").apply(partial, ctx, state.config)
+    if provider.execute then
+      provider.execute(partial, ctx)
+    end
+    local next_ctx = current()
+    local response = next_ctx and plan.continue(next_ctx)
+    if response then
+      state.cache[entry.source_id] = { response = response, context = next_ctx, cursor_col = next_ctx.col }
+      state.accepted = nil
+      state.edit_buf, state.edit_tick = next_ctx.bufnr, next_ctx.tick
+      request(true, { entry.source_id })
+      vim.schedule(function()
+        if context.same(next_ctx, current()) and not state.selected then
+          M.select_next()
+        end
+      end)
+    else
+      M.hide("accepted")
+      state.accepted = next_ctx
+    end
+    accepted_event(partial, ctx, { partial = part, text = plan.item.textEdit.newText })
+  end)
+  if not ok then
+    M.hide("accept_error")
+    report(err)
+  end
+  return true
+end
+function M.accept_word()
+  return accept_partial("word")
+end
+function M.accept_line()
+  return accept_partial("line")
 end
 function M.show_documentation()
   if not selected_entry() then
@@ -1027,6 +1089,13 @@ function M._can(action)
   end
   if action == "accept" then
     return state.ready and selected_entry() ~= nil and context.same(state.context, current())
+  end
+  if action == "accept_word" or action == "accept_line" then
+    local entry = selected_entry()
+    return state.ready
+      and entry ~= nil
+      and context.same(state.context, current())
+      and state.providers[entry.source_id].partial ~= nil
   end
   if action == "select_next" or action == "select_prev" then
     return #state.items > 0 and state.ready and M.is_menu_visible() and context.same(state.context, current())

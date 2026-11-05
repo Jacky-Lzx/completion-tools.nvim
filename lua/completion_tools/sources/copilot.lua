@@ -6,6 +6,7 @@ local function normalise(raw, ctx, client)
     return
   end
   local range, text = vim.deepcopy(raw.range), raw.text:gsub("\r\n?", "\n")
+  local offset = raw.accepted_offset or 0
   -- Extend a cursor-ending single-line edit over an already present suffix.
   -- Keep the generated text intact, so both acceptance and later reuse use the
   -- same replacement (and the cursor finishes after the closing delimiters).
@@ -30,6 +31,7 @@ local function normalise(raw, ctx, client)
     -- the menu when the generated text preserves it exactly.
     local prefix = ctx.line:sub(start_col + 1, ctx.start_col)
     if start_col <= ctx.start_col and text:sub(1, #prefix) == prefix then
+      offset = offset + vim.str_utfindex(prefix, "utf-16", #prefix, false)
       text = text:sub(#prefix + 1)
       start_col = ctx.start_col
       range.start.character = vim.str_utfindex(ctx.line, "utf-16", start_col, false)
@@ -56,6 +58,7 @@ local function normalise(raw, ctx, client)
     _encoding = "utf-16",
     _copilot_client = client,
     _copilot_uuid = raw.uuid,
+    _copilot_offset = offset,
   }
 end
 
@@ -124,6 +127,7 @@ function M.new(opts)
             text = edit.newText,
             range = require("completion_tools.edits").rebase(range, old, ctx, "utf-16"),
             uuid = item._copilot_uuid,
+            accepted_offset = item._copilot_offset,
           }, ctx, client)
           if candidate then
             candidate.sortText = item.sortText
@@ -254,12 +258,31 @@ function M.new(opts)
     end
     return unsubscribe
   end
+  function source.partial(entry, ctx, part)
+    local item = entry.item
+    local client = item._copilot_client
+    if not copilot.eligible(ctx.bufnr) or not client or client:is_stopped() then
+      return
+    end
+    local range = require("completion_tools.edits").range(entry, ctx)
+    item = vim.tbl_extend(
+      "force",
+      {},
+      item,
+      { textEdit = { newText = item.textEdit.newText, range = range } }
+    )
+    return require("completion_tools.copilot_partial").plan(item, ctx, part, normalise)
+  end
   function source.execute(entry)
     local item = entry.item
     local client = item._copilot_client
     if client and not client:is_stopped() then
       if item._copilot_uuid then
-        client:request("notifyAccepted", { uuid = item._copilot_uuid }, function() end)
+        local text = item.textEdit.newText
+        client:request("notifyAccepted", {
+          uuid = item._copilot_uuid,
+          acceptedLength = (item._copilot_offset or 0) + vim.str_utfindex(text, "utf-16", #text, false),
+        }, function() end)
       end
     end
   end

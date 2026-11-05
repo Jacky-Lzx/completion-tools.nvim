@@ -520,6 +520,23 @@ Request `doc.relativePath` is relative to that buffer's project root.
 Language IDs normalize common Neovim filetypes (for example `sh` to `shellscript`
 and `text` to `plaintext`), including dotted filetypes. Override individual names
 with `copilot.language_ids = { ["my.ft"] = "server-language" }`.
+`accept_word()` and `accept_line()` accept part of the selected Copilot suggestion
+and keep its remainder selected, without a new request. Word acceptance consumes
+leading punctuation/whitespace and the next keyword plus trailing horizontal
+space; line acceptance includes the next newline and indentation. UTF-16 ranges,
+multiline replacements and cumulative accepted lengths are updated at each step.
+These actions have no default key bindings. For example, extend the default map:
+
+```lua
+keymap = vim.tbl_extend("force", require("completion_tools.config").defaults.keymap, {
+  ["<M-w>"] = { "accept_word", "fallback" },
+  ["<M-l>"] = { "accept_line", "fallback" },
+})
+```
+
+Partial acceptance requires a literal continuation of the text before the cursor;
+corrections to already typed text still use full `accept()`. Other sources return
+`false` from these actions, allowing the configured fallback.
 The cycling API requests alternatives; duplicates are removed and at most
 `copilot.max_items` (default 3) are retained. The service may return fewer.
 Copilot fields use `CompletionToolsCopilot` (purple, `#cba6f7`), preserving the
@@ -767,7 +784,8 @@ to choose an item. Typing/backspace restores the configured preselect behavior;
 
 After primary acceptance, `User CompletionToolsAccept` fires with `args.data`
 containing `item`, `source`, `bufnr` and optional `client_id`. Private item metadata
-is omitted. `dispose()` closes UI, cancels work, releases caches and restores mappings.
+is omitted. Partial acceptance also provides `partial = "word" | "line"` and the
+inserted `text`. `dispose()` closes UI, cancels work, releases caches and restores mappings.
 
 ## Migrating from blink.cmp
 

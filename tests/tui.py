@@ -333,11 +333,19 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         while time.monotonic() < until:
             snapshot = wait(lambda s: s["can_accept"], "cached candidates stay usable after debounce")
             assert snapshot["copilot"]["requests"] == 2, snapshot
+        os.write(primary, b"\x0c")
+        snapshot = wait(lambda s: s["can_accept"] and s["line"] == '中😀 = printf("fresh)',
+                        "accept a Copilot word and keep the remainder")
+        assert snapshot["copilot"]["requests"] == 2 and snapshot["menu"]["win"] == window, snapshot
+        os.write(primary, b"\x0a")
+        snapshot = wait(lambda s: s["can_accept"] and s.get("lines") == ['中😀 = printf("fresh")', ')'],
+                        "accept a Copilot line and keep the following line")
+        assert snapshot["copilot"]["requests"] == 2 and snapshot["menu"]["win"] == window, snapshot
         os.write(primary, b"\t!\x1b")
         snapshot = wait(lambda s: s["mode"] == "n" and s.get("lines") ==
-                        ['中😀 = printf("fresh")', 'print("$1")!)'],
+                        ['中😀 = printf("fresh")', 'print("$1")!'],
                         "Unicode multiline Copilot acceptance and continued typing")
-        assert snapshot["copilot"]["accepted"] == ["2:printf"], snapshot
+        assert snapshot["copilot"]["accepted"] == ["2:printf"] * 3, snapshot
         assert not snapshot["visible"], snapshot
         for attempt in range(5):
             os.write(primary, b":lua completion_tui_manual()\r")

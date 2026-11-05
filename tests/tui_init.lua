@@ -179,6 +179,10 @@ function _G.completion_tui_copilot()
   require("completion-tools").setup({
     sources = { "copilot" },
     copilot = { debounce_ms = 20 },
+    keymap = vim.tbl_extend("force", require("completion_tools.config").defaults.keymap, {
+      ["<C-l>"] = { "accept_word", "fallback" },
+      ["<C-j>"] = { "accept_line", "fallback" },
+    }),
     documentation = { delay_ms = 0 },
   })
   native.new = real_new

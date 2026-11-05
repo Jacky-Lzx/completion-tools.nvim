@@ -80,6 +80,51 @@ local next = vim.tbl_extend("force", ctx, {
 })
 local reused = assert(source.reuse(next, { items = { item } }, ctx))
 eq(6, reused.items[1].textEdit.range["end"].character)
+local plan = assert(source.partial({ item = item, context = ctx }, ctx, "word"))
+eq("int", plan.item.textEdit.newText)
+require("completion_tools.edits").apply(
+  { item = plan.item, context = ctx },
+  ctx,
+  require("completion_tools.config").defaults
+)
+local continuation = assert(plan.continue(next))
+eq("(1)", continuation.items[1].textEdit.newText)
+eq(6, continuation.items[1].textEdit.range["end"].character)
+require("completion_tools.edits").apply(
+  { item = continuation.items[1], context = next },
+  next,
+  require("completion_tools.config").defaults
+)
+eq({ "print(1)" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+
+item, ctx = suggestion("pr", "TAIL", "print(1)\nnext()")
+item.textEdit.range["end"] = { line = 1, character = 3 }
+vim.api.nvim_buf_set_lines(0, 1, -1, false, { "old rest" })
+plan = assert(source.partial({ item = item, context = ctx }, ctx, "line"))
+eq("int(1)\n", plan.item.textEdit.newText)
+require("completion_tools.edits").apply(
+  { item = plan.item, context = ctx },
+  ctx,
+  require("completion_tools.config").defaults
+)
+local after_line = vim.tbl_extend("force", ctx, {
+  row = 1,
+  col = 0,
+  before = "",
+  line = "TAIL",
+  prefix = "",
+  start_col = 0,
+})
+continuation = assert(plan.continue(after_line))
+eq({ line = 2, character = 3 }, continuation.items[1].textEdit.range["end"])
+require("completion_tools.edits").apply(
+  { item = continuation.items[1], context = after_line },
+  after_line,
+  require("completion_tools.config").defaults
+)
+eq({ "print(1)", "next() rest" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+item, ctx = suggestion("pr", "", "different text")
+eq(nil, source.partial({ item = item, context = ctx }, ctx, "word"))
 source.dispose()
 native.new = original
 print("copilot edits: single-line suffix overlap, Unicode, explicit ranges and reuse passed")

@@ -27,6 +27,8 @@ show(opts?)              Request completions, optionally with opts.sources.
 hide()                   Hide menu and documentation, cancel pending work.
 is_menu_visible()        Return whether the floating menu is visible.
 accept(opts?)            Apply selected item; opts.mode="insert" or "replace".
+accept_word()            Accept the next word of a Copilot suggestion.
+accept_line()            Accept the next line of a Copilot suggestion.
 select_next(opts?)       Move selection; opts.count defaults to 1.
 select_prev(opts?)       Move selection backwards.
 get_items()              Return current CompletionItems (read-only).
@@ -157,6 +159,9 @@ cwd. Each eligible project's root is registered with the shared server, plus any
 workspace_folders directories. Canonical paths are deduplicated. Language IDs
 normalize common Neovim filetypes; language_ids maps filetype names to overrides.
 Renames and first saves close the old URI before opening the new document.
+accept_word/accept_line keep the selected suggestion's remainder without another
+request. They require a literal continuation and return false for other sources.
+No keys are assigned by default; use these action names in keymap chains.
 New requests debounce independently and cancel on edits/hide/dispose. Completed
 suggestions are reused immediately during exact forward typing on the same line,
 including matching spaces/punctuation. Matching candidates stay selectable and

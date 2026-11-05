@@ -49,20 +49,25 @@ local function test(name, run)
   passed = passed + 1
   print("input: " .. name)
 end
-local function copilot_cache_fixture(texts)
+local function copilot_cache_fixture(texts, preselect)
   lua(
     [[
-    local texts=...
+    local texts,preselect=...
     vim.api.nvim_buf_set_lines(0,0,-1,false,{'中😀 = )','untouched'})
     vim.api.nvim_win_set_cursor(0,{1,#'中😀 = '})
     cache_requests, cache_accepted, cache_allowed, cache_enabled = 0, {}, true, true
+    cache_accepted_lengths={}
     cache_other_calls, cache_with_other = 0, false
     cache_response_delay, cache_cancellations = 30, 0
     local client={initialized=true}
     function client:is_stopped() return false end
     function client:cancel_request() cache_cancellations=cache_cancellations+1 end
     function client:request(method,params,cb)
-      if method=='notifyAccepted' then cache_accepted[#cache_accepted+1]=params.uuid; cb(); return true end
+      if method=='notifyAccepted' then
+        cache_accepted[#cache_accepted+1]=params.uuid
+        cache_accepted_lengths[#cache_accepted_lengths+1]=params.acceptedLength
+        cb(); return true
+      end
       cache_requests=cache_requests+1
       local id=cache_requests
       vim.defer_fn(function()
@@ -84,16 +89,24 @@ local function copilot_cache_fixture(texts)
     } end
     require('completion_tools').setup({
       sources=function() return cache_with_other and {'copilot','other'} or {'copilot'} end,
-      copilot={debounce_ms=150}, providers={
+      copilot={debounce_ms=150}, preselect=preselect,
+      keymap=vim.tbl_extend('force',require('completion_tools.config').defaults.keymap,{
+        ['<C-l>']={'accept_word','fallback'},['<M-l>']={'accept_line','fallback'},
+      }), providers={
         copilot={enabled=function() return cache_enabled end},
         other={complete=function(_,cb) cache_other_calls=cache_other_calls+1; cb({items={}}) end},
       }})
     native.new=original
   ]],
-    texts or { "print(1)\nfinish()", "printf(2)\nfinish()", "prune(3)\nfinish()" }
+    texts or { "print(1)\nfinish()", "printf(2)\nfinish()", "prune(3)\nfinish()" },
+    preselect ~= false
   )
   input("ipr")
-  wait("return cache_requests==1 and require('completion_tools')._can('accept')")
+  wait("return cache_requests==1 and require('completion_tools').get_status().sources.copilot.status=='done'")
+  if preselect == false then
+    input("<C-n>")
+  end
+  wait("return require('completion_tools')._can('accept')")
 end
 local ok, err = xpcall(function()
   rpc("nvim_ui_attach", 120, 36, { rgb = true })
@@ -1941,6 +1954,50 @@ local ok, err = xpcall(function()
       "Late spell results reopened an empty query"
     )
     lua("vim.wo.spell=false")
+  end)
+  test("Copilot accepts words and lines while retaining the remaining suggestion", function()
+    copilot_cache_fixture({ "print(1)\n  local 中文 = true\n  finish()" })
+    lua([[partial_events={}; vim.api.nvim_create_autocmd('User',{pattern='CompletionToolsAccept',
+      callback=function(args) partial_events[#partial_events+1]=args.data end})]])
+    input("<C-l>")
+    wait(
+      [[return vim.api.nvim_get_current_line()=='中😀 = print)' and require('completion_tools')._can('accept')]]
+    )
+    input("<M-l>")
+    wait([[return vim.api.nvim_get_current_line()=='  )' and require('completion_tools')._can('accept')]])
+    input("<C-l>")
+    wait(
+      [[return vim.api.nvim_get_current_line()=='  local )' and require('completion_tools')._can('accept')]]
+    )
+    input("<C-l>")
+    wait(
+      [[return vim.api.nvim_get_current_line()=='  local 中文 )' and require('completion_tools')._can('accept')]]
+    )
+    eq(1, lua("return cache_requests"))
+    eq({ 11, 17, 23, 26 }, lua("return cache_accepted_lengths"))
+    assert(lua([[return #partial_events==4 and partial_events[1].partial=='word'
+      and partial_events[2].partial=='line' and partial_events[4].text=='中文 '
+      and partial_events[1].item.textEdit.newText=='int' and not partial_events[1].item._copilot_uuid]]))
+    input("<Tab>!")
+    wait([[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),
+      {'中😀 = print(1)','  local 中文 = true','  finish()!)','untouched'})]])
+    eq({ "1:1", "1:1", "1:1", "1:1", "1:1" }, lua("return cache_accepted"))
+  end)
+  test("partial Copilot acceptance remains selectable without automatic preselection", function()
+    copilot_cache_fixture({ "print(1)\nfinish()" }, false)
+    input("<C-l>")
+    wait(
+      [[return vim.api.nvim_get_current_line()=='中😀 = print)' and require('completion_tools')._can('accept')]]
+    )
+    input("(")
+    wait(
+      [[return vim.api.nvim_get_current_line()=='中😀 = print()' and require('completion_tools').get_status().ready]]
+    )
+    input("<C-n><Tab>")
+    wait(
+      [[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),{'中😀 = print(1)','finish())','untouched'})]]
+    )
+    eq(1, lua("return cache_requests"))
   end)
   test("Copilot cache prunes alternatives and accepts before another debounce", function()
     copilot_cache_fixture()
