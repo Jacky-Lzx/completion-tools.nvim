@@ -144,3 +144,12 @@ Local icon-disable options still apply. Configure shared overrides through
 Menu and documentation borders use their own surface backgrounds. Override
 `CompletionToolsBorder` and `CompletionToolsDocBorder` independently; explicit
 highlight definitions take precedence over shared theme defaults.
+
+### Plugin-owned first-input startup
+
+With an install-and-mount package manager, call
+`require("completion_tools.bootstrap").setup(opts)` during configuration. The
+plugin initializes its engine on the first InsertEnter, CmdlineEnter or native
+CompletionTools command. Capability lookups remain safe before initialization.
+`bootstrap.ensure()` explicitly initializes it once and returns the engine.
+The existing `completion_tools.setup(opts)` API still initializes immediately.
