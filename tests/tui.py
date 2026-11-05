@@ -412,12 +412,15 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
             if selected == "alpine":
                 os.write(primary, b"\x0e")
                 wait(lambda s: s.get("selected") == selected, "manual selection before LSP attach")
-            until = time.monotonic() + 0.3
-            while time.monotonic() < until:
-                snapshot = wait(lambda s: s.get("manual", {}).get("calls", 0) > 0, "sample manual session")
-                assert snapshot["visible"] and snapshot["menu"]["win"] == window, snapshot
-                assert snapshot.get("selected") == selected, snapshot
-            assert snapshot["manual"]["calls"] == 2 and snapshot["can_accept"], snapshot
+            def manual_refreshed(s):
+                assert s["visible"] and s["menu"]["win"] == window, s
+                assert s.get("selected") == selected, s
+                assert s["manual"]["calls"] <= 2, s
+                return s["manual"]["calls"] == 2 and s["can_accept"]
+
+            # Keep checking every sampled frame until the delayed LSP refresh
+            # finishes; runner scheduling can exceed a fixed observation window.
+            snapshot = wait(manual_refreshed, "manual LSP refresh completes without moving the selection")
             os.write(primary, b"\t!\x1b")
             wait(lambda s: s["mode"] == "n" and s["line"] == "(" + selected + "!" and not s["visible"],
                  "accept refreshed manual candidate and continue typing")

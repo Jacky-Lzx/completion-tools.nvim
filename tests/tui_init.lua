@@ -730,13 +730,29 @@ timer:start(
     end
     if completion_handoff and completion_handoff.active then
       local stats = completion_handoff
-      if not stats.menu and data.can_accept and data.selected == "alphabetSlow" then
+      -- Provider state can update before the native input loop paints its first
+      -- slow result. Start continuity checks only after that frame is visible.
+      if
+        not stats.menu
+        and data.can_accept
+        and data.selected == "alphabetSlow"
+        and data.menu_all_screen
+        and data.menu_all_screen:find("alphabetSlow", 1, true)
+      then
         stats.menu = data.menu.win
       end
       if stats.menu then
         stats.samples = stats.samples + 1
         if not data.menu_all_screen or not data.menu_all_screen:find("alphabetSlow", 1, true) then
           stats.missing = stats.missing + 1
+          stats.first_missing = stats.first_missing
+            or {
+              prefix = data.prefix,
+              menu = data.menu,
+              rows = data.menu_rows,
+              screen = data.menu_all_screen,
+              selected = data.selected,
+            }
         end
         if not data.menu or data.menu.win ~= stats.menu or data.selected ~= "alphabetSlow" then
           stats.moved = stats.moved + 1
