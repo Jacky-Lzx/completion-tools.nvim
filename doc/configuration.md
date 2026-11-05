@@ -726,7 +726,8 @@ Counters cover the current setup lifetime and reset on setup; cache hits do not
 increment provider request counts. Timings measure source completion, including
 async wait and response processing, rather than terminal drawing. Raw counts are
 after transforms and before quotas/deduplication; shown counts are contributions
-to the current menu. Retained stale menus have `stale=true` and cannot be accepted.
+to the current menu. A stale retained selection has `stale=true` and cannot be
+accepted; fresh candidates from other sources remain selectable and acceptable.
 Getters return detached snapshots. Diagnostics store counters and errors, with no
 candidate-body log or network telemetry. `:checkhealth completion-tools` includes
 source status, missing registrations, recent errors and deadlines.
@@ -753,10 +754,15 @@ While typing/backspacing within one keyword, the previous menu remains visible
 until new matches arrive or every provider completes without matches. Stale items
 cannot be accepted. A fast empty source does not close the menu while another is
 pending. Empty input or a context change closes it. Retained menus follow the cursor;
-documentation remains for the same selection.
+documentation remains for the same selection. Each pending source retains its
+previous matching candidates until it publishes useful or final results, or
+reaches its deadline. A fast
+source's new results therefore do not temporarily remove a slower source's items.
+Retained candidates are only for display, and cannot be resolved or accepted
+until their source supplies a fresh or reusable result.
 
-The first useful result for each input is displayed immediately. Subsequent
-asynchronous results are combined within `menu.update_interval_ms` (default `16`)
+The first useful result when opening the menu is displayed immediately. Subsequent
+results, including results across rapid edits, share `menu.update_interval_ms` (default `16`)
 of the previous publication. The deadline is fixed, so continuous streaming cannot
 postpone updates indefinitely. Set `0` to publish every event-loop batch.
 Navigation and acceptance act on the displayed candidates without this delay.

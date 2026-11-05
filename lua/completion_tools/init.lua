@@ -8,6 +8,7 @@ local state = {
   cache = {},
   cancels = {},
   groups = {},
+  retained = {},
   selected = nil,
   selection_manual = false,
   config = nil,
@@ -145,6 +146,11 @@ local function documentation(force)
   if not entry then
     return
   end
+  -- Retained candidates are presentation only. Keep an existing document for
+  -- the same item, but never resolve an item against an outdated snapshot.
+  if entry.stale then
+    return
+  end
   local generation = state.generation
   local may_draw = force
   local function draw()
@@ -221,8 +227,12 @@ local function render(pending)
       local record = state.run and state.run.records[dependency]
       suppressed = suppressed or (record and (record.matches or record.status == "skipped"))
     end
-    if state.groups[id] and not suppressed then
-      local source_group = state.groups[id]
+    local record = state.run and state.run.records[id]
+    if state.groups[id] or not record or record.status ~= "pending" then
+      state.retained[id] = nil
+    end
+    local source_group = state.groups[id] or (record and record.status == "pending" and state.retained[id])
+    if source_group and not suppressed then
       local cap = (state.config.providers[id] or {}).max_items
       if cap then
         source_group = vim.tbl_extend("force", source_group, {
@@ -245,7 +255,14 @@ local function render(pending)
     ui.reposition(ctx, state.config)
     return
   end
-  state.ready = true
+  state.ready = false
+  for _, entry in ipairs(items) do
+    entry.stale = state.groups[entry.source_id] == nil
+    state.ready = state.ready or not entry.stale
+  end
+  if #items > 0 and not state.ready then
+    state.reason, state.last_request_reason = "pending", "pending"
+  end
   state.items = items
   state.diagnostics.shown(items)
   -- A vanished manual choice stays empty until navigation or another edit.
@@ -263,6 +280,12 @@ local function render(pending)
       end
     end
   end
+  if state.select_first and state.ready and #items > 0 then
+    if not state.selected then
+      state.selected, state.selection_manual = 1, true
+    end
+    state.select_first = nil
+  end
   ui.render(items, state.selected, ctx, state.config)
   documentation(false)
   return #items > 0 or not pending
@@ -277,7 +300,7 @@ local function source_ids(ctx, override)
   return ids
 end
 
-local function request(manual, override)
+local function request(manual, override, select_first)
   if not enabled() then
     M.hide("disabled")
     return false
@@ -383,11 +406,19 @@ local function request(manual, override)
   if not context.same(previous_context, ctx) then
     state.selection_manual = false
   end
-  -- Preserve the last rendered frame until matching results arrive or all
-  -- providers finish without matches.
-  -- It remains unselectable until a result for the current context is ready.
-  state.context, state.groups, state.source_ids = ctx, {}, ids
+  -- Keep per-source candidates for visual continuity, separately from safe
+  -- cache reuse. Each source must refresh its items before they are accepted.
+  local retained = {}
+  if ui.visible() and (context.same(previous_context, ctx) or context.continues(previous_context, ctx)) then
+    for _, id in ipairs(ids) do
+      if options[id].enabled then
+        retained[id] = state.groups[id] or state.retained[id]
+      end
+    end
+  end
+  state.context, state.groups, state.source_ids, state.retained = ctx, {}, ids, retained
   state.manual = manual
+  state.select_first = select_first
   state.ready = false
   state.reason = "pending"
   if
@@ -402,10 +433,15 @@ local function request(manual, override)
   else
     ui.reposition(ctx, state.config)
   end
-  local render_queued, run, render_timer, last_render = false, nil, nil, nil
+  local render_queued, run, render_timer = false, nil, nil
   local function queue_render()
     if run then
       state.diagnostics.update(run.records)
+      for id, record in pairs(run.records) do
+        if record.status ~= "pending" then
+          state.retained[id] = nil
+        end
+      end
     end
     if render_queued then
       return
@@ -416,14 +452,17 @@ local function request(manual, override)
       render_queued = false
       if valid(generation, ctx) then
         if render(run and run.pending() or false) then
-          last_render = vim.uv.hrtime()
+          state.last_render = vim.uv.hrtime()
         end
       end
     end
-    -- The first useful frame for each input is immediate. Later publications
-    -- share a fixed deadline; streaming providers cannot keep postponing it.
+    -- The first frame of a session is immediate. Share the deadline across
+    -- requests too, so each keystroke cannot restart an unbounded paint burst.
     local interval = state.config.menu.update_interval_ms
-    local remaining = last_render and interval - (vim.uv.hrtime() - last_render) / 1e6 or 0
+    local remaining = ui.visible()
+        and state.last_render
+        and interval - (vim.uv.hrtime() - state.last_render) / 1e6
+      or 0
     if remaining > 0 then
       render_timer = vim.defer_fn(flush, math.ceil(remaining))
     else
@@ -489,7 +528,15 @@ local function request(manual, override)
             or vim.str_byteindex(ctx.line, encoding, range.start.character, false)
         end
       end
-      state.groups[id] = result
+      local matches = require("completion_tools.matcher").has_match(result, ctx, {
+        max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
+      })
+      -- Empty partials are not an authoritative replacement for a retained
+      -- source, even when other sources already have fresh matches to show.
+      if not (response.pending and not matches and state.retained[id]) then
+        state.groups[id] = result
+        state.retained[id] = nil
+      end
       state.diagnostics.receive(id, #items)
       state.cache[id] = {
         group = result,
@@ -500,9 +547,7 @@ local function request(manual, override)
           or nil,
         cursor_col = ctx.col,
       }
-      return require("completion_tools.matcher").has_match(result, ctx, {
-        max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
-      })
+      return matches
     end,
   })
   state.run = run
@@ -812,6 +857,8 @@ function M.hide(reason)
     end
   end
   state.items, state.selected, state.context, state.groups, state.ready = {}, nil, nil, {}, false
+  state.retained, state.last_render = {}, nil
+  state.select_first = nil
   state.selection_manual = false
   state.reason = reason or "hidden"
   if reason then
@@ -870,14 +917,16 @@ function M.get_status()
     end
   end
   local ok, active = pcall(enabled)
+  local entry = selected_entry()
+  local ready = state.ready == true and not (entry and entry.stale)
   return {
     configured = state.config ~= nil and not state.disposed,
     enabled = ok and active or false,
     reason = not state.config and "not_configured" or (state.disposed and "disposed" or state.reason),
     last_request_reason = state.last_request_reason,
     menu_visible = ui.visible(),
-    ready = state.ready == true,
-    stale = ui.visible() and state.ready ~= true,
+    ready = ready,
+    stale = ui.visible() and not ready,
     mode = state.context and state.context.mode,
     filetype = state.context and state.context.filetype,
     sources = sources,
@@ -930,7 +979,7 @@ function M.accept(opts)
     return false
   end
   local entry, ctx = selected_entry(), state.context
-  if not entry or not ui.visible() then
+  if not entry or entry.stale or not ui.visible() then
     return false
   end
   local provider = state.providers[entry.source_id]
@@ -999,7 +1048,7 @@ local function accept_partial(part)
   end
   local entry, ctx = selected_entry(), state.context
   local provider = entry and state.providers[entry.source_id]
-  if not provider or not provider.partial then
+  if not provider or entry.stale or not provider.partial then
     return false
   end
   local plan = provider.partial(entry, ctx, part)
@@ -1024,12 +1073,9 @@ local function accept_partial(part)
       state.cache[entry.source_id] = { response = response, context = next_ctx, cursor_col = next_ctx.col }
       state.accepted = nil
       state.edit_buf, state.edit_tick = next_ctx.bufnr, next_ctx.tick
-      request(true, { entry.source_id })
-      vim.schedule(function()
-        if context.same(next_ctx, current()) and not state.selected then
-          M.select_next()
-        end
-      end)
+      -- Select after the replacement is actually published; frame throttling
+      -- may outlive the next scheduled event-loop callback.
+      request(true, { entry.source_id }, true)
     else
       M.hide("accepted")
       state.accepted = next_ctx
@@ -1089,12 +1135,14 @@ function M._can(action)
     return M.is_menu_visible()
   end
   if action == "accept" then
-    return state.ready and selected_entry() ~= nil and context.same(state.context, current())
+    local entry = selected_entry()
+    return state.ready and entry ~= nil and not entry.stale and context.same(state.context, current())
   end
   if action == "accept_word" or action == "accept_line" then
     local entry = selected_entry()
     return state.ready
       and entry ~= nil
+      and not entry.stale
       and context.same(state.context, current())
       and state.providers[entry.source_id].partial ~= nil
   end

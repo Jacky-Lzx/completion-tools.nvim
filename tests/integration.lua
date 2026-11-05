@@ -181,7 +181,10 @@ local ok, err = xpcall(function()
     for _, event in ipairs({ "LspAttach", "LspDetach" }) do
       local before = lua("return manual_calls")
       lua("vim.api.nvim_exec_autocmds(...,{buffer=0,data={client_id=999999}})", event)
-      wait("return manual_calls > " .. before, "manual source re-requested by " .. event)
+      wait(
+        "return manual_calls > " .. before .. " and require('completion_tools')._can('accept')",
+        "manual source re-requested by " .. event
+      )
       assert(lua("return require('completion_tools').is_menu_visible()"), "manual menu closed on " .. event)
       assert(lua("return require('completion_tools')._can('accept')"), "refreshed menu must remain usable")
     end
@@ -854,6 +857,78 @@ local ok, err = xpcall(function()
     wait("return not require('completion_tools').is_menu_visible()")
     eq(1, lua("return menu_closed"))
   end)
+  test("pending sources retain matching candidates across fast replacements", function()
+    lua([[
+      handoff_replies={};handoff_paints={};handoff_resolves=0
+      local ui=require('completion_tools.ui');handoff_render=ui.render
+      ui.render=function(items,...)
+        handoff_paints[#handoff_paints+1]=vim.tbl_map(function(e) return e.item.label end,items)
+        return handoff_render(items,...)
+      end
+      require('completion_tools').setup({sources={'slow','fast'},documentation={auto_show=false},
+        providers={slow={score_offset=100,complete=function(ctx,cb)
+          handoff_replies[ctx.prefix]=cb
+          if ctx.prefix=='a' then cb({items={{label='alphabetSlow'}}})
+          else cb({items={},pending=true}) end
+        end,resolve=function(entry,cb) handoff_resolves=handoff_resolves+1;cb(entry.item) end,
+        partial=function() error('stale partial acceptance') end},
+        fast={complete=function(_,cb) cb({items={{label='alphabetFast'}}}) end}}})
+    ]])
+    input("ia")
+    wait("return (require('completion_tools').get_selected_item() or {}).label=='alphabetSlow'")
+    local resolves = lua("return handoff_resolves")
+    for _, key in ipairs({ "l", "p", "<BS>" }) do
+      local previous = lua("return #handoff_paints")
+      input(key)
+      wait("return #handoff_paints>" .. previous)
+      assert(
+        lua([[local c=require('completion_tools'); return c.get_selected_item().label=='alphabetSlow'
+        and #c.get_items()==2 and c.get_status().stale and not c._can('accept') and not c.accept()
+        and not c._can('accept_word') and not c.accept_word() and not c.accept_line()]]),
+        "pending source disappeared or became acceptable"
+      )
+      assert(lua("return #handoff_paints>...", previous))
+      lua("require('completion_tools').show_documentation()")
+      eq(resolves, lua("return handoff_resolves"))
+    end
+    lua("handoff_replies.alp({items={{label='alpCancelled'}}})")
+    vim.wait(25)
+    eq("alphabetSlow", lua("return (require('completion_tools').get_selected_item() or {}).label"))
+    input("<C-n>")
+    wait("return (require('completion_tools').get_selected_item() or {}).label=='alphabetFast'")
+    assert(lua("return require('completion_tools')._can('accept')"), "fresh candidate cannot be accepted")
+    assert(lua("return not require('completion_tools').get_status().stale"))
+    lua("handoff_replies.al({items={{label='alphabetFresh'}}})")
+    wait("return require('completion_tools').get_items()[1].label=='alphabetFresh'")
+    eq("alphabetFast", lua("return (require('completion_tools').get_selected_item() or {}).label"))
+    lua("handoff_replies.al({items={}})")
+    wait("return #require('completion_tools').get_items()==1")
+    lua("require('completion_tools.ui').render=handoff_render")
+  end)
+  test("retained source results expire on timeout and cannot reappear on the next edit", function()
+    lua([[
+      require('completion_tools').setup({sources={'slow','fast'},documentation={auto_show=false},
+        timeout_ms=100,providers={slow={score_offset=100,complete=function(ctx,cb)
+          if ctx.prefix=='a' then cb({items={{label='alphabetSlow'}}}) end
+        end},fast={complete=function(_,cb) cb({items={{label='alphabetFast'}}}) end}}})
+    ]])
+    input("ia")
+    wait("return (require('completion_tools').get_selected_item() or {}).label=='alphabetSlow'")
+    input("l")
+    wait(
+      "local c=require('completion_tools');return c.get_context().prefix=='al' and #c.get_items()==2 and not c._can('accept')"
+    )
+    wait("return require('completion_tools').get_status().sources.slow.status=='timeout'")
+    wait("return #require('completion_tools').get_items()==1")
+    input("p")
+    wait(
+      "return require('completion_tools').get_context().prefix=='alp' and require('completion_tools')._can('accept')"
+    )
+    eq(
+      { "alphabetFast" },
+      lua("return vim.tbl_map(function(i) return i.label end,require('completion_tools').get_items())")
+    )
+  end)
   test("fresh matches remain usable while another source is pending", function()
     lua([[slow_done=false;require('completion_tools').setup({sources={'fast','slow'},providers={
       fast={complete=function(_,cb) cb({items={{label='alphaFast'}}}) end},
@@ -1176,6 +1251,33 @@ local ok, err = xpcall(function()
       assert(not vim.tbl_contains(burst_paints,'aStale') and not vim.tbl_contains(burst_paints,'alCancelled'))
     ]])
     lua("require('completion_tools.ui').render=burst_render")
+  end)
+  test("rapid edits share the paint deadline instead of restarting it per request", function()
+    lua([[
+      edit_paints={}
+      local ui=require('completion_tools.ui');edit_render=ui.render
+      ui.render=function(items,...)
+        edit_paints[#edit_paints+1]=items[1] and items[1].item.label or ''
+        return edit_render(items,...)
+      end
+      require('completion_tools').setup({sources={'fast'},menu={update_interval_ms=200},
+        documentation={auto_show=false},providers={fast={complete=function(ctx,cb)
+          cb({items={{label=ctx.prefix..'Result'}}})
+        end}}})
+    ]])
+    input("ia")
+    wait("return require('completion_tools')._can('accept')")
+    lua([[
+      for i,key in ipairs({'l','p','h'}) do
+        vim.defer_fn(function() vim.api.nvim_input(key) end,i*5)
+      end
+      vim.defer_fn(function() edit_early=#edit_paints end,50)
+    ]])
+    wait("return edit_early~=nil")
+    eq(1, lua("return edit_early"))
+    wait("return (require('completion_tools').get_selected_item() or {}).label=='alphResult'")
+    eq({ "aResult", "alphResult" }, lua("return edit_paints"))
+    lua("require('completion_tools.ui').render=edit_render")
   end)
   local function height_fixture(delay)
     lua(
@@ -2026,7 +2128,9 @@ local ok, err = xpcall(function()
   test("Copilot cache prunes alternatives and accepts before another debounce", function()
     copilot_cache_fixture()
     input("i")
-    wait("return require('completion_tools').get_status().sources.copilot.cache_hits==1")
+    wait(
+      "return require('completion_tools').get_status().sources.copilot.cache_hits==1 and #require('completion_tools').get_items()==2"
+    )
     eq(2, lua("return #require('completion_tools').get_items()"))
     input("ntf(")
     wait("return require('completion_tools')._can('accept') and #require('completion_tools').get_items()==1")

@@ -354,9 +354,12 @@ menu.highlight: enabled=true, treesitter=true, max_bytes=1024, cache_size=512.
 Only visible rows are highlighted; plain words do not create parsers.
 File/folder candidates retain kind and match emphasis without code syntax colors.
 Missing parsers/queries and incomplete signatures keep the lexical fallback.
-menu.update_interval_ms=16 combines asynchronous results within a fixed interval
-after the previous publication. The first useful result for each input is
-immediate; continuous streaming cannot postpone subsequent updates indefinitely.
+Pending sources retain their matching candidates until useful/final results or
+the deadline, so a fast source's new results do not briefly remove slower sources.
+Retained candidates cannot be resolved or accepted; fresh candidates remain usable.
+menu.update_interval_ms=16 combines results within a fixed interval after the
+previous publication, including across rapid edits. The first useful result when
+opening the menu is immediate; continuous input/streaming cannot postpone updates.
 Set to 0 to publish every event-loop batch. Navigation/acceptance use displayed
 candidates without this delay. Width and column allocations are retained until
 the menu closes, growing into spare space without shrinking for shorter results.

@@ -118,6 +118,28 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         assert stats["samples"] >= 6 and stats["hidden"] == stats["blank"] == stats["closed"] == 0, snapshot
         os.write(primary, b"\x1b")
         wait(lambda s: s["mode"] == "n" and not s["visible"], "flicker fixture cleanup")
+        for row in (1, 32):
+            os.write(primary, f":lua completion_tui_handoff({row})\r".encode())
+            wait(lambda s: s["mode"] == "n" and s["line"] == "", "content handoff fixture")
+            os.write(primary, b"ia")
+            wait(lambda s: s.get("handoff", {}).get("samples", 0) > 0,
+                 "slow provider initially visible")
+            for key, expected in ((b"l", "al"), (b"p", "alp"), (b"h", "alph"),
+                                  (b"\x7f", "alp"), (b"h", "alph")):
+                os.write(primary, key)
+                snapshot = wait(lambda s: s.get("prefix") == expected and not s["can_accept"]
+                                and expected + "Fast" in s.get("menu_all_screen", ""),
+                                "fresh fast result retains the slow candidate")
+                until = time.monotonic() + 0.025
+                while time.monotonic() < until:
+                    snapshot = wait(lambda s: s.get("prefix") == expected, "handoff frames")
+                    assert snapshot["handoff"]["missing"] == snapshot["handoff"]["moved"] == 0, snapshot
+            snapshot = wait(lambda s: s["can_accept"], "fresh slow result replaces retained candidate")
+            assert snapshot["handoff"]["samples"] >= 10, snapshot
+            assert snapshot["handoff"]["missing"] == snapshot["handoff"]["moved"] == 0, snapshot
+            os.write(primary, b"\t!\x1b")
+            wait(lambda s: s["line"] == "alphabetSlow!" and s["mode"] == "n" and not s["visible"],
+                 "accept latest source result")
         os.write(primary, b":lua completion_tui_height()\r")
         wait(lambda s: s["mode"] == "n" and s["line"] == "", "height fixture")
         os.write(primary, b"ia")
@@ -170,10 +192,10 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         wait(lambda s: s.get("first") == "alphaLsp" and s.get("selected") == "alphaZ",
              "manual selection survives slow-source ranking")
         os.write(primary, b"p")
-        wait(lambda s: s.get("prefix") == "alp" and s["can_accept"] and s.get("selected") == "alpha",
-             "typing resets manual selection")
-        wait(lambda s: s.get("first") == "alphaLsp" and s.get("selected") == "alphaLsp",
-             "new query follows latest ranking")
+        wait(lambda s: s.get("prefix") == "alp" and not s["can_accept"] and s.get("selected") == "alphaLsp",
+             "typing resets selection while retaining the slow source")
+        wait(lambda s: s["can_accept"] and s.get("first") == "alphaLsp" and s.get("selected") == "alphaLsp",
+             "new query receives a fresh slow-source result")
         os.write(primary, b"\x1b")
         wait(lambda s: s["mode"] == "n" and not s["visible"], "selection fixture cleanup")
         os.write(primary, b":lua completion_tui_paging()\r")

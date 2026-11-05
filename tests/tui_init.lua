@@ -326,6 +326,40 @@ function _G.completion_tui_flicker()
     end,
   })
 end
+function _G.completion_tui_handoff(row)
+  local lines = {}
+  for i = 1, 32 do
+    lines[i] = ""
+  end
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+  vim.api.nvim_win_set_cursor(0, { row, 0 })
+  require("completion-tools").setup({
+    sources = { "slow", "fast" },
+    documentation = { auto_show = false },
+    providers = {
+      slow = {
+        score_offset = 100,
+        complete = function(ctx, cb)
+          vim.defer_fn(function()
+            cb({ items = { { label = "alphabetSlow" } } })
+          end, ctx.prefix == "a" and 5 or 120)
+        end,
+      },
+      fast = {
+        complete = function(ctx, cb)
+          cb({ items = { { label = ctx.prefix .. "Fast" } } })
+        end,
+      },
+    },
+  })
+  completion_handoff = { active = true, samples = 0, missing = 0, moved = 0 }
+  vim.api.nvim_create_autocmd("InsertLeave", {
+    once = true,
+    callback = function()
+      completion_handoff.active = false
+    end,
+  })
+end
 function _G.completion_tui_height()
   local lines = {}
   for i = 1, 32 do
@@ -546,6 +580,15 @@ timer:start(
           for col = at.col, at.col + geometry.width - 1 do
             data.menu_screen = data.menu_screen .. vim.fn.screenstring(at.row, col)
           end
+          if completion_handoff and completion_handoff.active then
+            data.menu_all_screen = ""
+            for row = top.row, top.row + geometry.height - 1 do
+              for col = top.col, top.col + geometry.width - 1 do
+                data.menu_all_screen = data.menu_all_screen .. vim.fn.screenstring(row, col)
+              end
+              data.menu_all_screen = data.menu_all_screen .. "\n"
+            end
+          end
           data.menu_attrs = {}
           for _, word in ipairs({
             "alpha",
@@ -621,6 +664,22 @@ timer:start(
         end
       end
     end
+    if completion_handoff and completion_handoff.active then
+      local stats = completion_handoff
+      if not stats.menu and data.can_accept and data.selected == "alphabetSlow" then
+        stats.menu = data.menu.win
+      end
+      if stats.menu then
+        stats.samples = stats.samples + 1
+        if not data.menu_all_screen or not data.menu_all_screen:find("alphabetSlow", 1, true) then
+          stats.missing = stats.missing + 1
+        end
+        if not data.menu or data.menu.win ~= stats.menu or data.selected ~= "alphabetSlow" then
+          stats.moved = stats.moved + 1
+        end
+      end
+    end
+    data.handoff = completion_handoff
     data.flicker = completion_flicker
     data.manual = completion_manual
     data.copilot = completion_copilot
