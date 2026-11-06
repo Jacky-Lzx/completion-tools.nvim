@@ -610,6 +610,8 @@ local function queue()
 end
 
 function M.setup(opts)
+  assert(opts == nil or type(opts) == "table", "completion-tools.nvim: setup expects a table")
+  opts = vim.deepcopy(opts or {})
   local config = require("completion_tools.config").validate(opts or {})
   if vim.fn.has("nvim-0.11") ~= 1 then
     error("completion-tools requires Neovim 0.11+")

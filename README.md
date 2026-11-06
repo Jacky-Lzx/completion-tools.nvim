@@ -162,3 +162,14 @@ Commands belong to the plugin; choose global entry keys and short aliases in
 your configuration. Registration reports same-name conflicts without replacing
 user commands. Reconfiguration refreshes only commands still owned by this
 plugin, and cleanup preserves subsequent user replacements.
+
+## Setup contract
+
+`setup(nil)` uses defaults. Configuration must be a table; caller-owned tables
+are copied before use. Invalid configuration types do not replace live handlers
+or commands. Repeating setup must not accumulate automatic registrations.
+
+Validated setup resolves from defaults before releasing the previous instance.
+`dispose()` cancels requests and acceptance work, stops timers/providers, closes
+menus and restores unchanged owned input mappings. It is repeatable; diagnostic
+status can report disposal without reinitializing. Call `setup()` to start again.

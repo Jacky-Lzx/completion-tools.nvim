@@ -8,6 +8,7 @@ export XDG_CACHE_HOME="$task_tmp/cache"
 export XDG_CONFIG_HOME="$task_tmp/config"
 export TMPDIR="$task_tmp"
 export NVIM_LOG_FILE="$task_tmp/nvim.log"
+${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/setup_contract.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/command_ownership.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/bootstrap.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/unit.lua
