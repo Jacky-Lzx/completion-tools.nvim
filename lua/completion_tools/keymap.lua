@@ -66,6 +66,38 @@ local function run(mapping)
   end
 end
 
+local action_labels = {
+  show = "Show completions",
+  hide = "Hide completions",
+  accept = "Accept completion",
+  accept_word = "Accept next completion word",
+  accept_line = "Accept next completion line",
+  select_next = "Next completion",
+  select_prev = "Previous completion",
+  show_documentation = "Show completion documentation",
+  scroll_documentation_up = "Scroll documentation up",
+  scroll_documentation_down = "Scroll documentation down",
+  snippet_forward = "Next snippet field",
+  snippet_backward = "Previous snippet field",
+}
+local function description(actions)
+  if type(actions.desc) == "string" and actions.desc ~= "" then
+    return actions.desc
+  end
+  local labels, seen = {}, {}
+  for _, action in ipairs(actions) do
+    if action ~= "fallback" then
+      local label = type(action) == "function" and "Custom completion action"
+        or action_labels[action]
+        or action:gsub("_", " ")
+      if not seen[label] then
+        labels[#labels + 1], seen[label] = label, true
+      end
+    end
+  end
+  return "Completion: " .. (#labels > 0 and table.concat(labels, " / ") or "Use original key")
+end
+
 function M.setup(config)
   M.dispose()
   local function install(mode, keymap)
@@ -82,12 +114,7 @@ function M.setup(config)
         -- mappings keep Neovim's normal precedence over these global defaults.
         -- A silent command-line mapping suppresses setcmdline's native redraw,
         -- leaving both native and external command lines stale until the next key.
-        vim.keymap.set(
-          mode,
-          key,
-          mapping.callback,
-          { silent = mode ~= "c", desc = "completion-tools " .. key }
-        )
+        vim.keymap.set(mode, key, mapping.callback, { silent = mode ~= "c", desc = description(actions) })
         installed[#installed + 1] = mapping
       end
     end

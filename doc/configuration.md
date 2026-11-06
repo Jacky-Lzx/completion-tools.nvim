@@ -173,6 +173,10 @@ Timeouts cannot interrupt synchronous Lua callbacks or native `getcompletion()`.
 
 ## Keymaps
 
+Action lists may include `desc = "Description"`, especially for custom callbacks.
+Without it, mapping descriptions are generated from the named actions in the
+chain. The `desc` field does not change execution or fallback behavior.
+
 `keymap` replaces the entire insert/select-mode mapping table; `keymap = {}`
 installs none. Command-line mappings use the independent `cmdline.keymap` table.
 To change only a few defaults, copy them first:
