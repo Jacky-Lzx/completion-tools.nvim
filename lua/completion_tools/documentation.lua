@@ -217,6 +217,18 @@ function M.build(item, filetype)
       end
     end
   end
+  local preview = item._path_preview
+  if preview and preview.kind == "text" then
+    if #lines > 0 then
+      append("")
+    end
+    for _, line in ipairs(preview.lines) do
+      code(line, preview.filetype)
+    end
+    if preview.truncated then
+      append("… preview truncated")
+    end
+  end
   while lines[#lines] == "" do
     lines[#lines] = nil
     visible[#visible] = nil

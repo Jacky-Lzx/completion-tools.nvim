@@ -2,7 +2,8 @@ local M = {}
 
 function M.new(opts)
   local uv, cache, closed = vim.uv, {}, false
-  local source = { score_offset = 30 }
+  local preview = require("completion_tools.path_preview").new(opts.preview)
+  local source = { score_offset = 30, resolve = preview.resolve, resolve_on_accept = false }
   function source.complete(ctx, callback)
     -- Whitespace and quoting delimit paths; slash is required to avoid probing
     -- the filesystem for every ordinary identifier.
@@ -73,7 +74,11 @@ function M.new(opts)
             total = total + 1
             if total <= opts.max_entries then
               local folder = file.type == "directory"
-              items[#items + 1] = { label = file.name .. (folder and "/" or ""), kind = folder and 19 or 17 }
+              items[#items + 1] = {
+                label = file.name .. (folder and "/" or ""),
+                kind = folder and 19 or 17,
+                data = { path = expanded .. file.name, directory = folder },
+              }
             end
           end
           if total >= opts.max_entries then
@@ -101,6 +106,7 @@ function M.new(opts)
   function source.dispose()
     closed = true
     cache = {}
+    preview.dispose()
   end
   return source
 end

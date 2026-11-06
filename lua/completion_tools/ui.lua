@@ -3,6 +3,7 @@ local ns = vim.api.nvim_create_namespace("completion-tools-menu")
 local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
 local geometry, doc_item, menu_status
+local doc_view, doc_token
 local frame_items, frame_selected
 local frame_layout, frame_lines, frame_spans, frame_config
 local shrink_timer, shrink_token
@@ -104,7 +105,15 @@ function M.highlights()
   require("completion_tools.kinds").highlights()
 end
 
+local function close_doc_view()
+  doc_token = nil
+  if doc_view then
+    doc_view:close()
+    doc_view = nil
+  end
+end
 function M.hide_documentation()
+  close_doc_view()
   close(doc_win)
   doc_win, doc_item = nil, nil
 end
@@ -401,6 +410,8 @@ function M.documentation(item, config)
     return false
   end
   local opts = config.documentation
+  local preview = item._path_preview
+  local media = preview and preview.kind == "media"
   local width = 12
   -- Conceal does not reflow wrapped buffer text. Reserve raw columns for prose;
   -- virtual separators occupy exactly one row regardless of their Markdown length.
@@ -414,6 +425,9 @@ function M.documentation(item, config)
     return false
   end
   width = math.min(width, opts.max_width, available)
+  if media then
+    width = math.min(opts.max_width, available)
+  end
   local height = 0
   for row, line in ipairs(lines) do
     local cells = visible[row] == "" and 0 or vim.fn.strdisplaywidth(line)
@@ -426,6 +440,9 @@ function M.documentation(item, config)
     top = geometry.input_bottom + 1
   end
   -- A tall document must remain on the same side of the input as the menu.
+  if media then
+    height = opts.max_height
+  end
   height = math.min(height, opts.max_height, bottom - top - 1)
   if height < 1 then
     M.hide_documentation()
@@ -433,11 +450,17 @@ function M.documentation(item, config)
   end
   local col = right >= width and geometry.col + geometry.width + 2 or geometry.col - width - 2
   local row = math.max(top, math.min(geometry.row, bottom - height - 1))
+  local reuse = media and doc_token and doc_item == item and valid(doc_win)
+  if not reuse then
+    close_doc_view()
+  end
   doc_buf = scratch(doc_buf, "markdown")
-  vim.bo[doc_buf].syntax = ""
-  vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
-  vim.api.nvim_buf_clear_namespace(doc_buf, doc_ns, 0, -1)
-  documentation.highlight(doc_buf, doc_ns, lines, ranges, config.menu.highlight, width)
+  if not reuse then
+    vim.bo[doc_buf].syntax = ""
+    vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
+    vim.api.nvim_buf_clear_namespace(doc_buf, doc_ns, 0, -1)
+    documentation.highlight(doc_buf, doc_ns, lines, ranges, config.menu.highlight, width)
+  end
   local wc = {
     relative = "editor",
     row = math.max(0, row),
@@ -457,14 +480,33 @@ function M.documentation(item, config)
       .. ",Search:None,IncSearch:None,CurSearch:None"
     vim.wo[doc_win].wrap = true
   end
-  vim.wo[doc_win].conceallevel = 2
+  vim.wo[doc_win].wrap = not media
+  -- File contents are literal even when the reused Markdown pane has syntax
+  -- conceal rules from an earlier LSP document.
+  vim.wo[doc_win].conceallevel = preview and 0 or 2
   vim.wo[doc_win].concealcursor = "nvic"
+  if not reuse then
+    vim.api.nvim_win_set_cursor(doc_win, { 1, 0 })
+  end
   doc_item = item
+  if media then
+    if reuse then
+      if doc_view then
+        doc_view:resize()
+      end
+    else
+      local token, target_buf, target_win = {}, doc_buf, doc_win
+      doc_token = token
+      doc_view = require("completion_tools.path_preview").render(preview, target_buf, target_win, function()
+        return doc_token == token and valid(target_win) and vim.api.nvim_win_get_buf(target_win) == target_buf
+      end)
+    end
+  end
   return true
 end
 
 function M.scroll_documentation(delta)
-  if not valid(doc_win) then
+  if not valid(doc_win) or doc_view then
     return false
   end
   vim.api.nvim_win_call(doc_win, function()

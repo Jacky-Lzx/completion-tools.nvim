@@ -298,6 +298,26 @@ function _G.completion_tui_snippet()
   vim.api.nvim_set_hl(0, "Special", { fg = "#c678dd" })
   vim.api.nvim_set_hl(0, "@function", { fg = "#56b6c2" })
 end
+function _G.completion_tui_path_preview()
+  local root = vim.env.COMPLETION_TUI_STATE .. ".preview"
+  vim.fn.mkdir(root, "p")
+  vim.fn.writefile({ "-- **literal** `code`", "return 'preview value'" }, root .. "/previewa.lua")
+  vim.fn.writefile({ "return 'other preview'" }, root .. "/previewb.lua")
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  vim.bo.filetype = "tex"
+  require("completion-tools").setup({
+    sources = { "path" },
+    trigger_characters = { ".", "/" },
+    menu = { inverse = false },
+    documentation = { delay_ms = 5 },
+    path = {
+      get_cwd = function()
+        return root
+      end,
+    },
+  })
+end
 function _G.completion_tui_files()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.bo.filetype = "tex"

@@ -41,7 +41,10 @@ require("completion-tools").setup({
     max_bytes = 1024 * 1024, max_words = 20000, max_buffers = 8,
     batch_lines = 128, min_length = 3, -- Word length in bytes
   },
-  path = { max_entries = 10000, cache_ms = 1000, show_hidden = false },
+  path = {
+    max_entries = 10000, cache_ms = 1000, show_hidden = false,
+    preview = { enabled = true, max_bytes = 64 * 1024, max_lines = 100 },
+  },
   dictionary = {
     files = {}, min_keyword_length = 3, max_items = 10,
     matching = "fuzzy", capitalize = true,
@@ -269,6 +272,21 @@ slash, such as `./`, `../`, `~/` or `/tmp/`.
 Directory reads use asynchronous libuv batches and cache up to 32 directories.
 Typing a dot can reveal hidden files. When a directory exceeds `max_entries`, only
 the first entries returned by the filesystem are read.
+
+Selecting a path candidate previews the file in the documentation window. Text
+reads are asynchronous and bounded by `path.preview.max_bytes` (64 KiB) and
+`max_lines` (100), with at most 2000 bytes per line. File contents remain literal,
+including Markdown markers, and use the file's detected syntax. Directories show
+their path; binary files and read errors show a short message. Set
+`path.preview.enabled=false` to show only the path.
+
+Images and PDFs use the optional `image-tools.nvim` public `render()` API inside
+the same documentation window. It loads only when a media preview is shown;
+text previews need no image plugin. PDFs show page 1, rasterized to the available
+viewport pixels. Missing image-tools, unsupported terminals and conversion
+failures show a message in the window. Candidate changes and menu teardown close
+the render view and release its resources. Documentation delay, size and
+automatic display settings apply to file previews as well.
 
 ## Snippets
 
@@ -842,6 +860,7 @@ REAL_LSP=1 ./tests/run.sh                 # Also test local lua-language-server
 LUASNIP_PATH=/path/to/LuaSnip ./tests/run.sh
 NVIM=/path/to/nvim-0.11/bin/nvim ./tests/run.sh
 INPUT_TOOLS_PATH=/path/to/input-tools.nvim ./tests/run.sh # External command-line layout/resizing
+IMAGE_TOOLS_PATH=/path/to/image-tools.nvim ./tests/run.sh # PNG/PDF embedded preview acceptance
 stylua --check lua tests
 ```
 

@@ -25,6 +25,8 @@ ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/copilot_w
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/menu.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/theme.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/documentation.lua
+${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/path_preview.lua
+${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/path_preview_image.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/words.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/integration.lua
 ${NVIM:-nvim} --headless -u tests/minimal_init.lua -i NONE -n -l tests/cmdline.lua

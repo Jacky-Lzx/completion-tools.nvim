@@ -281,6 +281,20 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
              "file metadata does not enter accepted text")
         fcntl.ioctl(primary, termios.TIOCSWINSZ, struct.pack("HHHH", 36, 120, 0, 0))
         child.send_signal(signal.SIGWINCH)
+        os.write(primary, b":lua completion_tui_path_preview()\r")
+        wait(lambda s: s["line"] == "" and s["mode"] == "n", "path preview fixture")
+        os.write(primary, b"i./")
+        snapshot = wait(lambda s: s.get("selected") == "previewa.lua"
+                        and "preview value" in s.get("doc_screen", ""),
+                        "slash opens a file preview in the terminal documentation window")
+        assert "**literal** `code`" in snapshot["doc_screen"], snapshot
+        assert snapshot["line"] == "./" and snapshot["mode"] == "i", snapshot
+        os.write(primary, b"previewb")
+        wait(lambda s: s.get("selected") == "previewb.lua"
+             and "other preview" in s.get("doc_screen", ""), "burst input replaces the file preview")
+        os.write(primary, b"\t!\x1b")
+        wait(lambda s: s["line"] == "./previewb.lua!" and s["mode"] == "n"
+             and not s.get("doc_win"), "accepting a preview inserts only the filename and closes documentation")
         os.write(primary, b":lua completion_tui_dictionary()\r")
         wait(lambda s: s["line"] == "" and s["mode"] == "n", "dictionary fixture")
         os.write(primary, b"iAPP")

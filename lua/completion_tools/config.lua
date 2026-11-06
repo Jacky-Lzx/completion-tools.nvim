@@ -45,7 +45,12 @@ M.defaults = {
   },
   documentation = { auto_show = true, delay_ms = 150, max_width = 72, max_height = 18, border = "single" },
   buffer = { max_bytes = 1024 * 1024, max_words = 20000, max_buffers = 8, batch_lines = 128, min_length = 3 },
-  path = { max_entries = 10000, cache_ms = 1000, show_hidden = false },
+  path = {
+    max_entries = 10000,
+    cache_ms = 1000,
+    show_hidden = false,
+    preview = { enabled = true, max_bytes = 64 * 1024, max_lines = 100 },
+  },
   dictionary = {
     files = {},
     min_keyword_length = 3,
@@ -371,6 +376,15 @@ function M.validate(opts)
     "completion-tools: invalid highlight callback"
   )
   assert(config.path.max_entries >= 1 and config.path.cache_ms >= 0, "completion-tools: invalid path limits")
+  local preview = config.path.preview
+  assert(
+    type(preview) == "table" and type(preview.enabled) == "boolean",
+    "completion-tools: invalid path.preview"
+  )
+  assert(
+    integer(preview.max_bytes, 1) and integer(preview.max_lines, 1),
+    "completion-tools: invalid path preview limits"
+  )
   assert(config.documentation.delay_ms >= 0, "completion-tools: invalid documentation delay")
   assert(
     config.snippets.preset == "default" or config.snippets.preset == "luasnip",

@@ -1749,6 +1749,50 @@ local ok, err = xpcall(function()
     input("<C-e>")
     wait("return #vim.api.nvim_list_wins() == 1")
   end)
+  test("path previews follow keyboard selection and release embedded media", function()
+    lua([[
+      preview_root=vim.fn.tempname()
+      vim.fn.mkdir(preview_root,'p')
+      vim.fn.writefile({'-- **literal** `code`', 'return "preview text"'},preview_root..'/previewa.lua')
+      vim.fn.writefile({},preview_root..'/previewb.png')
+      vim.fn.writefile({},preview_root..'/previewc.pdf')
+      preview_requests,preview_closed={},0
+      package.loaded.image_tools={render=function(request)
+        preview_requests[#preview_requests+1]=request
+        vim.api.nvim_buf_set_lines(request.buf,0,-1,false,{'media: '..vim.fs.basename(request.path)})
+        return {close=function() preview_closed=preview_closed+1 end,resize=function() end}
+      end}
+      function preview_doc()
+        for _,w in ipairs(vim.api.nvim_list_wins()) do
+          local b=vim.api.nvim_win_get_buf(w)
+          if vim.bo[b].filetype=='markdown' then return vim.api.nvim_buf_get_lines(b,0,-1,false) end
+        end
+        return {}
+      end
+      require('completion_tools').setup({sources={'path'},trigger_characters={'.','/'},
+        menu={inverse=false},documentation={delay_ms=5},path={get_cwd=function() return preview_root end}})
+    ]])
+    input("i./preview")
+    wait([[return vim.tbl_contains(preview_doc(),'return "preview text"')]])
+    eq("-- **literal** `code`", lua("return preview_doc()[3]"))
+    input("<C-n>")
+    wait("return #preview_requests==1 and preview_doc()[1]=='media: previewb.png'")
+    input("<C-n>")
+    wait("return #preview_requests==2 and preview_closed==1 and preview_doc()[1]=='media: previewc.pdf'")
+    lua([[
+      assert(not preview_requests[1].is_valid() and preview_requests[2].is_valid())
+      local lines=preview_doc()
+      preview_requests[1].on_error('late PNG failure')
+      assert(vim.deep_equal(lines,preview_doc()))
+      assert(vim.api.nvim_get_mode().mode=='i','Preview stole input focus')
+    ]])
+    input("<Tab>")
+    wait("return vim.api.nvim_get_current_line()=='./previewc.pdf' and #vim.api.nvim_list_wins()==1")
+    eq(2, lua("return preview_closed"))
+    lua(
+      "assert(not preview_requests[2].is_valid());package.loaded.image_tools=nil;vim.fn.delete(preview_root,'rf')"
+    )
+  end)
   test("snippet colors and code previews hide Markdown markers and refresh highlights", function()
     lua([[
       vim.bo.filetype='tex'
