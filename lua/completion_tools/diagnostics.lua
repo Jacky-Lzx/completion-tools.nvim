@@ -119,19 +119,9 @@ function M.format(status)
 end
 
 function M.command()
-  if vim.api.nvim_get_commands({}).CompletionToolsStatus then
-    return function() end
-  end
-  vim.api.nvim_create_user_command("CompletionToolsStatus", "lua require('completion_tools').show_status()", {
-    desc = "Show completion source status, timings and cache statistics",
-  })
-  local owned = vim.api.nvim_get_commands({}).CompletionToolsStatus.definition
-  return function()
-    local current = vim.api.nvim_get_commands({}).CompletionToolsStatus
-    if current and current.definition == owned then
-      vim.api.nvim_del_user_command("CompletionToolsStatus")
-    end
-  end
+  return require("completion_tools.user_command").create("CompletionToolsStatus", function()
+    require("completion_tools").show_status()
+  end, { desc = "Show completion source status, timings and cache statistics" })
 end
 
 return M

@@ -40,8 +40,7 @@ function M.new(opts)
   local command = "CompletionToolsCopilot"
   instance = instance + 1
   local group = vim.api.nvim_create_augroup("CompletionToolsCopilot" .. instance, { clear = true })
-  local owns_command = not vim.api.nvim_get_commands({})[command]
-  local command_definition
+  local command_cleanup
 
   local function changed()
     vim.schedule(function()
@@ -297,22 +296,19 @@ function M.new(opts)
       end)
     end, true)
   end
-  if owns_command then
-    vim.api.nvim_create_user_command(command, function(args)
-      local action = args.args == "" and "status" or args.args
-      if not vim.list_contains({ "auth", "status", "enable", "disable", "restart", "signout" }, action) then
-        error("Unknown Copilot action: " .. action)
-      end
-      manager.command(action)
-    end, {
-      nargs = "?",
-      desc = "Copilot completion authentication and client control",
-      complete = function()
-        return { "auth", "status", "enable", "disable", "restart", "signout" }
-      end,
-    })
-    command_definition = vim.api.nvim_get_commands({})[command].definition
-  end
+  command_cleanup = require("completion_tools.user_command").create(command, function(args)
+    local action = args.args == "" and "status" or args.args
+    if not vim.list_contains({ "auth", "status", "enable", "disable", "restart", "signout" }, action) then
+      error("Unknown Copilot action: " .. action)
+    end
+    manager.command(action)
+  end, {
+    nargs = "?",
+    desc = "Copilot completion authentication and client control",
+    complete = function()
+      return { "auth", "status", "enable", "disable", "restart", "signout" }
+    end,
+  })
   vim.api.nvim_create_autocmd({ "BufEnter", "FileType" }, {
     group = group,
     callback = function(args)
@@ -365,9 +361,8 @@ function M.new(opts)
     changed()
     drain(nil)
     vim.api.nvim_del_augroup_by_id(group)
-    local current = vim.api.nvim_get_commands({})[command]
-    if owns_command and current and current.definition == command_definition then
-      vim.api.nvim_del_user_command(command)
+    if command_cleanup then
+      command_cleanup()
     end
     if client then
       client:stop()

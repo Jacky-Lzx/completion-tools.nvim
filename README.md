@@ -155,3 +155,10 @@ plugin initializes its engine on the first InsertEnter, CmdlineEnter or native
 CompletionTools command. Capability lookups remain safe before initialization.
 `bootstrap.ensure()` explicitly initializes it once and returns the engine.
 The existing `completion_tools.setup(opts)` API still initializes immediately.
+
+## Command ownership
+
+Commands belong to the plugin; choose global entry keys and short aliases in
+your configuration. Registration reports same-name conflicts without replacing
+user commands. Reconfiguration refreshes only commands still owned by this
+plugin, and cleanup preserves subsequent user replacements.
