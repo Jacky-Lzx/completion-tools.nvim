@@ -39,13 +39,15 @@ Merge capabilities **before starting servers**. With Neovim's native LSP configu
 
 ```lua
 vim.lsp.config("*", {
-  capabilities = require("completion-tools").get_lsp_capabilities(),
+  capabilities = require("completion_tools.capabilities").get_lsp_capabilities(),
 })
 -- Configure and enable your language servers as usual.
 ```
 
 When lazy-loading, make your LSP configuration depend on this plugin so the module
-is available during server setup. `get_lsp_capabilities(base)` preserves other capabilities.
+is available during server setup. The capabilities module does not load the completion engine
+or UI. `get_lsp_capabilities(base)` preserves other capabilities; the same method remains
+available on `require("completion-tools")` for existing callers.
 
 ### Copilot completions
 

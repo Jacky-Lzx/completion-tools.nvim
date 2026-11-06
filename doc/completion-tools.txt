@@ -13,10 +13,11 @@ source contracts, examples and migration notes.
 Defaults are defined in lua/completion_tools/config.lua.
 
                                                        *completion-tools-lsp*
-Register capabilities before starting language servers:
+Register capabilities before starting language servers. This pure module does not
+load the completion engine or UI:
 >
     vim.lsp.config("*", {
-      capabilities = require("completion-tools").get_lsp_capabilities(),
+      capabilities = require("completion_tools.capabilities").get_lsp_capabilities(),
     })
 <
                                                         *completion-tools-api*

@@ -2,7 +2,7 @@
 local M = {}
 local options, group
 function M.ensure()
-  local engine = require("completion_tools")
+  local engine = require("completion-tools")
   if not engine.get_status().configured then
     engine.setup(vim.deepcopy(options or {}))
   end

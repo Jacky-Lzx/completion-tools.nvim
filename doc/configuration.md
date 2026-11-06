@@ -235,7 +235,8 @@ The indentation modes follow the [LSP specification](https://microsoft.github.io
 
 ### Protocol support
 
-Register `get_lsp_capabilities(base?)` before starting servers; setup is not required
+Register `require("completion_tools.capabilities").get_lsp_capabilities(base?)`
+before starting servers; this module does not import the engine or UI. Setup is not required
 first. The LSP source supports multiple clients, trigger characters, incomplete-list
 requests, UTF-8/16/32 ranges, TextEdit/InsertReplaceEdit, CompletionList.itemDefaults,
 additional text edits, snippets, item resolve and commands after acceptance.
