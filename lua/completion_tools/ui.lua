@@ -488,6 +488,12 @@ function M.documentation(item, config)
   if not reuse then
     vim.api.nvim_win_set_cursor(doc_win, { 1, 0 })
   end
+  if opts.on_render then
+    local ok, err = pcall(opts.on_render, { buf = doc_buf, win = doc_win, item = item, preview = preview })
+    if not ok then
+      vim.notify("completion-tools documentation.on_render: " .. tostring(err), vim.log.levels.ERROR)
+    end
+  end
   doc_item = item
   if media then
     if reuse then

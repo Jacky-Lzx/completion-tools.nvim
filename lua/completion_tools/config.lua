@@ -385,6 +385,10 @@ function M.validate(opts)
     integer(preview.max_bytes, 1) and integer(preview.max_lines, 1),
     "completion-tools: invalid path preview limits"
   )
+  assert(
+    config.documentation.on_render == nil or type(config.documentation.on_render) == "function",
+    "completion-tools: documentation.on_render must be a function"
+  )
   assert(config.documentation.delay_ms >= 0, "completion-tools: invalid documentation delay")
   assert(
     config.snippets.preset == "default" or config.snippets.preset == "luasnip",

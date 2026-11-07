@@ -104,4 +104,35 @@ opts.max_bytes = 7
 doc.highlight(buf, ns, { line }, { { row = 0, first = 0, last = #line, filetype = "unknown" } }, opts)
 vim.api.nvim_buf_delete(buf, { force = true })
 print("documentation: code, Markdown conceal/styles/rules, literal text and UTF-8 bounds passed")
+
+local config = require("completion_tools.config")
+assert(not pcall(config.validate, { documentation = { on_render = true } }))
+local calls = 0
+local cfg = config.validate({
+  documentation = {
+    on_render = function(ctx)
+      assert(vim.api.nvim_win_get_buf(ctx.win) == ctx.buf and ctx.item.documentation == "first")
+      calls = calls + 1
+    end,
+  },
+})
+local ui = require("completion_tools.ui")
+ui.render({ { item = { label = "fixture" }, source_id = "lsp", start_col = 0 } }, 1, {
+  winid = vim.api.nvim_get_current_win(),
+  bufnr = 0,
+  row = 0,
+  col = 0,
+  start_col = 0,
+  mode = "insert",
+  before = "",
+  line = "",
+  filetype = "lua",
+}, cfg)
+assert(ui.documentation({ documentation = "first" }, cfg) and calls == 1)
+assert(ui.documentation({ documentation = "first" }, cfg) and calls == 2)
+ui.hide()
+assert(not ui.documentation({ documentation = "first" }, cfg) and calls == 2)
+ui.dispose()
+print("documentation render hook: current window, re-render, hidden state and validation passed")
+
 vim.cmd("qa!")
