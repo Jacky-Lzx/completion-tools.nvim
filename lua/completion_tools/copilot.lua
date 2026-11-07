@@ -266,7 +266,11 @@ function M.new(opts)
       drain(nil)
       return
     elseif action == "status" then
-      vim.notify(vim.inspect(manager.get_status()), vim.log.levels.INFO)
+      vim.notify(
+        vim.inspect(manager.get_status()),
+        vim.log.levels.INFO,
+        { title = "Copilot", filetype = "lua" }
+      )
       return
     end
     manager.ensure(vim.api.nvim_get_current_buf(), function(c)
@@ -291,7 +295,7 @@ function M.new(opts)
             end)
           end
         else
-          vim.notify("Copilot: " .. vim.inspect(result), vim.log.levels.INFO)
+          vim.notify(vim.inspect(result), vim.log.levels.INFO, { title = "Copilot", filetype = "lua" })
         end
       end)
     end, true)

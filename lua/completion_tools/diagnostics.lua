@@ -81,6 +81,7 @@ function M.new()
 end
 
 function M.format(status)
+  local spans = {}
   local lines = {
     string.format(
       "completion-tools: %s; menu=%s; ready=%s",
@@ -109,13 +110,16 @@ function M.format(status)
       item.errors or 0
     )
     if item.client then
-      lines[#lines + 1] = "  client: " .. vim.inspect(item.client):gsub("\n", " ")
+      local prefix, value = "  client: ", vim.inspect(item.client):gsub("\n", " ")
+      local start = #table.concat(lines, "\n") + 1 + #prefix
+      lines[#lines + 1] = prefix .. value
+      spans[#spans + 1] = { start = start, finish = start + #value, filetype = "lua" }
     end
     if item.last_error then
       lines[#lines + 1] = "  " .. item.last_error
     end
   end
-  return table.concat(lines, "\n")
+  return table.concat(lines, "\n"), spans
 end
 
 function M.command()

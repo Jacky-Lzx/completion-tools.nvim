@@ -944,7 +944,8 @@ function M.get_status()
 end
 function M.show_status()
   local status = M.get_status()
-  vim.notify(require("completion_tools.diagnostics").format(status), vim.log.levels.INFO)
+  local text, spans = require("completion_tools.diagnostics").format(status)
+  vim.notify(text, vim.log.levels.INFO, { title = "Completion tools", markdown = false, spans = spans })
   return status
 end
 local function select(direction, opts)
