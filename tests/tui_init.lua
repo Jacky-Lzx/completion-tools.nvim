@@ -298,6 +298,24 @@ function _G.completion_tui_snippet()
   vim.api.nvim_set_hl(0, "Special", { fg = "#c678dd" })
   vim.api.nvim_set_hl(0, "@function", { fg = "#56b6c2" })
 end
+function _G.completion_tui_directories()
+  local root = vim.env.COMPLETION_TUI_STATE .. ".directories"
+  vim.fn.mkdir(root .. "/outer/nested", "p")
+  vim.fn.writefile({ "Directory continuation preview" }, root .. "/outer/nested/file.txt")
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  require("completion-tools").setup({
+    sources = { "path" },
+    trigger_characters = {},
+    menu = { inverse = false },
+    documentation = { delay_ms = 5 },
+    path = {
+      get_cwd = function()
+        return root
+      end,
+    },
+  })
+end
 function _G.completion_tui_path_preview()
   local root = vim.env.COMPLETION_TUI_STATE .. ".preview"
   vim.fn.mkdir(root, "p")

@@ -1749,6 +1749,67 @@ local ok, err = xpcall(function()
     input("<C-e>")
     wait("return #vim.api.nvim_list_wins() == 1")
   end)
+  for _, automatic in ipairs({ true, false }) do
+    test(
+      "accepting directories continues nested path completion: auto_show=" .. tostring(automatic),
+      function()
+        lua(
+          [[
+        local automatic=...
+        directory_root=vim.fn.tempname()
+        vim.fn.mkdir(directory_root..'/outer/nested','p')
+        vim.fn.writefile({'content'},directory_root..'/outer/nested/file.txt')
+        require('completion_tools').setup({sources={'path','noise'},auto_show=automatic,
+          trigger_characters={},menu={inverse=false},path={get_cwd=function() return directory_root end},
+          providers={noise={complete=function(_,cb) cb({items={{label='wrongSibling'}}}) end}}})
+      ]],
+          automatic
+        )
+        input("i./ou" .. (automatic and "" or "<C-Space>"))
+        wait(
+          "return require('completion_tools').get_selected_item() and require('completion_tools').get_selected_item().label=='outer/'"
+        )
+        input("<Tab>")
+        wait([[local c=require('completion_tools');return vim.api.nvim_get_current_line()=='./outer/'
+        and c.is_menu_visible() and c._can('accept') and c.get_selected_item().label=='nested/']])
+        eq(1, lua("return #require('completion_tools').get_items()"))
+        input("<Tab>")
+        wait([[local c=require('completion_tools');return vim.api.nvim_get_current_line()=='./outer/nested/'
+        and c.is_menu_visible() and c._can('accept') and c.get_selected_item().label=='file.txt']])
+        input("<Tab>")
+        wait(
+          "return vim.api.nvim_get_current_line()=='./outer/nested/file.txt' and not require('completion_tools').is_menu_visible()"
+        )
+        lua("assert(vim.api.nvim_get_mode().mode=='i');vim.fn.delete(directory_root,'rf')")
+      end
+    )
+  end
+  test("empty directories and canceled acceptance handlers do not reopen completion", function()
+    lua([[
+      directory_root=vim.fn.tempname()
+      vim.fn.mkdir(directory_root..'/empty','p')
+      require('completion_tools').setup({sources={'path'},auto_show=false,
+        path={get_cwd=function() return directory_root end}})
+    ]])
+    input("i./em<C-Space>")
+    wait("return require('completion_tools')._can('accept')")
+    input("<Tab>")
+    wait(
+      "return vim.api.nvim_get_current_line()=='./empty/' and require('completion_tools').get_status().reason=='no_matches'"
+    )
+    assert(not lua("return require('completion_tools').is_menu_visible()"))
+    input("<C-u>./em<C-Space>")
+    wait("return require('completion_tools')._can('accept')")
+    lua([[
+      vim.api.nvim_create_autocmd('User',{pattern='CompletionToolsAccept',once=true,callback=function()
+        vim.api.nvim_buf_set_lines(0,0,-1,false,{'changed by acceptance handler'})
+      end})
+    ]])
+    input("<Tab>")
+    wait("return vim.api.nvim_get_current_line()=='changed by acceptance handler'")
+    assert(not lua("return require('completion_tools').is_menu_visible()"))
+    lua("vim.fn.delete(directory_root,'rf')")
+  end)
   test("path previews follow keyboard selection and release embedded media", function()
     lua([[
       preview_root=vim.fn.tempname()

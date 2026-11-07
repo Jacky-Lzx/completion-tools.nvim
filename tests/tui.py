@@ -295,6 +295,23 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"\t!\x1b")
         wait(lambda s: s["line"] == "./previewb.lua!" and s["mode"] == "n"
              and not s.get("doc_win"), "accepting a preview inserts only the filename and closes documentation")
+        os.write(primary, b":lua completion_tui_directories()\r")
+        wait(lambda s: s["line"] == "" and s["mode"] == "n", "directory continuation fixture")
+        os.write(primary, b"i./ou")
+        wait(lambda s: s.get("selected") == "outer/" and s["can_accept"], "outer directory candidate")
+        os.write(primary, b"\t")
+        wait(lambda s: s["line"] == "./outer/" and s.get("selected") == "nested/"
+             and "nested/" in s.get("menu_screen", "") and s["can_accept"],
+             "directory acceptance paints its children without typing a slash trigger")
+        os.write(primary, b"\t")
+        wait(lambda s: s["line"] == "./outer/nested/" and s.get("selected") == "file.txt"
+             and "Directory continuation preview" in s.get("doc_screen", "") and s["can_accept"],
+             "nested directory acceptance paints file candidates and their preview")
+        os.write(primary, b"\t")
+        wait(lambda s: s["line"] == "./outer/nested/file.txt" and not s["visible"]
+             and not s.get("doc_win") and s["mode"] == "i", "file acceptance closes the continuation")
+        os.write(primary, b"\x1b")
+        wait(lambda s: s["mode"] == "n", "leave directory continuation fixture")
         os.write(primary, b":lua completion_tui_dictionary()\r")
         wait(lambda s: s["line"] == "" and s["mode"] == "n", "dictionary fixture")
         os.write(primary, b"iAPP")

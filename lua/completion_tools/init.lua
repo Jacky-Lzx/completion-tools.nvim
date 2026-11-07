@@ -1044,8 +1044,19 @@ function M.accept(opts)
       end)
       state.accept_cancels[token] = type(cancel) == "function" and cancel or false
     end
+    local accepted_ctx = current()
     accepted_event(entry, ctx)
     state.accepted = current()
+    if
+      provider
+      and provider.retrigger_on_accept
+      and provider.retrigger_on_accept(entry, ctx)
+      and context.same(accepted_ctx, state.accepted)
+    then
+      -- Continue explicit directory navigation even when '/' or automatic
+      -- completion is disabled. show() accounts for this edit's TextChangedI.
+      M.show({ sources = { entry.source_id } })
+    end
   end)
   if not ok then
     report(err)

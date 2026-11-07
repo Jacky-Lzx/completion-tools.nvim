@@ -4,6 +4,10 @@ function M.new(opts)
   local uv, cache, closed = vim.uv, {}, false
   local preview = require("completion_tools.path_preview").new(opts.preview)
   local source = { score_offset = 30, resolve = preview.resolve, resolve_on_accept = false }
+  function source.retrigger_on_accept(entry)
+    local item = entry.resolved or entry.item
+    return item.data and item.data.directory == true or false
+  end
   function source.complete(ctx, callback)
     -- Whitespace and quoting delimit paths; slash is required to avoid probing
     -- the filesystem for every ordinary identifier.

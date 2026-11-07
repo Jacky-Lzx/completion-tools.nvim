@@ -273,6 +273,11 @@ Directory reads use asynchronous libuv batches and cache up to 32 directories.
 Typing a dot can reveal hidden files. When a directory exceeds `max_entries`, only
 the first entries returned by the filesystem are read.
 
+Accepting a directory immediately requests its contents from the path source,
+so Tab can continue through nested directories. This also works with manual-only
+completion and when `/` is not an automatic trigger. Accepting a file closes the
+menu normally; an empty directory has no candidates to display.
+
 Selecting a path candidate previews the file in the documentation window. Text
 reads are asynchronous and bounded by `path.preview.max_bytes` (64 KiB) and
 `max_lines` (100), with at most 2000 bytes per line. File contents remain literal,
@@ -695,6 +700,7 @@ Source functions use dot calls, without an implicit `self`:
 source.complete(ctx, callback) -> cancel_function?
 source.resolve(entry, callback) -> cancel_function? -- Optional
 source.execute(entry, ctx)                         -- Optional; after the primary edit
+source.retrigger_on_accept(entry, ctx) -> boolean   -- Optional; request this source after acceptance
 source.trigger(ctx) -> boolean                    -- Optional
 source.reuse(ctx, response, previous_ctx) -> response? -- Optional; validated reuse
 source.dispose()                                  -- Optional
@@ -723,6 +729,8 @@ must return `nil` so `complete` can re-subscribe to the remaining publications.
 A valid response can continue through
 otherwise blocked characters without starting other sources at those characters.
 `resolve_on_accept=false` limits resolve to documentation, avoiding delayed acceptance edits.
+`retrigger_on_accept` continues completion as an explicit request to the same
+source, provided acceptance handlers have not changed the resulting input snapshot.
 
 Entries contain `item`, `context` (the originating context), `start_col` and `source_id`.
 Resolve callbacks return a CompletionItem; execute runs after the synchronous
