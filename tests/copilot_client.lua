@@ -5,9 +5,12 @@ local log = vim.fn.tempname()
 local native = require("completion_tools.copilot")
 local function messages(method)
   local found = {}
-  for _, line in ipairs(vim.fn.filereadable(log) == 1 and vim.fn.readfile(log) or {}) do
+  -- Only newline-terminated records are complete while the server is appending.
+  local lines = vim.fn.filereadable(log) == 1 and vim.fn.readfile(log, "b") or {}
+  for index = 1, #lines - 1 do
+    local line = lines[index]
     local item = vim.json.decode(line)
-    if item.method == method then
+    if method == nil or item.method == method then
       found[#found + 1] = item
     end
   end
@@ -93,8 +96,7 @@ eq(old_closes + 1, #messages("textDocument/didClose"))
 eq(old_uri, messages("textDocument/didClose")[old_closes + 1].params.textDocument.uri)
 assert(messages("textDocument/didOpen")[2].params.textDocument.text:find("print", 1, true))
 local ordered = {}
-for _, line in ipairs(vim.fn.readfile(log)) do
-  local m = vim.json.decode(line)
+for _, m in ipairs(messages()) do
   if m.method == "textDocument/didChange" and m.params.textDocument.uri == old_uri then
     ordered.change = #ordered + 1
   elseif m.method == "textDocument/didClose" and m.params.textDocument.uri == old_uri then

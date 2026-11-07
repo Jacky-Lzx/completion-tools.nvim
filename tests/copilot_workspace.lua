@@ -9,7 +9,10 @@ for _, path in ipairs({ "a/.git", "a/src", "b/.git", "extra" }) do
 end
 local function messages(method)
   local found = {}
-  for _, line in ipairs(vim.fn.filereadable(log) == 1 and vim.fn.readfile(log) or {}) do
+  -- Only newline-terminated records are complete while the server is appending.
+  local lines = vim.fn.filereadable(log) == 1 and vim.fn.readfile(log, "b") or {}
+  for index = 1, #lines - 1 do
+    local line = lines[index]
     local m = vim.json.decode(line)
     if m.method == method then
       found[#found + 1] = m
@@ -17,6 +20,12 @@ local function messages(method)
   end
   return found
 end
+-- A poll can observe the next JSON record before its final bytes and newline.
+vim.fn.writefile({ '{"method":"fixture/complete"}', '{"method":' }, log, "b")
+eq(1, #messages("fixture/complete"))
+vim.fn.writefile({ '{"method":"fixture/complete"}', '{"method":"fixture/complete"}' }, log)
+eq(2, #messages("fixture/complete"))
+vim.fn.delete(log)
 local function wait(fn)
   assert(vim.wait(2500, fn, 5), "workspace protocol timeout")
 end
