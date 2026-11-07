@@ -126,8 +126,8 @@ keymaps, menu styling, custom sources and external command-line UI integration.
 - [Performance measurements and reproduction](doc/performance.md)
 - [Tests and development](doc/configuration.md#development)
 
-Run `:checkhealth completion-tools` to check your setup.
-Use `:CompletionToolsStatus` to inspect source timings, candidate counts and cache hits.
+Run `:checkhealth completion_tools` to check your setup.
+Use `:CompletionToolsInfo` to inspect source timings, candidate counts and cache hits.
 
 [MIT License](LICENSE)
 
@@ -173,3 +173,10 @@ Validated setup resolves from defaults before releasing the previous instance.
 `dispose()` cancels requests and acceptance work, stops timers/providers, closes
 menus and restores unchanged owned input mappings. It is repeatable; diagnostic
 status can report disposal without reinitializing. Call `setup()` to start again.
+
+## Health and inspection
+
+Health reports actionable failures and a compact result for applicable checks. Disabled,
+optional and not-yet-activated features do not warn solely because they are inactive.
+Inspection does not configure plugins, start services or install dependencies.
+Use `:CompletionToolsInfo` for detailed configuration and runtime information.

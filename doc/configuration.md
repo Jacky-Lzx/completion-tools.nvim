@@ -593,7 +593,7 @@ hide or disposal. The menu opens only when actual candidates exist; waiting,
 empty results and timeouts do not leave an empty status-only window. Icons never
 become candidates; animation changes only the border, preserving selection,
 menu contents and geometry. Status notifications never reopen a dismissed menu.
-Set `show_status = false` to hide it. `:CompletionToolsStatus` and `:checkhealth completion_tools`
+Set `show_status = false` to hide it. `:CompletionToolsInfo` and `:checkhealth completion_tools`
 also include the native client's status.
 
 Buffers attached to the native client are synchronized in full on open and then
@@ -744,7 +744,7 @@ After setup, `register_source("name", source)` adds or replaces a provider.
 
 ### Runtime diagnostics
 
-Run `:CompletionToolsStatus` after setup, or call:
+Run `:CompletionToolsInfo` after setup, or call:
 
 ```lua
 local status = require("completion-tools").get_status()

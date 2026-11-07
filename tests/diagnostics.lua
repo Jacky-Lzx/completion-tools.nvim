@@ -24,12 +24,12 @@ assert(cmp.get_status().reason == "not_configured")
 cmp.setup({ sources = { "missing", "lsp" } })
 local status = cmp.get_status()
 assert(status.configured and status.reason == "idle" and not status.sources.missing.registered)
-assert(vim.api.nvim_get_commands({}).CompletionToolsStatus)
+assert(vim.api.nvim_get_commands({}).CompletionToolsInfo)
 local original_notify, message = vim.notify, nil
 vim.notify = function(value)
   message = value
 end
-vim.cmd("CompletionToolsStatus")
+vim.cmd("CompletionToolsInfo")
 vim.notify = original_notify
 assert(message:find("lsp: not_requested", 1, true))
 local original_health, warnings = vim.health, {}
@@ -46,24 +46,24 @@ vim.health = original_health
 assert(#warnings == 1 and warnings[1]:find("missing", 1, true))
 cmp.dispose()
 assert(cmp.get_status().reason == "disposed")
-assert(not vim.api.nvim_get_commands({}).CompletionToolsStatus)
+assert(not vim.api.nvim_get_commands({}).CompletionToolsInfo)
 cmp.setup({ sources = {} })
 vim.api.nvim_create_user_command(
-  "CompletionToolsStatus",
+  "CompletionToolsInfo",
   function() end,
   { force = true, desc = "owned by user" }
 )
 cmp.dispose()
-local user_command = vim.api.nvim_get_commands({}).CompletionToolsStatus
+local user_command = vim.api.nvim_get_commands({}).CompletionToolsInfo
 assert(user_command and user_command.definition == "owned by user", vim.inspect(user_command))
-vim.api.nvim_del_user_command("CompletionToolsStatus")
+vim.api.nvim_del_user_command("CompletionToolsInfo")
 cmp.setup({ sources = {} })
 vim.api.nvim_create_user_command(
-  "CompletionToolsStatus",
+  "CompletionToolsInfo",
   function() end,
   { force = true, desc = "Show completion source status, timings and cache statistics" }
 )
 cmp.dispose()
-assert(vim.api.nvim_get_commands({}).CompletionToolsStatus, "same-description user command was removed")
-vim.api.nvim_del_user_command("CompletionToolsStatus")
+assert(vim.api.nvim_get_commands({}).CompletionToolsInfo, "same-description user command was removed")
+vim.api.nvim_del_user_command("CompletionToolsInfo")
 print("diagnostics: snapshots, counts, errors, health, command lifecycle and user ownership passed")

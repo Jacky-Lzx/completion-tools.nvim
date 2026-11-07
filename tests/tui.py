@@ -505,7 +505,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"(\x1b")
         wait(lambda s: s["mode"] == "n" and s["diagnostics"]["last_request_reason"] == "trigger_filtered",
              "diagnostic rejection survives leaving Insert mode")
-        os.write(primary, b":silent CompletionToolsStatus\r")
+        os.write(primary, b":silent CompletionToolsInfo\r")
         wait(lambda s: s["mode"] == "n", "terminal diagnostic command")
         for cmdtype in (b"/", b"?"):
             os.write(primary, b":lua completion_tui_search()\r")

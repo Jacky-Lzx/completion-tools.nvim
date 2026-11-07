@@ -48,7 +48,7 @@ refresh_keymaps()         Reinstall mappings after lazy dependencies change them
 refresh_cmdline()         Refresh an existing external command-line menu.
 dispose()                Release resources and restore owned keymaps.
 
-:CompletionToolsStatus prints engine/source status after setup. get_status()
+:CompletionToolsInfo prints engine/source status after setup. get_status()
 reports readiness, stale retained frames, last request reason and per-source
 status, elapsed_ms, raw_count, shown_count, requests, cache_hits, responses,
 timeouts, errors and last_error. Counters reset on setup. Cache hits exclude

@@ -1,53 +1,59 @@
 local M = {}
+
 function M.check()
   vim.health.start("completion-tools.nvim")
-  if vim.fn.has("nvim-0.11") == 1 then
-    vim.health.ok("Neovim >= 0.11")
-  else
-    vim.health.error("Neovim 0.11 or newer is required")
-  end
-  vim.health.ok("Pure Lua completion engine; no build step")
-  if package.loaded["blink.cmp"] or package.loaded.cmp then
-    vim.health.warn("Another completion engine is loaded; disable it before enabling completion-tools")
-  end
-  local status = require("completion_tools").get_status()
-  if not status.configured then
-    vim.health.info("setup() has not configured an active completion session")
+  if vim.fn.has("nvim-0.11") == 0 then
+    vim.health.error("Neovim 0.11+ is required", { "Upgrade Neovim" })
     return
   end
-  vim.health.info("Engine state: " .. status.reason)
-  if status.sources.copilot then
-    local client = status.sources.copilot.client
-    if client and client.last_error then
-      vim.health.warn("Copilot: " .. client.last_error)
-    elseif client and client.running then
-      vim.health.ok("Copilot Language Server running")
-    else
-      vim.health.info("Copilot starts on demand; use :CompletionToolsCopilot status/auth")
-    end
+  local issues = {}
+  local function problem(level, message, advice)
+    issues[#issues + 1] = { level = level, message = message, advice = advice }
   end
-  local ids = vim.tbl_keys(status.sources)
-  table.sort(ids)
-  for _, id in ipairs(ids) do
-    local item = status.sources[id]
-    local message = string.format(
-      "%s: %s; requests=%d cache hits=%d; %.2f ms",
-      id,
-      item.status,
-      item.requests or 0,
-      item.cache_hits or 0,
-      item.elapsed_ms or 0
-    )
+  local plugin = package.loaded.completion_tools
+  local status = plugin and plugin.get_status()
+  if not status or not status.configured then
+    vim.health.info("Not configured; completion checks skipped.")
+    return
+  end
+  for id, item in pairs(status.sources) do
     if not item.registered then
-      vim.health.warn(id .. ": source is configured but not registered")
-    elseif item.last_error then
-      vim.health.warn(message .. "; last error: " .. item.last_error)
-    elseif item.status == "timeout" then
-      vim.health.warn(message .. "; exceeded the configured request deadline")
-    else
-      vim.health.info(message)
+      problem(
+        "warn",
+        id .. ": configured source is not registered; completion is unavailable.",
+        { "Register the source or remove it from sources" }
+      )
+    elseif item.status == "error" or item.status == "timeout" then
+      problem(
+        "warn",
+        id
+          .. ": "
+          .. (item.status == "timeout" and "request deadline exceeded" or tostring(item.last_error))
+          .. "; source results are unavailable.",
+        { "Inspect :CompletionToolsInfo for the current source state" }
+      )
+    elseif item.client and item.client.last_error and not item.client.running then
+      problem(
+        "warn",
+        id .. ": " .. item.client.last_error,
+        { "Inspect :CompletionToolsCopilot status and authenticate if needed" }
+      )
     end
   end
-  vim.health.info("Use :CompletionToolsStatus or require('completion-tools').get_status() for live details")
+
+  table.sort(issues, function(a, b)
+    if a.level ~= b.level then
+      return a.level == "error"
+    end
+    return a.message < b.message
+  end)
+  for _, issue in ipairs(issues) do
+    vim.health[issue.level](issue.message, issue.advice)
+  end
+  if #issues == 0 then
+    vim.health.ok("Configured completion sources are available.")
+  end
+  vim.health.info("Details: :CompletionToolsInfo")
 end
+
 return M
