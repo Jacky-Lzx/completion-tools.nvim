@@ -20,4 +20,10 @@ jobs:
           tar -xzf "$RUNNER_TEMP/neovim.tar.gz" -C "$RUNNER_TEMP/neovim" --strip-components=1
           echo "$RUNNER_TEMP/neovim/bin" >> "$GITHUB_PATH"
       - name: Unit, LSP protocol, actual input and PTY tests
-        run: ./tests/run.sh
+        run: sh tests/run.sh --output "$RUNNER_TEMP/test-results"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ strategy.job-index }}
+          path: ${{ runner.temp }}/test-results
+          if-no-files-found: ignore

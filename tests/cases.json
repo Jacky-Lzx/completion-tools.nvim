@@ -1,0 +1,508 @@
+{
+  "version": 1,
+  "default": [
+    "unit",
+    "ui"
+  ],
+  "defaults": {},
+  "cases": [
+    {
+      "name": "runner-contracts",
+      "suite": "unit",
+      "command": [
+        "{python}",
+        "tests/runner_checks.py"
+      ],
+      "files": [
+        "tests/runner_checks.py"
+      ],
+      "timeout": 120
+    },
+    {
+      "name": "setup_contract",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/setup_contract.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/setup_contract.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "command_ownership",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/command_ownership.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/command_ownership.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "bootstrap",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/bootstrap.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/bootstrap.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "unit",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/unit.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/unit.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "ranking",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/ranking.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/ranking.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "scheduler",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/scheduler.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/scheduler.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "insertion",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/insertion.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/insertion.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "diagnostics",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/diagnostics.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/diagnostics.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "copilot",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/copilot.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/copilot.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "copilot_edits",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/copilot_edits.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/copilot_edits.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "copilot_requests",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/copilot_requests.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/copilot_requests.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "copilot_staged",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/copilot_staged.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/copilot_staged.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "copilot_client",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/copilot_client.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/copilot_client.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "copilot_workspace",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/copilot_workspace.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/copilot_workspace.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "menu",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/menu.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/menu.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "theme",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/theme.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/theme.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "documentation",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/documentation.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/documentation.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "path_preview",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/path_preview.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/path_preview.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "path_preview_image",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/path_preview_image.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/path_preview_image.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "words",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/words.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/words.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "integration",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/integration.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/integration.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "cmdline",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/cmdline.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/cmdline.lua"
+      ],
+      "timeout": 90
+    },
+    {
+      "name": "tui",
+      "suite": "ui",
+      "command": [
+        "{python}",
+        "tests/tui.py"
+      ],
+      "files": [
+        "tests/tui.py"
+      ],
+      "timeout": 120
+    },
+    {
+      "name": "words-2",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/words.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/words.lua"
+      ],
+      "timeout": 90
+    }
+  ],
+  "support": {
+    "tests/dictionary_command.py": "Loaded by tests/words.lua",
+    "tests/tui_init.lua": "Loaded by tests/tui.py",
+    "tests/fixtures/lsp_server.py": "Loaded by tests/integration.lua",
+    "tests/fixtures/copilot_server.py": "Loaded by tests/copilot_workspace.lua",
+    "tests/run.sh": "Stable shell entry point for tests/run.py"
+  },
+  "manual": {
+    "tests/bench.sh": "Explicit fixture installation, benchmark or manual acceptance tool; see testing documentation",
+    "tests/bench_input.lua": "Explicit fixture installation, benchmark or manual acceptance tool; see testing documentation",
+    "tests/bench.lua": "Explicit fixture installation, benchmark or manual acceptance tool; see testing documentation",
+    "tests/bench_words.lua": "Explicit fixture installation, benchmark or manual acceptance tool; see testing documentation",
+    "tests/bench_menu.lua": "Explicit fixture installation, benchmark or manual acceptance tool; see testing documentation"
+  }
+}
