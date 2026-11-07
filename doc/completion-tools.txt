@@ -1,20 +1,58 @@
-*completion-tools.txt*       Pure Lua completion for Neovim 0.11+
+*completion-tools.txt*	Pure Lua completion with readable menus and documentation.
 
-Author: completion-tools.nvim contributors
-License: MIT
+==============================================================================
+CONTENTS                                                    *completion-tools*
 
-                                                        *completion-tools*
+  Quick start         |completion-tools-quickstart|
+  Commands            |completion-tools-commands|
+  Options             |completion-tools-options|
+  Lua API             |completion-tools-api|
+  Lifecycle           |completion-tools-lifecycle|
+  Troubleshooting     |completion-tools-troubleshooting|
+
+==============================================================================
+QUICK START                                      *completion-tools-quickstart*
+
+Requires Neovim 0.11+. No required plugin dependencies. Install language
+servers separately. A Nerd Font is optional.
+
+>lua
+    require("completion-tools").setup({ cmdline = { enabled = true } })
+<
+
+The example above selects a small working setup. Full defaults, options and
+feature contracts are documented in this reference. Public installation and
+package-manager examples are in README.md.
+
+==============================================================================
+TROUBLESHOOTING                             *completion-tools-troubleshooting*
+
+Check the minimum Neovim version and feature dependencies first. Run
+:checkhealth completion_tools to inspect availability. Global mappings shown
+in the README are configuration examples unless explicitly documented as
+plugin defaults. Keep one owner for each overridden UI or mapping.
+
+==============================================================================
+COMMANDS                                           *completion-tools-commands*
+
+:CompletionToolsInfo
+
+See the workflow guide for usage examples and the detailed reference below for
+arguments and feature-specific commands.
+
+Author: completion-tools.nvim contributors License: MIT
+
 SETUP ~
 >
     require("completion-tools").setup()
 <
 See README.md for a quick start and doc/configuration.md for configuration,
-source contracts, examples and migration notes.
-Defaults are defined in lua/completion_tools/config.lua.
+source contracts, examples and migration notes. Defaults are defined in
+lua/completion_tools/config.lua.
 
-                                                       *completion-tools-lsp*
-Register capabilities before starting language servers. This pure module does not
-load the completion engine or UI:
+                                                        *completion-tools-lsp*
+Register capabilities before starting language servers. This pure module does
+not load the completion engine or UI:
 >
     vim.lsp.config("*", {
       capabilities = require("completion_tools.capabilities").get_lsp_capabilities(),
@@ -38,13 +76,10 @@ get_context()            Return current request context (read-only).
 get_status()             Return a detached runtime diagnostic snapshot.
 show_status()            Print and return the diagnostic snapshot.
 show_documentation()     Resolve/show selected item documentation.
-scroll_documentation_up()
-scroll_documentation_down()
-snippet_forward()
-snippet_backward()
-get_lsp_capabilities(base?)
-register_source(id, source)
-refresh_keymaps()         Reinstall mappings after lazy dependencies change them.
+scroll_documentation_up() scroll_documentation_down() snippet_forward()
+snippet_backward() get_lsp_capabilities(base?) register_source(id, source)
+refresh_keymaps()         Reinstall mappings after lazy dependencies change
+them.
 refresh_cmdline()         Refresh an existing external command-line menu.
 dispose()                Release resources and restore owned keymaps.
 
@@ -52,22 +87,23 @@ dispose()                Release resources and restore owned keymaps.
 reports readiness, stale retained frames, last request reason and per-source
 status, elapsed_ms, raw_count, shown_count, requests, cache_hits, responses,
 timeouts, errors and last_error. Counters reset on setup. Cache hits exclude
-provider requests; timings include async waiting/processing, not terminal drawing.
-Raw counts follow transforms and precede quotas/deduplication; shown counts are
-current menu contributions. Callback errors survive later successful requests.
+provider requests; timings include async waiting/processing, not terminal
+drawing. Raw counts follow transforms and precede quotas/deduplication; shown
+counts are current menu contributions. Callback errors survive later
+successful requests.
 :checkhealth completion-tools includes status, deadlines and missing sources.
 
 accept.mode="replace" is the default. "insert" preserves suffix text using an
-InsertReplaceEdit's insert range. accept({mode="insert"}) overrides one action.
-Plain Function/Method items insert complete () with the cursor inside, regardless
-of following text or pair mappings. Existing following ( and server snippets
-retain their layout.
-Ordinary TextEdit ranges are unchanged. LSP insertTextMode=1 preserves whitespace;
-2 adjusts continuation indentation. The advertised LSP default is 2. Native
-snippets and LuaSnip retain placeholders without double indentation.
-Custom snippets.expand(text, options) receives adjusted text and
-{insert_text_mode?, indentation, bufnr}; disable engine indentation when a mode
-is present. Non-LSP items without a mode keep their previous behavior.
+InsertReplaceEdit's insert range. accept({mode="insert"}) overrides one
+action. Plain Function/Method items insert complete () with the cursor inside,
+regardless of following text or pair mappings. Existing following ( and server
+snippets retain their layout. Ordinary TextEdit ranges are unchanged. LSP
+insertTextMode=1 preserves whitespace; 2 adjusts continuation indentation. The
+advertised LSP default is 2. Native snippets and LuaSnip retain placeholders
+without double indentation. Custom snippets.expand(text, options) receives
+adjusted text and {insert_text_mode?, indentation, bufnr}; disable engine
+indentation when a mode is present. Non-LSP items without a mode keep their
+previous behavior.
 
                                                        *completion-tools-keys*
 CTRL-Space   Show completions or documentation.
@@ -78,17 +114,17 @@ CTRL-Y       Accept the selected item.
 CTRL-E       Hide, or fall back.
 <CR>         Unchanged by default.
 
-keymap={} installs no insert/select mappings; cmdline.keymap={} disables command
-line mappings. Both custom keymaps replace their respective defaults.
-Actions can be method names, functions or "fallback".
-Buffer-local mappings take precedence over global plugin mappings.
+keymap={} installs no insert/select mappings; cmdline.keymap={} disables
+command line mappings. Both custom keymaps replace their respective defaults.
+Actions can be method names, functions or "fallback". Buffer-local mappings
+take precedence over global plugin mappings.
 
                                                    *completion-tools-triggers*
 Insert-mode automatic completion opens for words and trigger_characters={"."}.
 Other symbols/whitespace close the menu and cancel pending requests, even when
-advertised as LSP triggers or min_keyword_length=0. Manual show() bypasses this
-filter. Command-line completion is independent.
-trigger_characters also accepts function(ctx) -> string[] for filetype rules:
+advertised as LSP triggers or min_keyword_length=0. Manual show() bypasses
+this filter. Command-line completion is independent. trigger_characters also
+accepts function(ctx) -> string[] for filetype rules:
 >
     trigger_characters = function(ctx)
       return ctx.filetype == "tex" and { ".", "\\", "{" } or { "." }
@@ -97,7 +133,7 @@ trigger_characters also accepts function(ctx) -> string[] for filetype rules:
 An empty list disables symbol triggers; words still complete. Add "/" to open
 path completion immediately after a slash.
 
-                                                   *completion-tools-ranking*
+                                                    *completion-tools-ranking*
 Optional ranking (all disabled by default):
 >
     ranking = {
@@ -107,34 +143,36 @@ Optional ranking (all disabled by default):
     }
 <
 History combines frequency/recency, scoped by source and filetype. It persists
-under stdpath("state")/completion-tools/history.json; history.path overrides it.
-Records are bounded and saved after 500 ms idle or on dispose/exit. Proximity
-weights words within the configured line radius. Bonuses preserve match tiers.
-Typos are opt-in (0 or 1), ASCII-only prefixes of 4-32 characters, and rank below
-literal matches. Command-line matching/order is unaffected.
+under stdpath("state")/completion-tools/history.json; history.path overrides
+it. Records are bounded and saved after 500 ms idle or on dispose/exit.
+Proximity weights words within the configured line radius. Bonuses preserve
+match tiers. Typos are opt-in (0 or 1), ASCII-only prefixes of 4-32
+characters, and rank below literal matches. Command-line matching/order is
+unaffected.
 
-                                                     *completion-tools-sources*
-Built-ins: lsp, path, buffer, snippets; optional Ex cmdline.
-Opt-in sources: dictionary, spell, copilot. All are independent of Blink.
-snippets.preset="luasnip" enables the optional literal-trigger LuaSnip adapter.
-cmdline.enabled=true enables command/search completion; see below.
+                                                    *completion-tools-sources*
+Built-ins: lsp, path, buffer, snippets; optional Ex cmdline. Opt-in sources:
+dictionary, spell, copilot. All are independent of Blink.
+snippets.preset="luasnip" enables the optional literal-trigger LuaSnip
+adapter. cmdline.enabled=true enables command/search completion; see below.
 
 Global timeout_ms=2000 bounds pending async requests; 0 disables the deadline.
 providers[id].timeout_ms overrides it. Timeouts cancel requests, reject late
-results, and keep already received partial candidates.
-providers[id].max_items caps matched/ranked candidates before global merging.
-providers[id].fallback_for={"lsp"} waits for all named sources to finish without
-matches. Disabled/unselected sources count as empty. Chains are supported;
-cycles are rejected. Timeouts/errors can release fallback sources. Synchronous
-Lua callbacks and native getcompletion() cannot be interrupted by deadlines.
+results, and keep already received partial candidates. providers[id].max_items
+caps matched/ranked candidates before global merging.
+providers[id].fallback_for={"lsp"} waits for all named sources to finish
+without matches. Disabled/unselected sources count as empty. Chains are
+supported; cycles are rejected. Timeouts/errors can release fallback sources.
+Synchronous Lua callbacks and native getcompletion() cannot be interrupted by
+deadlines.
 
-                                                   *completion-tools-copilot*
+                                                    *completion-tools-copilot*
 Add "copilot" to sources. Install GitHub's official Copilot Language Server:
 >
     npm install -g @github/copilot-language-server
 <
-No copilot.lua dependency or chat UI is needed. Remove its plugin specification
-and require("copilot").setup() when migrating.
+No copilot.lua dependency or chat UI is needed. Remove its plugin
+specification and require("copilot").setup() when migrating.
 >
     require("completion-tools").setup({
       sources = { "copilot", "lsp", "path", "buffer", "snippets" },
@@ -157,78 +195,79 @@ filetypes={markdown=false} excludes Markdown; ["*"]=false excludes unlisted
 filetypes. should_attach(bufnr) may further restrict attachment. command is a
 complete argv list; use an absolute executable path for Mason outside PATH.
 settings are forwarded to the server (e.g. http.proxy). The server manages
-credentials; GitHub Copilot access is required.
-root_dir accepts a directory or function(bufnr); defaults to the nearest .git or
-cwd. Each eligible project's root is registered with the shared server, plus any
+credentials; GitHub Copilot access is required. root_dir accepts a directory
+or function(bufnr); defaults to the nearest .git or cwd. Each eligible
+project's root is registered with the shared server, plus any
 workspace_folders directories. Canonical paths are deduplicated. Language IDs
-normalize common Neovim filetypes; language_ids maps filetype names to overrides.
-Renames and first saves close the old URI before opening the new document.
-accept_word/accept_line keep the selected suggestion's remainder without another
-request. They require a literal continuation and return false for other sources.
-No keys are assigned by default; use these action names in keymap chains.
-New requests debounce independently and cancel on edits/hide/dispose. Completed
-suggestions are reused immediately during exact forward typing on the same line,
-including matching spaces/punctuation. Matching candidates stay selectable and
-their UTF-16 ranges are updated without another request. A miss uses the normal
-trigger rules and debounce. Deletion, newline, cursor movement, other edits,
-hiding or leaving the buffer/window/insert mode invalidate the cache.
-request_mode="cycling" is the default. Optional "staged" publishes getCompletions
-results first, then fills up to max_items via getCompletionsCycling. First-stage
-choices remain usable and their identities survive merging. Matching input reuses
-them and cancels alternatives. A second-stage error retains the first choices.
-This mode may use two requests per snapshot; latency benefits depend on the server.
-Cycling requests retain up to max_items unique edits (default 3); the service may
-return fewer. Copilot fields are purple (#cba6f7) through CompletionToolsCopilot.
-The first nonempty line appears in the menu, with full insertion in docs.
-UTF-16 ranges and multiline literal edits are preserved; acceptance is reported.
-There is no Copilot source in command-line mode.
-show_status=true displays Copilot icons in the completion window footer:
- ready (muted when no suggestions),  disabled,  warning/unavailable,  sign-in
-required. Waiting/startup/generation show  with an animated dots spinner (80 ms).
-Animation stops on completion/hide/dispose and changes only the border. The menu
-opens only when actual candidates exist; waiting or empty results never open a
-status-only window. Icons cannot be selected/accepted; notifications preserve
-selection and never reopen a dismissed menu. Set
-show_status=false to hide the footer.
-Attached buffers sync full contents on open, then incremental edits. Requests
-identify the document/version/cursor; the local server can use both sides of the
-cursor. The official server prepares the cloud prompt; the current keyword only
-controls triggering/filtering, not the transmitted document context.
+normalize common Neovim filetypes; language_ids maps filetype names to
+overrides. Renames and first saves close the old URI before opening the new
+document. accept_word/accept_line keep the selected suggestion's remainder
+without another request. They require a literal continuation and return false
+for other sources. No keys are assigned by default; use these action names in
+keymap chains. New requests debounce independently and cancel on
+edits/hide/dispose. Completed suggestions are reused immediately during exact
+forward typing on the same line, including matching spaces/punctuation.
+Matching candidates stay selectable and their UTF-16 ranges are updated
+without another request. A miss uses the normal trigger rules and debounce.
+Deletion, newline, cursor movement, other edits, hiding or leaving the
+buffer/window/insert mode invalidate the cache. request_mode="cycling" is the
+default. Optional "staged" publishes getCompletions results first, then fills
+up to max_items via getCompletionsCycling. First-stage choices remain usable
+and their identities survive merging. Matching input reuses them and cancels
+alternatives. A second-stage error retains the first choices. This mode may
+use two requests per snapshot; latency benefits depend on the server. Cycling
+requests retain up to max_items unique edits (default 3); the service may
+return fewer. Copilot fields are purple (#cba6f7) through
+CompletionToolsCopilot. The first nonempty line appears in the menu, with full
+insertion in docs. UTF-16 ranges and multiline literal edits are preserved;
+acceptance is reported. There is no Copilot source in command-line mode.
+show_status=true displays Copilot icons in the completion window footer: 
+ready (muted when no suggestions),  disabled,  warning/unavailable, 
+sign-in required. Waiting/startup/generation show  with an animated dots
+spinner (80 ms). Animation stops on completion/hide/dispose and changes only
+the border. The menu opens only when actual candidates exist; waiting or empty
+results never open a status-only window. Icons cannot be selected/accepted;
+notifications preserve selection and never reopen a dismissed menu. Set
+show_status=false to hide the footer. Attached buffers sync full contents on
+open, then incremental edits. Requests identify the document/version/cursor;
+the local server can use both sides of the cursor. The official server
+prepares the cloud prompt; the current keyword only controls
+triggering/filtering, not the transmitted document context.
 
-                                                   *completion-tools-cmdline*
+                                                    *completion-tools-cmdline*
 cmdline = { enabled=false, auto_show=true, fuzzy=true, min_keyword_length=1,
-            types={":","/","?"} }
+types={":","/","?"} }
 
 Ex uses native getcompletion() (including custom user-command completions);
-search uses buffer words. Native order, wildcards and escaped paths are retained.
-fuzzy=true temporarily enables native fuzzy matching for Ex completion and
-restores 'wildoptions' even after errors. Set fuzzy=false to follow your existing
-'wildoptions'. File/directory names still use native wildcard expansion.
-Custom completers follow native semantics.
-Acceptance preserves modifiers, option prefixes, namespaces and trailing text.
-Empty command lines stay closed; empty arguments after a command may complete.
+search uses buffer words. Native order, wildcards and escaped paths are
+retained. fuzzy=true temporarily enables native fuzzy matching for Ex
+completion and restores 'wildoptions' even after errors. Set fuzzy=false to
+follow your existing 'wildoptions'. File/directory names still use native
+wildcard expansion. Custom completers follow native semantics. Acceptance
+preserves modifiers, option prefixes, namespaces and trailing text. Empty
+command lines stay closed; empty arguments after a command may complete.
 
-Independent cmdline.keymap defaults:
-CTRL-Space opens; Up/Down and CTRL-P/N select without inserting; Tab accepts or
-opens; Shift-Tab selects backwards or opens. Enter retains native execution/
-search confirmation. Native wildmenu/popupmenu and unsupported input() prompts
-retain their existing keys. Shell commands and backtick expansion are excluded.
-auto_show=false uses manual triggers; types={":"} enables only Ex.
-Use both InsertEnter and CmdlineEnter lazy-loading events.
+Independent cmdline.keymap defaults: CTRL-Space opens; Up/Down and CTRL-P/N
+select without inserting; Tab accepts or opens; Shift-Tab selects backwards or
+opens. Enter retains native execution/ search confirmation. Native
+wildmenu/popupmenu and unsupported input() prompts retain their existing keys.
+Shell commands and backtick expansion are excluded. auto_show=false uses
+manual triggers; types={":"} enables only Ex. Use both InsertEnter and
+CmdlineEnter lazy-loading events.
 
 cmdline.get_anchor(ctx) may return {row,col,height}, describing an external
-command-line's entire outer frame in zero-based screen cells, including borders.
-The menu avoids that frame and flips above when necessary. External renderers
-call refresh_cmdline() after geometry changes; idle menus never open from it.
-No renderer subscription or Blink adapter is required by the core.
+command-line's entire outer frame in zero-based screen cells, including
+borders. The menu avoids that frame and flips above when necessary. External
+renderers call refresh_cmdline() after geometry changes; idle menus never open
+from it. No renderer subscription or Blink adapter is required by the core.
 Commands, help tags, options and paths use uniform kind coloring plus match
 emphasis. Words/punctuation in their names are not interpreted as source code.
 Lua and Vim expression/function completions use Lua/Vim syntax respectively,
-independent of the current buffer's filetype. Kind/source columns follow themes.
-Override CompletionToolsKindReference for help tags, or return scoped spans from
-menu.highlight.custom using ctx.mode=="cmdline" and ctx.completion_type.
-The native getcompletion API is synchronous: slow custom callbacks/filesystems
-can still block, as with native completion.
+independent of the current buffer's filetype. Kind/source columns follow
+themes. Override CompletionToolsKindReference for help tags, or return scoped
+spans from menu.highlight.custom using ctx.mode=="cmdline" and
+ctx.completion_type. The native getcompletion API is synchronous: slow custom
+callbacks/filesystems can still block, as with native completion.
 
 Source functions use dot calls:
 >
@@ -239,162 +278,1119 @@ Source functions use dot calls:
     reuse(ctx, response, previous_ctx) -> response? -- optional, validated reuse
     dispose()                           -- optional
 <
-complete callbacks receive {items, start_col?, reusable?, is_incomplete?, pending?, stable?}.
-start_col is a zero-based byte column; item TextEdits take precedence.
-LSP clients carry their negotiated encoding; custom edits default to UTF-8.
-resolve callbacks receive a CompletionItem.
-Set source.resolve_on_accept=false for documentation-only resolvers; the default
-also resolves after acceptance for delayed edits/commands.
-Entry fields: item, context, start_col, source_id.
+complete callbacks receive {items, start_col?, reusable?, is_incomplete?,
+pending?, stable?}. start_col is a zero-based byte column; item TextEdits take
+precedence. LSP clients carry their negotiated encoding; custom edits default
+to UTF-8. resolve callbacks receive a CompletionItem. Set
+source.resolve_on_accept=false for documentation-only resolvers; the default
+also resolves after acceptance for delayed edits/commands. Entry fields: item,
+context, start_col, source_id.
 
 Callbacks may publish more than once. Stale results are ignored even if a
 provider does not honour cancellation. The provider owns external resources.
-Set pending=true while more results are expected; omit or clear it on the final
-response. Only complete, non-pending reusable lists are cached for forward typing.
-For generated edits, reuse may validate each candidate and return an updated
-response, or nil to discard the cache and use normal completion. Final responses
-and pending lists explicitly marked stable=true qualify. Same-snapshot reuse of
-a pending list must return nil so complete re-subscribes to the remaining results.
-This cache allows uninterrupted same-line insertions at the
-last cursor and clears on hide. Validated candidates may continue through blocked
-characters without starting other sources there; reusable=true is independent.
-During typing/backspace within one keyword, the previous menu remains visible
-until matching results arrive or all sources finish without matches. Stale items
-cannot be accepted. Empty input/context changes close the old menu immediately.
-The retained menu follows the cursor; documentation stays for the same selection.
-Background refreshes preserve a manually opened session and show({sources=...})
-overrides at the same input snapshot, including LSP attach/detach. New edits
-follow ordinary automatic trigger rules. A delayed TextChangedI for text already
-included in show() does not restart or dismiss that manual request.
-Automatic preselection follows the first item of each updated ranking. Navigation
-via select_next/select_prev marks a manual selection, preserved by identity during
-same-context refreshes. If it disappears, selection/docs are cleared and accept()
-returns false; later updates do not automatically reselect even if it reappears.
-Navigate again to choose an item. Typing/backspace reset to the configured
-preselect behavior; preselect=false continues to leave items unselected.
-select_next/select_prev accept {count=1, wrap=true}. Set wrap=false for paging:
-the selection stops at the first/last item and still returns true at the boundary
-so a mapped paging key is consumed rather than running its fallback action.
+Set pending=true while more results are expected; omit or clear it on the
+final response. Only complete, non-pending reusable lists are cached for
+forward typing. For generated edits, reuse may validate each candidate and
+return an updated response, or nil to discard the cache and use normal
+completion. Final responses and pending lists explicitly marked stable=true
+qualify. Same-snapshot reuse of a pending list must return nil so complete
+re-subscribes to the remaining results. This cache allows uninterrupted
+same-line insertions at the last cursor and clears on hide. Validated
+candidates may continue through blocked characters without starting other
+sources there; reusable=true is independent. During typing/backspace within
+one keyword, the previous menu remains visible until matching results arrive
+or all sources finish without matches. Stale items cannot be accepted. Empty
+input/context changes close the old menu immediately. The retained menu
+follows the cursor; documentation stays for the same selection. Background
+refreshes preserve a manually opened session and show({sources=...}) overrides
+at the same input snapshot, including LSP attach/detach. New edits follow
+ordinary automatic trigger rules. A delayed TextChangedI for text already
+included in show() does not restart or dismiss that manual request. Automatic
+preselection follows the first item of each updated ranking. Navigation via
+select_next/select_prev marks a manual selection, preserved by identity during
+same-context refreshes. If it disappears, selection/docs are cleared and
+accept() returns false; later updates do not automatically reselect even if it
+reappears. Navigate again to choose an item. Typing/backspace reset to the
+configured preselect behavior; preselect=false continues to leave items
+unselected. select_next/select_prev accept {count=1, wrap=true}. Set
+wrap=false for paging: the selection stops at the first/last item and still
+returns true at the boundary so a mapped paging key is consumed rather than
+running its fallback action.
 
-                                                *completion-tools-dictionary*
-Add "dictionary" to sources, and configure dictionary.files (list or function).
-UTF-8, one word/phrase per line; CRLF/BOM and duplicate lines are supported.
-Defaults: min_keyword_length=3, max_items=10, matching="fuzzy", capitalize=true,
-max_bytes=16777216, max_words=500000, max_word_bytes=256, timeout_ms=5000.
-dictionary.documentation defaults to {enabled=true, command="wn", timeout_ms=1500}.
-Selected items resolve English WordNet meanings via {command, original_word, "-over"}
-asynchronously. command may be an executable path. No network or Blink dependency.
-Missing tools, unknown words and failures leave ordinary completion available.
-Original dictionary spelling is used even for capitalized display/insert text.
-Selection/input changes, acceptance, hide and disposal cancel obsolete queries.
-At most 128 successful/empty lookups are cached, each retaining up to 64 KiB text.
-Set enabled=false to disable meanings; WordNet does not supply Chinese translations.
-matching="prefix" uses prefix buckets; "fuzzy" scores subsequences.
-File changes invalidate the background index. Lists replace rather than merge.
-At most four indexes / 64 cached queries per index; warnings for missing files
-and truncated budgets are deduplicated. Files exceeding the remaining byte
-budget are skipped.
+                                                 *completion-tools-dictionary*
+Add "dictionary" to sources, and configure dictionary.files (list or
+function). UTF-8, one word/phrase per line; CRLF/BOM and duplicate lines are
+supported. Defaults: min_keyword_length=3, max_items=10, matching="fuzzy",
+capitalize=true, max_bytes=16777216, max_words=500000, max_word_bytes=256,
+timeout_ms=5000. dictionary.documentation defaults to {enabled=true,
+command="wn", timeout_ms=1500}. Selected items resolve English WordNet
+meanings via {command, original_word, "-over"} asynchronously. command may be
+an executable path. No network or Blink dependency. Missing tools, unknown
+words and failures leave ordinary completion available. Original dictionary
+spelling is used even for capitalized display/insert text. Selection/input
+changes, acceptance, hide and disposal cancel obsolete queries. At most 128
+successful/empty lookups are cached, each retaining up to 64 KiB text. Set
+enabled=false to disable meanings; WordNet does not supply Chinese
+translations. matching="prefix" uses prefix buckets; "fuzzy" scores
+subsequences. File changes invalidate the background index. Lists replace
+rather than merge. At most four indexes / 64 cached queries per index;
+warnings for missing files and truncated budgets are deduplicated. Files
+exceeding the remaining byte budget are skipped.
 
-                                                     *completion-tools-spell*
+                                                      *completion-tools-spell*
 Add "spell" to sources. Only active with window-local 'spell' enabled.
 Inherits native spelllang/spellfile/spellcapcheck/spelloptions/spellsuggest.
 Defaults: min_keyword_length=2, max_items=3, debounce_ms=60, timeout_ms=5000,
 sort="match", preselect_current_word=true, suggest_when_correct=false.
-sort="match" prioritizes fuzzy matches and keeps non-matching corrections last.
-sort="suggestion" preserves native spellsuggest() ordering.
-enable_in_context(ctx) can further restrict the source.
-Compiled personal word-list updates reload the worker. User-init functions
-referenced by spellsuggest=expr:... are not copied to the worker.
+sort="match" prioritizes fuzzy matches and keeps non-matching corrections
+last. sort="suggestion" preserves native spellsuggest() ordering.
+enable_in_context(ctx) can further restrict the source. Compiled personal
+word-list updates reload the worker. User-init functions referenced by
+spellsuggest=expr:... are not copied to the worker.
 
 Both word sources return Text candidates. They run in separate, persistent,
-on-demand headless Neovim processes; no user init is loaded. At most one active
-and one latest pending request are retained. dispose/setup/exit stop workers.
-Slow results cannot block main-thread typing or publish after cancellation.
+on-demand headless Neovim processes; no user init is loaded. At most one
+active and one latest pending request are retained. dispose/setup/exit stop
+workers. Slow results cannot block main-thread typing or publish after
+cancellation.
 
-                                                      *CompletionToolsAccept*
-User CompletionToolsAccept fires after primary acceptance.
-args.data contains item, source, bufnr and optional client_id.
-Private item fields (leading underscore) are omitted from event data.
-If LSP resolve finishes late, additional edits are applied only when the
-accepted buffer's changedtick has not changed since primary insertion.
+                                                       *CompletionToolsAccept*
+User CompletionToolsAccept fires after primary acceptance. args.data contains
+item, source, bufnr and optional client_id. Private item fields (leading
+underscore) are omitted from event data. If LSP resolve finishes late,
+additional edits are applied only when the accepted buffer's changedtick has
+not changed since primary insertion.
 
-                                                    *completion-tools-highlight*
+                                                  *completion-tools-highlight*
 CompletionToolsMenu       CompletionToolsBorder     CompletionToolsSelected
 CompletionToolsMatch      CompletionToolsSource     CompletionToolsDoc
 CompletionToolsDeprecated CompletionToolsKind{LSP kind name}
 CompletionToolsDocCode
-CompletionToolsDocItalic   CompletionToolsDocBold     CompletionToolsDocBoldItalic
-CompletionToolsDocSeparator
+CompletionToolsDocItalic   CompletionToolsDocBold
+CompletionToolsDocBoldItalic CompletionToolsDocSeparator
 
-Snippet icons/labels/kind names use CompletionToolsKindSnippet, linked to Special
-by default. Documentation hides Markdown code fences and inline-code backticks,
-preserving code text, indentation and syntax highlighting. Detail and plaintext
-documentation remain literal. Inline code uses CompletionToolsDocCode (String).
-Prose emphasis uses local conceal for italic, bold and combined styles, with
-the corresponding DocItalic/DocBold/DocBoldItalic groups. Thematic rules (three
-or more dashes, asterisks or underscores) use full-width DocSeparator lines.
-Code spans/blocks remain literal. Sizing accounts for raw-column conceal wrapping.
-Documentation reuses lexical/Tree-sitter options, without menu custom callbacks.
+Snippet icons/labels/kind names use CompletionToolsKindSnippet, linked to
+Special by default. Documentation hides Markdown code fences and inline-code
+backticks, preserving code text, indentation and syntax highlighting. Detail
+and plaintext documentation remain literal. Inline code uses
+CompletionToolsDocCode (String). Prose emphasis uses local conceal for italic,
+bold and combined styles, with the corresponding
+DocItalic/DocBold/DocBoldItalic groups. Thematic rules (three or more dashes,
+asterisks or underscores) use full-width DocSeparator lines. Code spans/blocks
+remain literal. Sizing accounts for raw-column conceal wrapping. Documentation
+reuses lexical/Tree-sitter options, without menu custom callbacks.
 
                                                        *completion-tools-menu*
 Default columns: { {"kind_icon"}, {"label", gap=1}, {"kind"}, {"source"} }.
 Components: kind_icon, label, kind, source, label_detail, label_description.
-Source names: LSP, Buffer, Path, Snippets, Cmdline, Dict, Spell.
-Custom sources retain their IDs.
-menu.columns replaces the entire column list. column_gap and padding default
-to 1. kind_icons=false hides icons; a name-to-icon table overrides defaults.
-label_details=false separates the label from LSP detail/description fields.
-Display text never changes the accepted CompletionItem.
-With label_details=true, descriptions use an automatically aligned auxiliary
-column unless label_description is explicitly positioned in menu.columns.
-File/folder paths are muted location metadata, shortened relative to the current
-directory or home; clipping keeps the distinguishing end of the path. Metadata
-gives up excess width before candidate labels. Full detail, labelDetails.detail
-and labelDetails.description remain available in the wrapping documentation
-window (automatically, or with show_documentation); paths there are literal.
+Source names: LSP, Buffer, Path, Snippets, Cmdline, Dict, Spell. Custom
+sources retain their IDs. menu.columns replaces the entire column list.
+column_gap and padding default to 1. kind_icons=false hides icons; a
+name-to-icon table overrides defaults. label_details=false separates the label
+from LSP detail/description fields. Display text never changes the accepted
+CompletionItem. With label_details=true, descriptions use an automatically
+aligned auxiliary column unless label_description is explicitly positioned in
+menu.columns. File/folder paths are muted location metadata, shortened
+relative to the current directory or home; clipping keeps the distinguishing
+end of the path. Metadata gives up excess width before candidate labels. Full
+detail, labelDetails.detail and labelDetails.description remain available in
+the wrapping documentation window (automatically, or with show_documentation);
+paths there are literal.
 
-Independent label highlighting uses kind groups, a lexical fallback and optional
-native Tree-sitter highlights queries. No colorful-menu or Blink dependency.
-menu.highlight: enabled=true, treesitter=true, max_bytes=1024, cache_size=512.
-Only visible rows are highlighted; plain words do not create parsers.
-File/folder candidates retain kind and match emphasis without code syntax colors.
-Missing parsers/queries and incomplete signatures keep the lexical fallback.
-Pending sources retain their matching candidates until useful/final results or
-the deadline, so a fast source's new results do not briefly remove slower sources.
-Retained candidates cannot be resolved or accepted; fresh candidates remain usable.
-menu.update_interval_ms=16 combines results within a fixed interval after the
-previous publication, including across rapid edits. The first useful result when
-opening the menu is immediate; continuous input/streaming cannot postpone updates.
-Set to 0 to publish every event-loop batch. Navigation/acceptance use displayed
-candidates without this delay. Width and column allocations are retained until
-the menu closes, growing into spare space without shrinking for shorter results.
-New metadata may be truncated to preserve existing columns. A smaller editor may
+Independent label highlighting uses kind groups, a lexical fallback and
+optional native Tree-sitter highlights queries. No colorful-menu or Blink
+dependency. menu.highlight: enabled=true, treesitter=true, max_bytes=1024,
+cache_size=512. Only visible rows are highlighted; plain words do not create
+parsers. File/folder candidates retain kind and match emphasis without code
+syntax colors. Missing parsers/queries and incomplete signatures keep the
+lexical fallback. Pending sources retain their matching candidates until
+useful/final results or the deadline, so a fast source's new results do not
+briefly remove slower sources. Retained candidates cannot be resolved or
+accepted; fresh candidates remain usable. menu.update_interval_ms=16 combines
+results within a fixed interval after the previous publication, including
+across rapid edits. The first useful result when opening the menu is
+immediate; continuous input/streaming cannot postpone updates. Set to 0 to
+publish every event-loop batch. Navigation/acceptance use displayed candidates
+without this delay. Width and column allocations are retained until the menu
+closes, growing into spare space without shrinking for shorter results. New
+metadata may be truncated to preserve existing columns. A smaller editor may
 reclaim space. Unchanged rows/highlights are preserved on redraw.
 menu.shrink_delay_ms=50 delays height reduction after results are published.
-Input/results reset the delay; growth is immediate. Extra rows are
-blank and unselectable. Set to 0 for immediate shrinking. The opening direction
-uses menu.max_height (default 12), independent of current result count: below
-when it fits, otherwise the side with more space (ties prefer below). Input
-movement/resize recalculates placement. Final empty results close when published.
+Input/results reset the delay; growth is immediate. Extra rows are blank and
+unselectable. Set to 0 for immediate shrinking. The opening direction uses
+menu.max_height (default 12), independent of current result count: below when
+it fits, otherwise the side with more space (ties prefer below). Input
+movement/resize recalculates placement. Final empty results close when
+published.
 
 menu.inverse="auto" reverses menus above the input by default, keeping the
-first-ranked item nearest the input. Set true to always reverse, false to always
-use top-to-bottom order. This applies to Insert and command-line completion.
-Ranking, preselection and acceptance are unchanged; get_items() stays ranked.
-select_next/select_prev always move down/up on screen, including reversed menus.
-Paging and boundary clamping use the same screen directions.
+first-ranked item nearest the input. Set true to always reverse, false to
+always use top-to-bottom order. This applies to Insert and command-line
+completion. Ranking, preselection and acceptance are unchanged; get_items()
+stays ranked. select_next/select_prev always move down/up on screen, including
+reversed menus. Paging and boundary clamping use the same screen directions.
 Retained blank rows appear opposite the first-ranked candidate.
 
 menu.max_label_bytes=1024 bounds each displayed field. Default icons need a
 Nerd Font. Unknown kinds use CompletionToolsKindUnknown.
 
-menu.highlight.custom(entry, ctx, text) may return extra spans:
-    { {start_byte, end_byte, "HighlightGroup", priority?}, ... }
-Ranges are zero-based/exclusive bytes; default priority is 190.
-Ranges are clipped and checked for UTF-8 boundaries. Do not mutate entries.
-Match emphasis (200) and deprecation (210) retain syntax/selection colors.
+menu.highlight.custom(entry, ctx, text) may return extra spans: { {start_byte,
+end_byte, "HighlightGroup", priority?}, ... } Ranges are zero-based/exclusive
+bytes; default priority is 190. Ranges are clipped and checked for UTF-8
+boundaries. Do not mutate entries. Match emphasis (200) and deprecation (210)
+retain syntax/selection colors.
 
-                                                         *completion-tools-health*
+                                                     *completion-tools-health*
     :checkhealth completion-tools
+
+==============================================================================
+COMMAND OWNERSHIP               *completion-tools-reference-command-ownership*
+
+Commands belong to the plugin; choose global entry keys and short aliases in
+your configuration. Registration reports same-name conflicts without replacing
+user commands. Reconfiguration refreshes only commands still owned by this
+plugin, and cleanup preserves subsequent user replacements.
+
+==============================================================================
+SETUP CONTRACT                                    *completion-tools-lifecycle*
+                                   *completion-tools-reference-setup-contract*
+
+`setup(nil)` uses defaults. Configuration must be a table; caller-owned tables
+are copied before use. Invalid configuration types do not replace live
+handlers or commands. Repeating setup must not accumulate automatic
+registrations.
+
+Validated setup resolves from defaults before releasing the previous instance.
+`dispose()` cancels requests and acceptance work, stops timers/providers,
+closes menus and restores unchanged owned input mappings. It is repeatable;
+diagnostic status can report disposal without reinitializing. Call `setup()`
+to start again.
+
+==============================================================================
+HEALTH AND INSPECTION       *completion-tools-reference-health-and-inspection*
+
+Health reports actionable failures and a compact result for applicable checks.
+Disabled, optional and not-yet-activated features do not warn solely because
+they are inactive. Inspection does not configure plugins, start services or
+install dependencies. Use `:CompletionToolsInfo` for detailed configuration
+and runtime information.
+
+Test workflow (tests/README.md): registered suites, filtering, required
+fixtures and retained failure evidence.
+
+==============================================================================
+DEFAULTS                                            *completion-tools-options*
+                                         *completion-tools-reference-defaults*
+
+Common options and their defaults are shown below. The complete defaults live
+in `config.lua` (../lua/completion_tools/config.lua).
+
+>lua
+    require("completion-tools").setup({
+      enabled = true, -- Also accepts function() -> boolean
+      auto_show = true,
+      trigger_characters = { "." },
+      min_keyword_length = 1,
+      debounce_ms = 0,
+      timeout_ms = 2000,
+      max_items = 50,
+      preselect = true,
+      accept = { mode = "replace" },
+      ranking = {
+        history = { enabled = false, max_entries = 1000 },
+        proximity = { enabled = false, lines = 50 },
+        max_typos = 0,
+      },
+      keyword_pattern = [[\k*$]],
+      sources = { "lsp", "path", "buffer", "snippets" },
+      providers = {},
+      menu = {
+        max_height = 12, inverse = "auto", shrink_delay_ms = 50, update_interval_ms = 16,
+        min_width = 18, max_width = 72, border = "single",
+        columns = { { "kind_icon" }, { "label", gap = 1 }, { "kind" }, { "source" } },
+        column_gap = 1, padding = 1,
+        kind_icons = true, label_details = true, max_label_bytes = 1024,
+        highlight = { enabled = true, treesitter = true, max_bytes = 1024, cache_size = 512 },
+      },
+      documentation = {
+        auto_show = true, delay_ms = 150, max_width = 72, max_height = 18, border = "single",
+      },
+      buffer = {
+        max_bytes = 1024 * 1024, max_words = 20000, max_buffers = 8,
+        batch_lines = 128, min_length = 3, -- Word length in bytes
+      },
+      path = {
+        max_entries = 10000, cache_ms = 1000, show_hidden = false,
+        preview = { enabled = true, max_bytes = 64 * 1024, max_lines = 100 },
+      },
+      dictionary = {
+        files = {}, min_keyword_length = 3, max_items = 10,
+        matching = "fuzzy", capitalize = true,
+        max_bytes = 16 * 1024 * 1024, max_words = 500000, max_word_bytes = 256,
+        timeout_ms = 5000,
+        documentation = { enabled = true, command = "wn", timeout_ms = 1500 },
+      },
+      spell = {
+        min_keyword_length = 2, max_items = 3, debounce_ms = 60, timeout_ms = 5000,
+        sort = "match", preselect_current_word = true, suggest_when_correct = false,
+      },
+      snippets = { preset = "default", collection = {} },
+      copilot = { debounce_ms = 150, max_items = 3 },
+      cmdline = {
+        enabled = false, auto_show = true, fuzzy = true,
+        min_keyword_length = 1, types = { ":", "/", "?" },
+      },
+    })
+<
+
+`sources` may be `function(ctx) -> string[]` to choose providers by filetype,
+syntax context or buffer state. Lists replace existing lists rather than
+merge.
+
+==============================================================================
+AUTOMATIC TRIGGERS             *completion-tools-reference-automatic-triggers*
+
+Insert-mode completion opens while typing words. Other characters close the
+menu and cancel pending requests, except those in `trigger_characters`
+(default `{ "." }`). This filter takes precedence over LSP trigger characters,
+path detection and `min_keyword_length = 0`. Allowed characters can open
+completion without a keyword prefix; providers still decide which candidates
+to return. Manual completion (`<C-Space>` / `show()`) bypasses this filter.
+Command-line completion keeps its independent behavior. Background refreshes
+at the same input snapshot preserve a manually opened session and its explicit
+source list, including after LSP attach/detach. A new edit uses the ordinary
+automatic trigger rules again.
+
+Use `function(ctx) -> string[]` to choose symbols by Neovim filetype:
+
+>lua
+    require("completion-tools").setup({
+      trigger_characters = function(ctx)
+        local by_filetype = {
+          lua = { ".", ":" },
+          tex = { ".", "\\", "{" },
+          markdown = {},
+        }
+        return by_filetype[ctx.filetype] or { "." }
+      end,
+    })
+<
+
+An empty list disables all symbol triggers while keeping word completion. Add
+`"/"` when you want automatic path completion immediately after a slash;
+otherwise type the next word character or request completion manually.
+
+==============================================================================
+RANKING                                   *completion-tools-reference-ranking*
+
+Matching defaults to the original deterministic prefix/subsequence scoring.
+Enable optional ranking features independently:
+
+>lua
+    ranking = {
+      history = { enabled = true, max_entries = 1000 },
+      proximity = { enabled = true, lines = 50 },
+      max_typos = 1, -- Default 0; accepts 0 or 1
+    }
+<
+
+History learns successful acceptance, scoped by source and filetype, and
+combines frequency with recency. It persists at
+`stdpath("state")/completion-tools/history.json`; set `ranking.history.path`
+to override. Records are bounded and saved after a quiet 500 ms or on
+disposal/exit. Missing/corrupt files are ignored. Proximity weights words in a
+bounded window around the cursor. Bonuses are small enough to preserve
+prefix-versus-subsequence matching tiers. Disabling either feature removes its
+bonus. History ignores transient client IDs and edit positions, so it survives
+restarts. One-typo matching handles substitution, insertion, deletion and
+transposition in ASCII prefixes of 4–32 characters, only after literal
+matching fails. It does not perform Unicode case folding. Command-line
+matching and ordering stay native.
+
+==============================================================================
+PROVIDER CONFIGURATION     *completion-tools-reference-provider-configuration*
+
+Each `providers[id]` supports:
+
+  Option — Purpose
+  `enabled` — Boolean or `function(ctx) -> boolean`
+  `score_offset` — Add an offset to the provider's match scores
+  `transform_items(ctx, items)` — Filter or modify the returned item list
+  `timeout_ms` — Total request deadline; defaults to global `timeout_ms =
+      2000`; `0` disables
+  `max_items` — Maximum matched/ranked items contributed by this source
+  `fallback_for` — Source IDs which must all finish without matches before
+      this source runs
+  `module`, `opts` — Load a custom module exposing `new(opts)`
+  `complete`, `resolve`, etc. — Define a provider inline; see custom sources
+      (#custom-sources)
+
+For example, exclude LSP Text and Snippet items:
+
+>lua
+    providers = {
+      lsp = {
+        transform_items = function(_, items)
+          return vim.tbl_filter(function(item)
+            return item.kind ~= 1 and item.kind ~= 15
+          end, items)
+        end,
+      },
+    }
+<
+
+To use buffer words only when LSP has no matches:
+
+>lua
+    sources = { "lsp", "buffer" },
+    providers = {
+      lsp = { timeout_ms = 1500, max_items = 30 },
+      buffer = { fallback_for = { "lsp" }, max_items = 10 },
+    },
+<
+
+Fallback waits for final responses (including streaming sources). It tests the
+current query after transforms/matching, so an unrelated nonempty list counts
+as no matches. All listed dependencies must have no matches;
+disabled/unselected sources count as empty. Chains are supported and cycles
+are rejected at setup. A skipped fallback suppresses its downstream fallback
+chain. Dependencies should also appear in `sources` when you want them
+queried. Sources run independently otherwise. Limits apply after ranking,
+before global merging/deduplication. Deadlines cancel pending requests and
+reject late responses; partial results already received remain usable. A
+timeout can release waiting fallback sources. Timeouts cannot interrupt
+synchronous Lua callbacks or native `getcompletion()`.
+
+==============================================================================
+KEYMAPS                                   *completion-tools-reference-keymaps*
+
+Action lists may include `desc = "Description"`, especially for custom
+callbacks. Without it, mapping descriptions are generated from the named
+actions in the chain. The `desc` field does not change execution or fallback
+behavior.
+
+`keymap` replaces the entire insert/select-mode mapping table; `keymap = {}`
+installs none. Command-line mappings use the independent `cmdline.keymap`
+table. To change only a few defaults, copy them first:
+
+>lua
+    local keys = vim.deepcopy(require("completion_tools.config").defaults.keymap)
+    keys["<CR>"] = { "accept", "fallback" }
+    keys["<A-j>"] = { "select_next", "fallback" }
+    keys["<A-k>"] = { "select_prev", "fallback" }
+    keys["<C-d>"] = { "scroll_documentation_down", "fallback" }
+    keys["<C-u>"] = { "scroll_documentation_up", "fallback" }
+    require("completion-tools").setup({ keymap = keys })
+<
+
+Actions may also be `function(cmp)`: return `true` when handled, `false`/`nil`
+to try the next action, or a string to feed as a Neovim key sequence. Actions
+run in normal callbacks where buffer edits are allowed. For example, with
+pairs.nvim:
+
+>lua
+    keys["<CR>"] = {
+      "accept",
+      function() return require("pairs").expr("<CR>") end,
+      "fallback",
+    }
+<
+
+Existing global mappings become fallbacks. Buffer-local mappings retain
+Neovim's normal precedence. Repeated setup/dispose restores mappings still
+owned by the plugin and preserves mappings installed later. Call
+`refresh_keymaps()` after a lazy dependency installs mappings to update
+fallbacks without resetting completion.
+
+==============================================================================
+LSP BEHAVIOR                         *completion-tools-reference-lsp-behavior*
+
+==============================================================================
+ACCEPTANCE AND INDENTATION *completion-tools-reference-lsp-behavior-acceptance-and-indentation*
+
+Function and Method completions insert a complete `()` directly and place the
+cursor inside, even before non-whitespace text. This does not depend on
+pairs.nvim or other insert-mode mappings. An existing following `(` is reused;
+server snippets and completion text that already contains call parentheses
+retain their own layout.
+
+`accept = { mode = "replace" }` is the default. Set `mode = "insert"` to use
+the insert range of an LSP InsertReplaceEdit, preserving text after the
+cursor. A regular TextEdit always uses its server-provided range. Override one
+acceptance with `require("completion-tools").accept({ mode = "insert" })`, for
+example in a function keymap action. Both modes retain UTF encodings, imports,
+snippets and cached-range rebasing.
+
+LSP `insertTextMode=1` preserves supplied whitespace; `2` adjusts continuation
+lines to the receiving indentation while retaining relative indentation. The
+LSP capability advertises default mode `2`; items without an explicit mode
+from LSP use that default. Other sources retain their previous behavior unless
+they specify `insertTextMode`. Native snippets and the LuaSnip preset avoid
+double indentation and retain placeholder editing/jumping.
+
+Custom `snippets.expand(text, options)` callbacks receive already-adjusted
+text and `{ insert_text_mode?, indentation, bufnr }`. When a mode is present,
+disable the engine's own automatic indentation. For example, LuaSnip uses
+`lsp_expand(text, { indent = not options.insert_text_mode })`. The indentation
+modes follow the LSP specification
+(https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#insertTextMode).
+
+==============================================================================
+PROTOCOL SUPPORT    *completion-tools-reference-lsp-behavior-protocol-support*
+
+Register
+`require("completion_tools.capabilities").get_lsp_capabilities(base?)` before
+starting servers; this module does not import the engine or UI. Setup is not
+required first. The LSP source supports multiple clients, trigger characters,
+incomplete-list requests, UTF-8/16/32 ranges, TextEdit/InsertReplaceEdit,
+CompletionList.itemDefaults, additional text edits, snippets, item resolve and
+commands after acceptance.
+
+Selection starts resolve early. Accepting before it finishes inserts the
+primary text immediately. Late additional edits apply only if the accepted
+buffer has not changed since insertion. A slow resolve can therefore omit an
+import rather than overwrite new input.
+
+==============================================================================
+BUFFER WORDS AND PATHS     *completion-tools-reference-buffer-words-and-paths*
+
+By default, only words in the current normal buffer are indexed. Initial
+indexing runs in batches of 128 lines. Ordinary edits retokenize changed
+lines; inserting or deleting lines shifts the line index. Frequency counts
+remove obsolete words, so completion does not rescan the whole file on every
+keystroke.
+
+Buffers over `max_bytes` are skipped. Each index retains up to `max_words`
+distinct words; at most `max_buffers` active indexes are kept, evicting the
+least recently used. Reaching the word budget may omit words from the file.
+
+`buffer.get_bufnrs(ctx)` can select multiple buffers, such as loaded buffers
+with the same filetype. `path.get_cwd(ctx)` overrides the relative path base:
+normally the current file's directory, or cwd for unnamed buffers. A path must
+contain a slash, such as `./`, `../`, `~/` or `/tmp/`.
+
+Directory reads use asynchronous libuv batches and cache up to 32 directories.
+Typing a dot can reveal hidden files. When a directory exceeds `max_entries`,
+only the first entries returned by the filesystem are read.
+
+Accepting a directory immediately requests its contents from the path source,
+so Tab can continue through nested directories. This also works with
+manual-only completion and when `/` is not an automatic trigger. Accepting a
+file closes the menu normally; an empty directory has no candidates to
+display.
+
+Selecting a path candidate previews the file in the documentation window. Text
+reads are asynchronous and bounded by `path.preview.max_bytes` (64 KiB) and
+`max_lines` (100), with at most 2000 bytes per line. File contents remain
+literal, including Markdown markers, and use the file's detected syntax.
+Directories show their path; binary files and read errors show a short
+message. Set `path.preview.enabled=false` to show only the path.
+
+Images and PDFs use the optional `image-tools.nvim` public `render()` API
+inside the same documentation window. It loads only when a media preview is
+shown; text previews need no image plugin. PDFs show page 1, rasterized to the
+available viewport pixels. Missing image-tools, unsupported terminals and
+conversion failures show a message in the window. Candidate changes and menu
+teardown close the render view and release its resources. Documentation delay,
+size and automatic display settings apply to file previews as well.
+
+==============================================================================
+SNIPPETS                                 *completion-tools-reference-snippets*
+
+The default preset uses `vim.snippet` and accepts per-filetype definitions:
+
+>lua
+    snippets = {
+      collection = {
+        all = {
+          { prefix = "todo", body = "TODO: $0", description = "To-do comment" },
+        },
+        lua = {
+          {
+            prefix = "fn",
+            body = { "function ${1:name}(${2:args})", "\t$0", "end" },
+            description = "Function definition",
+          },
+        },
+      },
+    }
+<
+
+`collection` may also be `function(ctx) -> table`. Custom engines can
+implement `snippets.expand(text)`, `active(direction)` and `jump(direction)`.
+
+To use existing LuaSnip definitions:
+
+>lua
+    snippets = { preset = "luasnip" }
+<
+
+Install and configure LuaSnip separately. This preset reads visible, non-regex
+snippets for the current filetype and its extensions, respects
+`show_condition`, and uses LuaSnip for expansion, jumping and LSP snippets. It
+does not read `collection`; regex snippets still use LuaSnip's own expansion
+mechanism. Native snippet selection follows Neovim's input queue: wait for
+placeholder selection to finish before typing replacement text.
+
+==============================================================================
+COMMAND LINE                         *completion-tools-reference-command-line*
+
+`cmdline = { enabled = true }` enables `:`, `/` and `?` completion. Ex uses
+native `getcompletion()` for commands, options/values, files/directories,
+help, Lua members and declared user-command completions. Search uses buffer
+words. `cmdline.fuzzy=true` (default) temporarily enables native fuzzy
+matching for Ex completion, restoring `wildoptions` after each call, including
+failed calls. Set `cmdline.fuzzy=false` to follow your existing `wildoptions`
+instead. Neovim does not support native fuzzy matching for file/directory
+names; those continue to use wildcard expansion. Custom completers follow
+native semantics. Native ordering and matches are preserved; wildcards and
+escaped characters are not filtered again. Path insertion escapes spaces and
+other special characters. Replacement preserves modifiers, `no`/`inv`
+prefixes, Lua namespaces and trailing text.
+
+Empty command lines and whitespace do not open the menu. Empty arguments after
+a meaningful command, such as `:set `, may show contextual candidates.
+
+  Key — Command-line action
+  `Ctrl-Space` — Open manually
+  `Up` / `Down`, `Ctrl-P` / `Ctrl-N` — Select; preserve native history when
+      the menu is closed
+  `Tab` — Accept or request completion; never execute
+  `Shift-Tab` — Select previous or request completion
+  `Enter` — Execute command / confirm search without automatically accepting
+
+`cmdline.keymap` replaces the defaults; `{}` installs none. Use
+`auto_show=false` for manual triggers or `types={":"}` for Ex only. Native
+wildmenu/popupmenu takes precedence. The menu closes on command-line exit.
+Unsupported prompts, including `input()` and expression registers, retain
+native behavior. Shell commands (including modified `!`, `read/write !` and
+`terminal`) and filename backtick expansion are excluded.
+
+The native API is synchronous: slow custom callbacks or filesystems can still
+block. With lazy.nvim, declare both `InsertEnter` and `CmdlineEnter` events.
+
+==============================================================================
+EXTERNAL COMMAND-LINE UI *completion-tools-reference-command-line-external-command-line-ui*
+
+`cmdline.get_anchor(ctx)` may return `{row=0, col=0, height=3}` describing the
+entire input frame in zero-based screen cells, including borders. The menu
+avoids the frame and flips above it when needed; without an anchor it uses
+native placement. For input-tools.nvim, use its public layout API:
+
+>lua
+    local cmdline = {
+      enabled = true,
+      get_anchor = function()
+        local input = package.loaded["input-tools"]
+        local box = input and input.get_layout()
+        if box and not box.vim_mode then
+          return { row = box.row, col = box.col, height = box.outer_height }
+        end
+      end,
+    }
+    require("completion-tools").setup({ cmdline = cmdline })
+    vim.api.nvim_create_autocmd("User", {
+      pattern = { "InputToolsOpen", "InputToolsLayoutChanged", "InputToolsClose" },
+      callback = function()
+        local cmp = package.loaded["completion-tools"]
+        if cmp then cmp.refresh_cmdline() end
+      end,
+    })
+<
+
+`refresh_cmdline()` never opens an idle menu. Relocation preserves selection
+and makes stale candidates unacceptable. No Blink adapter is loaded.
+
+Commands, help tags, options and paths use uniform kind coloring with
+emphasized matches; names containing `local`, hyphens or angle brackets are
+not treated as code. Lua/Vim expression and function completion use the
+corresponding language, independent of the buffer filetype. Kind/source
+columns follow the theme. Override groups such as
+`CompletionToolsKindReference` for help tags, or return scoped spans from
+`menu.highlight.custom` using `ctx.mode == "cmdline"` and
+`ctx.completion_type`.
+
+==============================================================================
+DICTIONARIES AND SPELLING *completion-tools-reference-dictionaries-and-spelling*
+
+Add `"dictionary"` and/or `"spell"` explicitly:
+
+>lua
+    require("completion-tools").setup({
+      sources = { "lsp", "path", "buffer", "snippets", "dictionary", "spell" },
+      dictionary = {
+        files = { vim.fn.stdpath("config") .. "/configs/dictionary.txt" },
+        min_keyword_length = 3,
+        max_items = 10,
+      },
+      spell = { sort = "match" },
+      providers = { dictionary = { score_offset = 5 }, spell = { score_offset = 10 } },
+    })
+<
+
+==============================================================================
+DICTIONARY   *completion-tools-reference-dictionaries-and-spelling-dictionary*
+
+Use UTF-8 files with one word or phrase per line. CRLF, BOM, duplicates and
+paths containing spaces are supported. `dictionary.files` also accepts
+`function(ctx) -> string[]`; lists replace rather than merge.
+
+`matching="fuzzy"` ranks prefix/subsequence matches and returns up to
+`max_items`. `"prefix"` uses only prefix matches, narrowing the search with
+three-byte buckets. Lowercase words follow the input's title/uppercase style
+by default; `capitalize=false` preserves their spelling.
+
+Selected entries asynchronously query local WordNet via `wn <original_word>
+-over` for English definitions. Original dictionary casing is used for lookup.
+No network or Blink is involved; missing tools or definitions do not interrupt
+completion. The word list itself has no definitions, and WordNet does not
+provide translations.
+
+>lua
+    dictionary = {
+      documentation = { enabled = true, command = "wn", timeout_ms = 1500 },
+    }
+<
+
+`command` may be an executable path; `enabled=false` disables definitions.
+Only the selected item resolves. Selection/input changes, acceptance or hiding
+cancel old queries. Acceptance inserts only the word. Each source caches up to
+128 lookups, each capped at 64 KiB; setup/dispose releases them.
+
+Files and queries are cached in the background; each request checks file
+metadata and reindexes changes. Up to four file indexes and 64 queries per
+index are kept. Default budgets: 16 MiB total, 500,000 words, 256 bytes per
+word. Files exceeding the remaining byte budget are skipped; the word limit
+truncates the index. Missing-file and truncation warnings are deduplicated and
+do not affect other sources.
+
+==============================================================================
+SPELL             *completion-tools-reference-dictionaries-and-spelling-spell*
+
+Active only when window-local `spell` is enabled. Inherits `spelllang`,
+`spellfile`, `spellcapcheck`, `spelloptions`, `spellsuggest` and runtimepath.
+`enable_in_context=function(ctx) -> boolean` may restrict syntax/filetypes
+further. Changes to compiled personal word lists reload the worker.
+
+- `sort="match"`: prioritize stronger fuzzy matches, then alphabetical order
+  for
+ties. Non-subsequence corrections, including transpositions, remain at the
+end.
+- `sort="suggestion"`: preserve native `spellsuggest()` order.
+- Correct words normally retain only the current word, marked for
+  preselection.
+`preselect_current_word=false` hides it; `suggest_when_correct=true` includes
+alternatives.
+
+This sorting applies within the spell source; cross-source offsets and
+deduplication still apply. Both word sources return Text items with the
+default gray styling. Acceptance inserts the suggested word, never the
+misspelling used for filtering.
+
+Each source starts a persistent, on-demand headless process using the current
+Neovim executable, without loading user init. Workers retain indexes while
+idle; dispose/setup/exit stops them. Only one active and one latest pending
+request are kept. Cancelled or stale results cannot open a menu. Spell
+debounces for 60 ms by default, letting other providers appear first. Cold
+dictionaries and slow language suggestions may arrive later without occupying
+the editor's main thread. User-init functions referenced by
+`spellsuggest=expr:...` are not copied to workers.
+
+==============================================================================
+COPILOT                                   *completion-tools-reference-copilot*
+
+The opt-in source directly starts GitHub's Copilot Language Server
+(https://github.com/github/copilot-language-server-release) using Neovim's LSP
+client. Install the server via `npm install -g
+@github/copilot-language-server`, Mason or your system package manager. A
+GitHub account with Copilot access is required. There is no `copilot.lua`
+dependency and no chat or separate suggestion UI.
+
+>lua
+    require("completion-tools").setup({
+      sources = { "copilot", "lsp", "path", "buffer", "snippets" },
+      copilot = {
+        command = { "copilot-language-server", "--stdio" },
+        debounce_ms = 150,
+        max_items = 3,
+        show_status = true, -- Status in the completion window footer
+        filetypes = { markdown = false, text = false },
+        -- ["*"] = false in filetypes disables unlisted types.
+        -- should_attach = function(bufnr) return ... end,
+        settings = {}, -- Copilot server settings, e.g. http.proxy
+      },
+      providers = { copilot = { score_offset = 50, timeout_ms = 5000 } },
+    })
+<
+
+The default `filetypes = {}` allows normal, listed buffers. Special/unlisted
+buffers are excluded; `should_attach(bufnr)` can further restrict attachment.
+For Mason installations outside PATH, set `command` to its executable path.
+For the JavaScript distribution, use `{ "node",
+"/path/to/dist/language-server.js", "--stdio" }` (Node.js 20.8+). Command
+lists replace defaults in full. Server credentials and authentication storage
+are managed by the official server.
+
+Commands:
+
+- `:CompletionToolsCopilot auth`: show the device code and open GitHub login.
+- `:CompletionToolsCopilot status`: show startup and server status/errors.
+- `:CompletionToolsCopilot disable` / `enable`: control completion globally.
+- `:CompletionToolsCopilot restart`: stop the client; the next request starts
+  it.
+- `:CompletionToolsCopilot signout`: sign out through the official server.
+
+Remove the `copilot.lua` plugin spec and `require("copilot").setup()` when
+migrating. Replace `:Copilot auth` with `:CompletionToolsCopilot auth`. The
+server starts only on a Copilot request or explicit authentication; default
+completion-tools setup starts no Copilot process. Missing executables produce
+a warning with installation guidance; other completion sources keep working.
+
+New requests debounce independently (150 ms by default; 0 disables it).
+Typing, hiding the menu and disposal cancel pending timers and in-flight
+requests. `copilot.request_mode = "cycling"` (default) fetches alternatives in
+one request. The optional `"staged"` mode first uses `getCompletions`,
+publishes those candidates immediately, then fills remaining slots with
+`getCompletionsCycling`. Duplicates are removed and the first candidate keeps
+its identity/position. First-stage candidates can be accepted or reused while
+alternatives are pending; typing along one cancels the remaining request.
+Identical refreshes subscribe to the current stage instead of restarting it.
+If alternatives fail, available first-stage candidates remain usable. Staged
+mode can use two requests per uncached snapshot; its latency benefit depends
+on the server, so it is opt-in. Refreshes at an identical document/cursor
+snapshot share one pending Copilot request, including its original debounce
+deadline. Each subscriber can cancel independently; hiding or changing the
+snapshot cancels unused work immediately. Completed suggestions are reused
+immediately while forward typing on the same line exactly follows their
+generated text. Each edit keeps only matching candidates and adjusts their
+UTF-16 replacement ranges; the candidates remain selectable without another
+request. Matching spaces and punctuation can continue a cached suggestion even
+when they would not trigger a new request. A cache miss uses the normal
+trigger rules and debounce. Deletion, newline, cursor movement, other edits,
+hiding and leaving the buffer/window/insert mode invalidate this cache.
+Single-line edits ending at the cursor consume an identical suffix already
+after the cursor (such as a closing parenthesis), avoiding duplicate
+delimiters. Explicit replacement ranges and multiline suggestions retain their
+server-defined meaning. Renaming a file or saving an unnamed buffer closes the
+old document before opening its new URI. Filetype changes reattach the
+document with its new language; old suggestions are invalidated during these
+transitions. The client registers each eligible buffer's project root as a
+workspace, reusing one server across projects. `copilot.root_dir` accepts a
+directory or a function `(bufnr) -> directory?`; by default the nearest `.git`
+root (or cwd) is used. `copilot.workspace_folders` lists additional
+directories. Canonical paths are deduplicated, and new roots are announced to
+servers supporting workspace folders. Request `doc.relativePath` is relative
+to that buffer's project root. Language IDs normalize common Neovim filetypes
+(for example `sh` to `shellscript` and `text` to `plaintext`), including
+dotted filetypes. Override individual names with `copilot.language_ids = {
+["my.ft"] = "server-language" }`. `accept_word()` and `accept_line()` accept
+part of the selected Copilot suggestion and keep its remainder selected,
+without a new request. Word acceptance consumes leading punctuation/whitespace
+and the next keyword plus trailing horizontal space; line acceptance includes
+the next newline and indentation. UTF-16 ranges, multiline replacements and
+cumulative accepted lengths are updated at each step. These actions have no
+default key bindings. For example, extend the default map:
+
+>lua
+    keymap = vim.tbl_extend("force", require("completion_tools.config").defaults.keymap, {
+      ["<M-w>"] = { "accept_word", "fallback" },
+      ["<M-l>"] = { "accept_line", "fallback" },
+    })
+<
+
+Partial acceptance requires a literal continuation of the text before the
+cursor; corrections to already typed text still use full `accept()`. Other
+sources return `false` from these actions, allowing the configured fallback.
+The cycling API requests alternatives; duplicates are removed and at most
+`copilot.max_items` (default 3) are retained. The service may return fewer.
+Copilot fields use `CompletionToolsCopilot` (purple, `#cba6f7`), preserving
+the selected background and match emphasis. UTF-16 ranges and multiline
+literal text are preserved. Acceptance reports the selected suggestion to
+Copilot. Command-line completion never requests Copilot. `copilot.show_status`
+(default `true`) displays the former Copilot status icons in the completion
+window footer: `` ready, `` disabled, `` warning or unavailable, and ``
+sign-in required. Waiting, startup and generation show `` with an animated
+dots spinner; an idle state with no suggestions uses a muted ``. The
+animation advances every 80 ms while visible and stops on completion, hide or
+disposal. The menu opens only when actual candidates exist; waiting, empty
+results and timeouts do not leave an empty status-only window. Icons never
+become candidates; animation changes only the border, preserving selection,
+menu contents and geometry. Status notifications never reopen a dismissed
+menu. Set `show_status = false` to hide it. `:CompletionToolsInfo` and
+`:checkhealth completion_tools` also include the native client's status.
+
+Buffers attached to the native client are synchronized in full on open and
+then incrementally on edits through Neovim's LSP client. Completion requests
+contain the document URI/version and cursor position, so the local Copilot
+server has context both before and after the cursor. The current keyword only
+controls menu triggering/filtering. The official server prepares the final
+model prompt; this plugin does not choose an exact cloud context window.
+
+==============================================================================
+MENU AND HIGHLIGHTING       *completion-tools-reference-menu-and-highlighting*
+
+The default layout is kind icon | label, signature and description | kind |
+source. Each `columns` group can contain multiple components, separated by
+`gap` (default 1); `column_gap` separates groups. Supported components:
+`kind_icon`, `label`, `kind`, `source`, `label_detail`, `label_description`.
+The column list replaces defaults; components cannot repeat.
+
+Sources display as LSP, Buffer, Path, Snippets, Cmdline, Dict, Spell and
+Copilot. Custom sources retain their IDs. Column widths are calculated across
+retained candidates and stay aligned while scrolling. Narrow windows compress
+labels first while retaining a readable namespace. Truncation uses display
+width; extmarks use UTF-8 byte ranges.
+
+`label` combines `labelDetails.detail` and `labelDetails.description`, falling
+back to a single-line `item.detail`. Display never changes accepted
+CompletionItems. With separate detail/description columns, set
+`label_details=false` to avoid repeats. `kind_icons=false` hides icons; a
+table such as `{ Function="ƒ", Variable="v" }` overrides selected icons.
+Defaults require a Nerd Font.
+
+Text icons, labels and kind names use `CompletionToolsKindText` (linked to
+`Comment`), without lexical recoloring. Snippets use
+`CompletionToolsKindSnippet` (`Special`). Documentation hides Markdown code
+fences and inline backticks while preserving code text, indentation and
+highlighting. Detail/plaintext remain literal. Prose emphasis (`*italic*`,
+`bold`, `*both*` and underscore forms) conceals its delimiters and applies
+italic/bold styles. Thematic rules (`---`, `*`, `___`) become full-width
+separators. Code spans and blocks preserve their symbols. Conceal settings are
+local to the preview. Sizing accounts for Neovim's raw-column wrapping so
+hidden delimiters do not cause clipped text in narrow windows. Style groups
+are `CompletionToolsDocItalic`, `CompletionToolsDocBold`,
+`CompletionToolsDocBoldItalic` and `CompletionToolsDocSeparator`. Code blocks
+reuse menu lexical/Tree-sitter settings; inline code uses
+`CompletionToolsDocCode` (`String`). Menu custom callbacks apply only to
+candidates.
+
+Highlighting has no Blink/colorful-menu dependency. Kind colors provide the
+base; lexical rules distinguish types, parameters, keywords, strings, numbers
+and punctuation. Where available, public Tree-sitter APIs use the current
+language's highlights query. Missing parsers/queries or incomplete signatures
+retain lexical fallback. The plugin installs no parsers and enables no
+injected languages. These are syntax highlights, not LSP semantic tokens or
+server-specific signature rewrites.
+
+Only visible rows are highlighted; plain identifiers do not create parsers.
+`max_label_bytes` bounds each field. `highlight.max_bytes` bounds Tree-sitter
+input; `cache_size` bounds cached text spans. No parser/tree is retained.
+Setup/dispose clears caches. `highlight.enabled=false` disables label syntax
+highlighting; `treesitter=false` uses lexical rules only. Matches are
+bold/underlined; deprecated items use strikethrough, preserving syntax colors
+and selection backgrounds.
+
+All 25 LSP kind groups are available as `CompletionToolsKindFunction`,
+`CompletionToolsKindVariable`, etc., normally linked to standard `@function`,
+`@type` and related groups. Unknown kinds use `CompletionToolsKindUnknown`.
+Other groups: `CompletionToolsMatch`, `CompletionToolsDeprecated`,
+`CompletionToolsSource`, `CompletionToolsMenu`, `CompletionToolsSelected`,
+`CompletionToolsBorder`, `CompletionToolsDoc`, `CompletionToolsDocBorder` and
+`CompletionToolsDocCode`. Menu borders match the menu background;
+documentation borders match the float background. Defaults are recreated after
+ColorScheme events while preserving explicit overrides.
+
+`menu.highlight.custom(entry, ctx, text)` can return additional spans:
+
+>lua
+    { { start_byte, end_byte, "HighlightGroup", priority }, ... }
+<
+
+Ranges are zero-based, end-exclusive bytes; default priority is 190. Spans are
+clipped and UTF-8 boundaries checked. Do not mutate entries. Match emphasis
+has priority 200; deprecation has priority 210.
+
+==============================================================================
+CUSTOM SOURCES                     *completion-tools-reference-custom-sources*
+
+Candidates use LSP CompletionItem fields. For example:
+
+>lua
+    require("completion-tools").setup({
+      sources = { "lsp", "path", "project" },
+      providers = {
+        project = {
+          score_offset = 20,
+          complete = function(ctx, callback)
+            local cancelled = false
+            vim.defer_fn(function()
+              if not cancelled then
+                callback({ items = { { label = "projectRoot", kind = 6 } }, reusable = true })
+              end
+            end, 10)
+            return function() cancelled = true end
+          end,
+        },
+      },
+    })
+<
+
+Source functions use dot calls, without an implicit `self`:
+
+>lua
+    source.complete(ctx, callback) -> cancel_function?
+    source.resolve(entry, callback) -> cancel_function? -- Optional
+    source.execute(entry, ctx)                         -- Optional; after the primary edit
+    source.retrigger_on_accept(entry, ctx) -> boolean   -- Optional; request this source after acceptance
+    source.trigger(ctx) -> boolean                    -- Optional
+    source.reuse(ctx, response, previous_ctx) -> response? -- Optional; validated reuse
+    source.dispose()                                  -- Optional
+<
+
+`complete` publishes `{ items = CompletionItem[], start_col?, reusable?,
+is_incomplete?, pending?, stable? }`. `start_col` is a zero-based byte column
+in the current line, defaulting to the keyword start. TextEdit ranges take
+precedence. Custom edits default to UTF-8; items may override `_encoding`.
+
+Callbacks may publish incremental results multiple times, including from libuv
+callbacks. Set `pending=true` while more results are expected; omit/clear it
+in the final response. The engine schedules callbacks and rejects stale
+results. Only complete, stable, non-pending lists can be reusable for forward
+typing in the same context. Backspace, newline, edits on other lines or
+InsertLeave invalidate reuse. Providers should cancel promptly and own their
+external resources. For generated edits, `reuse` may return an updated
+response only after validating the new context, individual candidates and
+replacement ranges. Returning `nil` discards that cache and calls `complete`
+under the normal trigger policy. This cache permits only uninterrupted
+same-line insertions at the last cursor and is cleared on hide; it is
+independent of ordinary `reusable=true` word-list caching. Only final
+responses, or pending responses explicitly marked `stable=true`, are passed to
+`reuse`. A stable publication promises that its candidates remain valid while
+the source fetches additional choices. Same-snapshot reuse of a pending list
+must return `nil` so `complete` can re-subscribe to the remaining
+publications. A valid response can continue through otherwise blocked
+characters without starting other sources at those characters.
+`resolve_on_accept=false` limits resolve to documentation, avoiding delayed
+acceptance edits. `retrigger_on_accept` continues completion as an explicit
+request to the same source, provided acceptance handlers have not changed the
+resulting input snapshot.
+
+Entries contain `item`, `context` (the originating context), `start_col` and
+`source_id`. Resolve callbacks return a CompletionItem; execute runs after the
+synchronous primary edit. A source expanding its own snippets may use
+`insertText=""` to clear the typed prefix before expanding in execute.
+Leading-underscore item fields are private provider metadata; standard
+`item.data` must be JSON serializable.
+
+After setup, `register_source("name", source)` adds or replaces a provider.
+
+==============================================================================
+API AND SELECTION LIFECYCLE *completion-tools-reference-api-and-selection-lifecycle*
+
+==============================================================================
+RUNTIME DIAGNOSTICS *completion-tools-reference-api-and-selection-lifecycle-runtime-diagnostics*
+
+Run `:CompletionToolsInfo` after setup, or call:
+
+>lua
+    local status = require("completion-tools").get_status()
+    require("completion-tools").show_status() -- Print the same snapshot
+<
+
+The snapshot reports `configured`, `enabled`, `reason`, `last_request_reason`,
+`menu_visible`, `ready`, `stale`, `mode`, `filetype`, and a `sources` map.
+Each source reports registration/selection, configured enablement and limits,
+its latest status/elapsed milliseconds, raw and shown candidate counts,
+provider request/cache-hit/response counters, timeout/error counts and the
+latest callback error. Statuses include `not_requested`, `waiting`, `pending`,
+`done`, `disabled`, `skipped`, `timeout`, `cancelled` and `error`. Errors
+remain inspectable after a later successful request. `last_request_reason`
+preserves trigger filtering or no-match decisions after leaving Insert mode to
+run the status command.
+
+Counters cover the current setup lifetime and reset on setup; cache hits do
+not increment provider request counts. Timings measure source completion,
+including async wait and response processing, rather than terminal drawing.
+Raw counts are after transforms and before quotas/deduplication; shown counts
+are contributions to the current menu. A stale retained selection has
+`stale=true` and cannot be accepted; fresh candidates from other sources
+remain selectable and acceptable. Getters return detached snapshots.
+Diagnostics store counters and errors, with no candidate-body log or network
+telemetry. `:checkhealth completion-tools` includes source status, missing
+registrations, recent errors and deadlines. The status command is removed on
+disposal only while still owned by the plugin.
+
+==============================================================================
+CANDIDATE LIFECYCLE *completion-tools-reference-api-and-selection-lifecycle-candidate-lifecycle*
+
+Plain words deduplicate across sources. Candidates with different signatures,
+JSON data, clients, edit ranges, additional edits, commands or snippet
+behavior retain separate identities, so overloads and alternative imports
+remain selectable. Object key ordering does not affect identity; streaming
+refreshes preserve the selected semantic candidate even when providers rebuild
+and reorder their tables.
+
+`require("completion-tools")` and `require("completion_tools")` expose the
+same module. See the help reference (completion-tools.txt) for the full method
+list. Actions return `true` when handled, allowing keymap chains.
+
+`select_next` / `select_prev` accept `{ count=1, wrap=true }`. For paging, use
+`{ count=5, wrap=false }`: selection stops at the first/last item and still
+consumes the key at a boundary. `select_next` moves down and `select_prev`
+moves up on screen, including reversed menus. State getters return read-only
+values in ranked order.
+
+While typing/backspacing within one keyword, the previous menu remains visible
+until new matches arrive or every provider completes without matches. Stale
+items cannot be accepted. A fast empty source does not close the menu while
+another is pending. Empty input or a context change closes it. Retained menus
+follow the cursor; documentation remains for the same selection. Each pending
+source retains its previous matching candidates until it publishes useful or
+final results, or reaches its deadline. A fast source's new results therefore
+do not temporarily remove a slower source's items. Retained candidates are
+only for display, and cannot be resolved or accepted until their source
+supplies a fresh or reusable result.
+
+The first useful result when opening the menu is displayed immediately.
+Subsequent results, including results across rapid edits, share
+`menu.update_interval_ms` (default `16`) of the previous publication. The
+deadline is fixed, so continuous streaming cannot postpone updates
+indefinitely. Set `0` to publish every event-loop batch. Navigation and
+acceptance act on the displayed candidates without this delay.
+
+Width and column allocations are retained while the menu is open: columns grow
+into available space, and shorter results do not pull the border or following
+columns back. This can leave spare space or truncate new metadata until the
+next session. Resizing to a smaller editor may reclaim column space. Hiding
+the menu resets these allocations. Unchanged rows and highlights are preserved
+on redraw.
+
+When results are published, the menu grows immediately and waits for
+`menu.shrink_delay_ms` (default `50`) of quiet input/results before shrinking.
+Extra rows are cleared and cannot be selected. Set this option to `0` to
+shrink immediately. Placement reserves `menu.max_height` regardless of the
+current result count: prefer below when it fits, otherwise choose the side
+with more space (below wins ties). Small initial results and later
+growth/shrinkage therefore use the same side. Moving/resizing the input can
+change the direction. Hiding resets the retained height. Final empty results
+close the menu when published.
+
+`menu.inverse` controls the visible row order in Insert and command-line
+modes:
+
+- `"auto"` (default): reverse above the input, keeping the first-ranked
+  candidate
+closest to the input; use normal order below.
+- `true`: always reverse the visible rows.
+- `false`: always show normal top-to-bottom order.
+
+Ranking, preselection, acceptance and selection identity remain the same. In a
+reversed menu, downward keys still move down and upward keys still move up;
+paging and boundary clamping follow the same screen directions. Retained blank
+rows stay opposite the first item.
+
+Automatic preselection follows the latest first-ranked item, including higher
+ranked results from slower providers. Navigation marks a manual selection,
+preserved by item identity during refresh. If it disappears, selection/docs
+clear and accept returns false; subsequent updates do not automatically
+reselect it. Navigate again to choose an item. Typing/backspace restores the
+configured preselect behavior; `preselect=false` continues to leave items
+unselected.
+
+After primary acceptance, `User CompletionToolsAccept` fires with `args.data`
+containing `item`, `source`, `bufnr` and optional `client_id`. Private item
+metadata is omitted. Partial acceptance also provides `partial = "word" |
+"line"` and the inserted `text`. `dispose()` closes UI, cancels work, releases
+caches and restores mappings.
 
 vim:tw=78:ts=8:noet:ft=help:norl:
