@@ -503,6 +503,26 @@
         "tests/words.lua"
       ],
       "timeout": 90
+    },
+    {
+      "name": "source_selection",
+      "suite": "unit",
+      "command": [
+        "{nvim}",
+        "--headless",
+        "-u",
+        "tests/minimal_init.lua",
+        "-i",
+        "NONE",
+        "-n",
+        "-l",
+        "tests/source_selection.lua"
+      ],
+      "files": [
+        "tests/minimal_init.lua",
+        "tests/source_selection.lua"
+      ],
+      "timeout": 90
     }
   ],
   "support": {

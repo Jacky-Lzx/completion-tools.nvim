@@ -146,3 +146,7 @@ sources can extend the plugin, but it is not a drop-in replacement for every Bli
 The matcher supports ASCII-insensitive prefixes, subsequences and camel-case
 boundary bonuses. It does not perform typo correction or Unicode case folding;
 the separate spell source offers native spelling corrections.
+
+## Completion integration lifecycle
+
+`require("completion_tools.source_selection")` is a UI-independent API: `sources(config, ctx)`, `active_sources(config, ctx)`, `cycle(config, direction, ctx)`, `toggle_source(config, name, ctx)` and `reset(ctx)`. `config.groups` lists extra source groups after dynamic defaults. Context uses `bufnr`. Manual overrides remain buffer-local until reset; returned lists are copies.
