@@ -529,6 +529,33 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
                 assert snapshot["cmdline"] == "norm", snapshot
             os.write(primary, b"\x1b")
             wait(lambda s: s["mode"] == "n" and not s["visible"], "leave search")
+        # Reproduce empty cite arguments with >50 snippets and both LSP reply orders.
+        for upwards, preferred_first in ((False, False), (True, True)):
+            command = f":lua completion_tui_citations({str(upwards).lower()}, {str(preferred_first).lower()})\r"
+            os.write(primary, command.encode())
+            wait(lambda s: s["mode"] == "n" and s["line"] == "", "citation fixture")
+            os.write(primary, b"A\\cite{")
+            wait(lambda s: s["visible"] and s.get("citation", {}).get("replies") == 0
+                 and len(s["citation"]["sources"]) == 50, "snippet-only citation frame")
+            interim = wait(lambda s: s.get("citation", {}).get("replies") == 1
+                           and s["citation"]["sources"][0] in ("texquill", "latex_lsp_human"),
+                           "first LSP replaces snippets at the top")
+            assert interim["citation"]["sources"][0] == ("latex_lsp_human" if preferred_first else "texquill"), interim
+            snapshot = wait(lambda s: s.get("citation", {}).get("replies") == 2
+                            and s["citation"]["sources"][:2] == ["latex_lsp_human", "texquill"]
+                            and "latex_lsp_human" in "\n".join(s.get("menu_rows", [])),
+                            "final client order and terminal source labels")
+            assert len(snapshot["citation"]["sources"]) == 50, snapshot
+            assert all(source == "snippets" for source in snapshot["citation"]["sources"][2:]), snapshot
+            rows = snapshot["menu_rows"]
+            assert "latex_lsp_human" in rows[-1 if upwards else 0], snapshot
+            assert "texquill" in rows[-2 if upwards else 1], snapshot
+            assert snapshot["mode"] == "i" and snapshot["line"] == "\\cite{", snapshot
+            os.write(primary, b"\t!")
+            wait(lambda s: s["mode"] == "i" and s["line"] == "\\cite{Peng18!" and not s["visible"],
+                 "preferred citation acceptance and following input")
+            os.write(primary, b"\x1b")
+            wait(lambda s: s["mode"] == "n" and not s["visible"], "citation cleanup")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:

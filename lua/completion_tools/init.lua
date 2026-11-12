@@ -514,6 +514,7 @@ local function request(manual, override, select_first)
         items = items,
         source_id = id,
         priority = priorities[id],
+        client_order = id == "lsp" and configured.client_order or nil,
         score_offset = configured.score_offset or state.providers[id].score_offset or 0,
         start_col = response.start_col or ctx.start_col,
         context = response.context or ctx,

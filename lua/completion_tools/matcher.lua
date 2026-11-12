@@ -67,13 +67,29 @@ local function better(a, b)
   if a.score ~= b.score then
     return a.score > b.score
   end
+  -- sortText is local to a provider/client, not a cross-source priority.
+  if a.group.priority ~= b.group.priority then
+    return a.group.priority < b.group.priority
+  end
+  if a.group.source_id ~= b.group.source_id then
+    return a.group.source_id < b.group.source_id
+  end
+  if a.client_priority ~= b.client_priority then
+    return a.client_priority < b.client_priority
+  end
+  if a.client_name ~= b.client_name then
+    return a.client_name < b.client_name
+  end
+  if a.client_id ~= b.client_id then
+    return a.client_id < b.client_id
+  end
   local ai, bi = a.item, b.item
   local as, bs = ai.sortText or ai.label, bi.sortText or bi.label
   if as ~= bs then
     return as < bs
   end
-  if a.group.priority ~= b.group.priority then
-    return a.group.priority < b.group.priority
+  if ai.label ~= bi.label then
+    return ai.label < bi.label
   end
   return a.index < b.index
 end
@@ -114,6 +130,10 @@ function M.filter(groups, ctx, limit, opts)
   end
   local query_cache = {}
   for _, group in ipairs(groups) do
+    local client_priorities = {}
+    for priority, name in ipairs(group.client_order or {}) do
+      client_priorities[name] = priority
+    end
     local query = query_cache[group.start_col]
     if not query then
       query = lower(ctx.before:sub(group.start_col + 1))
@@ -141,43 +161,47 @@ function M.filter(groups, ctx, limit, opts)
         end
         -- Exclude the word being typed from the buffer source only.
         local root = heap[1]
-        local sort_key = item.sortText or item.label
-        local competitive = #heap < limit
-          or score > root.score
-          or (
-            score == root.score
-            and (
-              sort_key < (root.item.sortText or root.item.label)
-              or (
-                sort_key == (root.item.sortText or root.item.label) and group.priority < root.group.priority
-              )
-            )
-          )
-        if competitive and not (group.source_id == "buffer" and item.label == ctx.prefix) then
-          local key = identity.key(item)
-          local candidate = { item = item, group = group, score = score, key = key, index = index }
-          local existing = keys[key]
-          if existing then
-            if better(candidate, heap[existing]) then
-              heap[existing] = candidate
-              down(existing)
-            end
-          elseif #heap < limit then
-            heap[#heap + 1] = candidate
-            local i = #heap
-            keys[key] = i
-            while i > 1 do
-              local parent = math.floor(i / 2)
-              if not better(heap[parent], heap[i]) then
-                break
+        if
+          (#heap < limit or score >= root.score)
+          and not (group.source_id == "buffer" and item.label == ctx.prefix)
+        then
+          local candidate = {
+            item = item,
+            group = group,
+            score = score,
+            index = index,
+            client_priority = client_priorities[item._client_name] or math.huge,
+            client_name = item._client_name or "",
+            client_id = item._client_id or 0,
+          }
+          -- Avoid computing semantic identities for equal-score candidates
+          -- already below the top-K cutoff (notably empty-query word lists).
+          if #heap < limit or better(candidate, root) then
+            local key = identity.key(item)
+            candidate.key = key
+            local existing = keys[key]
+            if existing then
+              if better(candidate, heap[existing]) then
+                heap[existing] = candidate
+                down(existing)
               end
-              swap(parent, i)
-              i = parent
+            elseif #heap < limit then
+              heap[#heap + 1] = candidate
+              local i = #heap
+              keys[key] = i
+              while i > 1 do
+                local parent = math.floor(i / 2)
+                if not better(heap[parent], heap[i]) then
+                  break
+                end
+                swap(parent, i)
+                i = parent
+              end
+            elseif better(candidate, heap[1]) then
+              keys[heap[1].key] = nil
+              heap[1], keys[key] = candidate, 1
+              down(1)
             end
-          elseif better(candidate, heap[1]) then
-            keys[heap[1].key] = nil
-            heap[1], keys[key] = candidate, 1
-            down(1)
           end
         end
       end

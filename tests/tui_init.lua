@@ -8,6 +8,76 @@ vim.api.nvim_win_set_cursor(0, { 80, 0 })
 vim.cmd("normal! zb")
 require("completion-tools").setup({ sources = { "buffer" }, min_keyword_length = 0 })
 vim.api.nvim_set_hl(0, "Comment", { fg = "#a0a0a0" })
+local original_get_clients = vim.lsp.get_clients
+function _G.completion_tui_citations(upwards, preferred_first)
+  local lines = {}
+  for i = 1, 80 do
+    lines[i] = ""
+  end
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+  vim.api.nvim_win_set_cursor(0, { upwards and 80 or 1, 0 })
+  vim.cmd(upwards and "normal! zb" or "normal! zt")
+  _G.completion_citation = { replies = 0 }
+  local clients = {}
+  for i, name in ipairs({ "texquill", "latex_lsp_human" }) do
+    local client = {
+      id = 800 + i,
+      name = name,
+      offset_encoding = "utf-16",
+      server_capabilities = { completionProvider = { triggerCharacters = { "{" } } },
+    }
+    function client:request(_, params, callback)
+      local fast = (self.name == "latex_lsp_human") == preferred_first
+      local timer = vim.defer_fn(function()
+        completion_citation.replies = completion_citation.replies + 1
+        local point = params.position
+        callback(nil, {
+          {
+            label = "Peng18",
+            kind = 18,
+            sortText = self.name == "texquill" and "00Peng18" or nil,
+            detail = self.name,
+            textEdit = { newText = "Peng18", range = { start = point, ["end"] = point } },
+          },
+        })
+      end, fast and 120 or 320)
+      self.timer = timer
+      return true, 1
+    end
+    function client:cancel_request()
+      if self.timer and not self.timer:is_closing() then
+        self.timer:stop()
+        self.timer:close()
+      end
+    end
+    clients[#clients + 1] = client
+  end
+  vim.lsp.get_clients = function(filter)
+    if filter and filter.method == "textDocument/completion" then
+      return clients
+    end
+    return original_get_clients(filter)
+  end
+  local snippets = {}
+  for i = 1, 70 do
+    snippets[i] = { label = string.format("snippet%02d", i), kind = 15, sortText = string.format("%010d", i) }
+  end
+  require("completion-tools").setup({
+    sources = { "lsp", "snippets" },
+    trigger_characters = { "{" },
+    min_keyword_length = 0,
+    menu = { inverse = "auto", max_height = 8, min_width = 40 },
+    providers = {
+      lsp = { score_offset = 60, client_order = { "latex_lsp_human", "texquill" } },
+      snippets = {
+        score_offset = 60,
+        complete = function(_, cb)
+          cb({ items = snippets })
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_history()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -809,6 +879,12 @@ timer:start(
         data.visible and (#cmp.get_items() == 0 or vim.trim(table.concat(data.menu_rows or {}, "")) == "")
       then
         stats.blank = stats.blank + 1
+      end
+    end
+    if completion_citation then
+      data.citation = { replies = completion_citation.replies, sources = {} }
+      for _, entry in ipairs(cmp.get_items()) do
+        data.citation.sources[#data.citation.sources + 1] = entry._client_name or "snippets"
       end
     end
     data.empty_menu = completion_empty_menu

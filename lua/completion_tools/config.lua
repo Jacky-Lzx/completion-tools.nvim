@@ -197,6 +197,20 @@ function M.validate(opts)
     end
     visiting[id] = true
     local provider = config.providers[id] or {}
+    if provider.client_order ~= nil then
+      assert(
+        id == "lsp" and type(provider.client_order) == "table" and vim.islist(provider.client_order),
+        "completion-tools: client_order must be an LSP client name list"
+      )
+      local seen = {}
+      for _, name in ipairs(provider.client_order) do
+        assert(
+          type(name) == "string" and name ~= "" and not seen[name],
+          "completion-tools: client_order expects unique nonempty client names"
+        )
+        seen[name] = true
+      end
+    end
     if provider.timeout_ms ~= nil then
       assert(integer(provider.timeout_ms, 0), "completion-tools: invalid provider timeout_ms")
     end
