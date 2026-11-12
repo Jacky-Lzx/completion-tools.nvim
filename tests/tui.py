@@ -556,6 +556,35 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
                  "preferred citation acceptance and following input")
             os.write(primary, b"\x1b")
             wait(lambda s: s["mode"] == "n" and not s["visible"], "citation cleanup")
+        for upwards in (False, True):
+            os.write(primary, f":lua completion_tui_pinned_copilot({str(upwards).lower()})\r".encode())
+            wait(lambda s: s["mode"] == "n" and s["line"] == "" and s.get("pin", {}).get("phase") == 0,
+                 "pinned Copilot fixture")
+            os.write(primary, b"Ax")
+            wait(lambda s: s["visible"] and len(s.get("pin", {}).get("labels", [])) == 50
+                 and s["selected"] == "xLocal01", "ordinary candidates before Copilot arrives")
+            forward = b"\x10" if upwards else b"\x0e"
+            backward = b"\x0e" if upwards else b"\x10"
+            os.write(primary, forward * 3)
+            wait(lambda s: s["selected"] == "xLocal04", "manual choice before Copilot arrives")
+            interim = wait(lambda s: s.get("pin", {}).get("phase") == 1
+                           and s["pin"]["labels"][2] == "xAI1", "first Copilot occupies position three")
+            assert interim["selected"] == "xLocal04" and interim["pin"]["labels"][4] == "xLocal04", interim
+            snapshot = wait(lambda s: s.get("pin", {}).get("phase") == 2
+                            and s["pin"]["labels"][2:5] == ["xAI1", "xAI2", "xAI3"],
+                            "Copilot fills positions three through five")
+            assert len(snapshot["pin"]["labels"]) == 50 and "xAI4" not in snapshot["pin"]["labels"], snapshot
+            assert snapshot["selected"] == "xLocal04" and snapshot["pin"]["labels"][6] == "xLocal04", snapshot
+            rows = snapshot["menu_rows"]
+            for i in range(3):
+                assert f"xAI{i + 1}" in rows[-3 - i if upwards else 2 + i], snapshot
+            os.write(primary, backward * 4)
+            wait(lambda s: s["selected"] == "xAI1", "navigate to pinned Copilot without inserting")
+            os.write(primary, b"\t!")
+            wait(lambda s: s["line"] == "xAI1!" and s["mode"] == "i" and not s["visible"],
+                 "accept pinned suggestion and continue typing")
+            os.write(primary, b"\x1b")
+            wait(lambda s: s["mode"] == "n" and not s["visible"], "pinned Copilot cleanup")
         os.write(primary, b":qa!\r")
         deadline = time.monotonic() + 4
         while child.poll() is None and time.monotonic() < deadline:

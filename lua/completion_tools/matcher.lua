@@ -225,4 +225,56 @@ function M.filter(groups, ctx, limit, opts)
   return result
 end
 
+-- Fixed provider blocks are placed after matching, before the global cutoff.
+-- Rank each block separately so low-scoring AI suggestions survive a full menu.
+function M.select(groups, ctx, limit, opts)
+  local ordinary, blocks = {}, {}
+  for _, group in ipairs(groups) do
+    if ctx.mode ~= "cmdline" and group.insert_at then
+      blocks[#blocks + 1] = { group = group, items = M.filter({ group }, ctx, limit, opts) }
+    else
+      ordinary[#ordinary + 1] = group
+    end
+  end
+  if #blocks == 0 then
+    return M.filter(groups, ctx, limit, opts)
+  end
+  table.sort(blocks, function(a, b)
+    if a.group.insert_at ~= b.group.insert_at then
+      return a.group.insert_at < b.group.insert_at
+    end
+    if a.group.priority ~= b.group.priority then
+      return a.group.priority < b.group.priority
+    end
+    return a.group.source_id < b.group.source_id
+  end)
+  local extra = 0
+  for _, block in ipairs(blocks) do
+    extra = extra + #block.items
+  end
+  -- Oversample ordinary candidates so removing cross-source duplicates can still
+  -- fill the menu. No placeholders are created while a source is pending/empty.
+  local items = M.filter(ordinary, ctx, limit + extra, opts)
+  local next_at = 1
+  for _, block in ipairs(blocks) do
+    if #block.items > 0 then
+      local at = math.min(math.max(block.group.insert_at, next_at), #items + 1)
+      for i, entry in ipairs(block.items) do
+        table.insert(items, at + i - 1, entry)
+      end
+      next_at = at + #block.items
+    end
+  end
+  local result, seen = {}, {}
+  for _, entry in ipairs(items) do
+    if not seen[entry.key] then
+      result[#result + 1], seen[entry.key] = entry, true
+      if #result == limit then
+        break
+      end
+    end
+  end
+  return result
+end
+
 return M

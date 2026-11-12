@@ -44,3 +44,32 @@ preference list; no language server names are built into the plugin. Numeric
 `sortText` values from one server or snippet provider cannot displace another
 source/client's equally scored candidates. Menu inversion changes only the painted
 row order, not candidate priority or the top-K cutoff.
+
+## Fixed provider positions
+
+Set `providers.<id>.insert_at` to a positive, one-based candidate position in Insert
+mode. Combine it with `max_items` to bound the block:
+
+```lua
+require("completion-tools").setup({
+  sources = { "lsp", "snippets", "copilot" },
+  providers = { copilot = { insert_at = 3, max_items = 3 } },
+})
+```
+
+This places up to three matching Copilot candidates at logical positions 3–5,
+regardless of their score relative to other providers. Ordinary candidates retain
+their ranked order around the block. Each provider block keeps its own ranked
+order. Placement happens before the global `max_items` cutoff, so a full menu
+cannot exclude a low-scoring positioned source. The default is no fixed position.
+
+With fewer than two ordinary candidates, the block follows those available;
+empty or pending sources reserve no blank rows. Short blocks use only their
+actual length. Menu inversion reverses painted rows only: positions refer to the logical
+candidate list, independently of screen direction. Manual selections retain their
+identity as asynchronous candidates arrive. Command-line sorting is unchanged.
+
+Multiple positioned blocks sort by requested position, then active source order.
+Overlapping blocks follow the earlier block without interleaving. Identical
+semantic candidates appear once, keeping their first occurrence in the composed
+list. Positions beyond the final menu cutoff are not visible.

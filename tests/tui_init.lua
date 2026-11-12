@@ -78,6 +78,56 @@ function _G.completion_tui_citations(upwards, preferred_first)
     },
   })
 end
+function _G.completion_tui_pinned_copilot(upwards)
+  local lines = {}
+  for i = 1, 80 do
+    lines[i] = ""
+  end
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, lines)
+  vim.api.nvim_win_set_cursor(0, { upwards and 80 or 1, 0 })
+  vim.cmd(upwards and "normal! zb" or "normal! zt")
+  completion_pin = { phase = 0 }
+  require("completion-tools").setup({
+    sources = { "regular", "copilot" },
+    copilot = { show_status = false },
+    menu = { max_height = 8, inverse = "auto" },
+    providers = {
+      regular = {
+        score_offset = 60,
+        complete = function(_, cb)
+          local items = {}
+          for i = 1, 70 do
+            items[i] = { label = string.format("xLocal%02d", i) }
+          end
+          cb({ items = items })
+        end,
+      },
+      copilot = {
+        score_offset = -5000,
+        insert_at = 3,
+        max_items = 3,
+        complete = function(_, cb)
+          local first = vim.defer_fn(function()
+            completion_pin.phase = 1
+            cb({ items = { { label = "xAI1" } }, pending = true })
+          end, 600)
+          local rest = vim.defer_fn(function()
+            completion_pin.phase = 2
+            cb({ items = { { label = "xAI1" }, { label = "xAI2" }, { label = "xAI3" }, { label = "xAI4" } } })
+          end, 1000)
+          return function()
+            for _, timer in ipairs({ first, rest }) do
+              if not timer:is_closing() then
+                timer:stop()
+                timer:close()
+              end
+            end
+          end
+        end,
+      },
+    },
+  })
+end
 function _G.completion_tui_history()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
@@ -885,6 +935,12 @@ timer:start(
       data.citation = { replies = completion_citation.replies, sources = {} }
       for _, entry in ipairs(cmp.get_items()) do
         data.citation.sources[#data.citation.sources + 1] = entry._client_name or "snippets"
+      end
+    end
+    if completion_pin then
+      data.pin = { phase = completion_pin.phase, labels = {} }
+      for _, item in ipairs(cmp.get_items()) do
+        data.pin.labels[#data.pin.labels + 1] = item.label
       end
     end
     data.empty_menu = completion_empty_menu

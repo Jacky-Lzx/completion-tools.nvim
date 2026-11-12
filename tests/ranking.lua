@@ -188,3 +188,76 @@ end
 assert(not pcall(config.validate, { providers = { buffer = { client_order = {} } } }))
 assert(pcall(config.validate, { providers = { lsp = { client_order = {} } } }))
 print("ranking: source/client scope, top-K, response permutations and client_order validation passed")
+
+-- Positioned suggestions survive the global cutoff without changing match rules.
+do
+  local function group(id, count, offset, position)
+    local g = {
+      source_id = id,
+      priority = id == "regular" and 1 or 2,
+      score_offset = offset,
+      start_col = 0,
+      insert_at = position,
+      items = {},
+    }
+    for i = 1, count do
+      g.items[i] = { label = string.format("x%s%02d", id, i) }
+    end
+    return g
+  end
+  local ctx = { mode = "insert", before = "x", prefix = "x" }
+  for _, ordinary_count in ipairs({ 0, 1, 2, 70 }) do
+    for ai_count = 0, 3 do
+      local regular = group("regular", ordinary_count, 60)
+      local ai = group("ai", ai_count, -5000, 3)
+      local result = matcher.select({ ai, regular }, ctx, 50)
+      assert(#result == math.min(50, ordinary_count + ai_count))
+      local start = math.min(3, ordinary_count + 1)
+      for i = 1, ai_count do
+        assert(result[start + i - 1].item == ai.items[i])
+      end
+      local next_regular = 1
+      for _, entry in ipairs(result) do
+        if entry.source_id == "regular" then
+          assert(entry.item == regular.items[next_regular])
+          next_regular = next_regular + 1
+        end
+      end
+      -- Command-line completion ignores provider placement.
+      local cmd = matcher.select({ ai, regular }, vim.tbl_extend("force", ctx, { mode = "cmdline" }), 50)
+      assert(vim.deep_equal(cmd, matcher.filter({ ai, regular }, ctx, 50)))
+    end
+  end
+  local regular, ai = group("regular", 70, 60), group("ai", 3, -5000, 3)
+  for _, limit in ipairs({ 1, 2, 3, 4, 5, 50 }) do
+    local result = matcher.select({ ai, regular }, ctx, limit)
+    assert(#result == limit)
+    for i = 1, math.min(2, limit) do
+      assert(result[i].source_id == "regular")
+    end
+    for i = 3, math.min(5, limit) do
+      assert(result[i].source_id == "ai")
+    end
+  end
+  assert(#matcher.select({ ai, regular }, { before = "unmatched", prefix = "unmatched" }, 50) == 0)
+  -- Deduplication across blocks retains enough ordinary candidates to fill K.
+  ai.items[1] = regular.items[1]
+  local result = matcher.select({ ai, regular }, ctx, 50)
+  local seen = {}
+  assert(#result == 50)
+  for _, entry in ipairs(result) do
+    assert(not seen[entry.key])
+    seen[entry.key] = true
+  end
+  local second = group("second", 2, -6000, 3)
+  result = matcher.select({ second, ai, regular }, ctx, 50)
+  local reverse = matcher.select({ regular, ai, second }, ctx, 50)
+  assert(vim.deep_equal(result, reverse), "overlapping blocks depended on callback order")
+end
+for _, position in ipairs({ 0, -1, 1.5, "3", math.huge, false }) do
+  assert(not pcall(config.validate, { providers = { copilot = { insert_at = position } } }))
+end
+assert(pcall(config.validate, { providers = { copilot = { insert_at = 3, max_items = 3 } } }))
+print(
+  "ranking: fixed provider blocks, cutoffs, empty/short sources, deduplication and command-line isolation passed"
+)

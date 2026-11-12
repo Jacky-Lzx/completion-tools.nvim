@@ -197,6 +197,9 @@ function M.validate(opts)
     end
     visiting[id] = true
     local provider = config.providers[id] or {}
+    if provider.insert_at ~= nil then
+      assert(integer(provider.insert_at, 1), "completion-tools: invalid provider insert_at")
+    end
     if provider.client_order ~= nil then
       assert(
         id == "lsp" and type(provider.client_order) == "table" and vim.islist(provider.client_order),

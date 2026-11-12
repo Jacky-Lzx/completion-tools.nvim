@@ -1411,4 +1411,15 @@ sort by name then ID. Match scores, offsets and ranking bonuses remain primary.
 
 Example: providers = { lsp = { client_order = { "preferred_server" } } }
 
+FIXED PROVIDER POSITIONS                 *completion-tools-provider-insert-at*
+
+providers.<id>.insert_at is an optional positive, one-based Insert-mode position.
+Example: providers = { copilot = { insert_at = 3, max_items = 3 } }
+This puts up to three matching suggestions at logical positions 3-5, before the
+global max_items cutoff. Other candidates retain their ranked order. Missing
+ordinary candidates and pending/empty providers create no blank rows. Inverse
+menus reverse only painted rows. Command-line completion ignores insert_at.
+Overlapping blocks follow source order; duplicate candidates keep their first
+composed occurrence. See doc/configuration.md for the full placement contract.
+
 vim:tw=78:ts=8:noet:ft=help:norl:

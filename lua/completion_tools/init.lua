@@ -245,7 +245,7 @@ local function render(pending)
     end
   end
   local previous = selected_entry()
-  local items = matcher.filter(groups, ctx, state.config.max_items, match_options)
+  local items = matcher.select(groups, ctx, state.config.max_items, match_options)
   state.reason = #items > 0 and "ready" or (pending and "pending" or "no_matches")
   state.last_request_reason = state.reason
   -- An empty partial result is not a final "no matches". Keep the last ready
@@ -514,6 +514,7 @@ local function request(manual, override, select_first)
         items = items,
         source_id = id,
         priority = priorities[id],
+        insert_at = configured.insert_at,
         client_order = id == "lsp" and configured.client_order or nil,
         score_offset = configured.score_offset or state.providers[id].score_offset or 0,
         start_col = response.start_col or ctx.start_col,
