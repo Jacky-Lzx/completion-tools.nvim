@@ -26,6 +26,7 @@ local function normalise(result, client)
         end
       end
       item._client_id, item._encoding = client.id, client.offset_encoding
+      item._client_name = client.name
       items[#items + 1] = item
     end
   end
@@ -138,6 +139,7 @@ function M.new()
     end
     local raw = vim.tbl_extend("force", {}, entry.item)
     raw._client_id, raw._encoding = nil, nil
+    raw._client_name = nil
     local finished = false
     local ok, id = client:request("completionItem/resolve", raw, function(err, item)
       finished = true

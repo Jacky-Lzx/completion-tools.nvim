@@ -49,6 +49,20 @@ test("column replacement, validation and grouping", function()
   local line = render.row(layout, 1, items[1], ctx, cfg.menu)
   assert(line:find("x   LSP", 1, true))
 end)
+test("LSP source column shows the originating client with a generic fallback", function()
+  local items = {
+    entry({ label = "alpha", _client_name = "lua_ls" }),
+    entry({ label = "beta", _client_name = "texlab" }),
+    entry({ label = "gamma" }),
+  }
+  local original = vim.deepcopy(items)
+  local layout = render.prepare(items, opts, 100)
+  for i, name in ipairs({ "lua_ls", "texlab", "LSP" }) do
+    local line = render.row(layout, i, items[i], ctx, opts)
+    assert(line:find(name, 1, true), line)
+  end
+  eq(original, items)
+end)
 test("stable columns, Unicode clipping and immutable CompletionItems", function()
   local items = {
     entry({

@@ -65,11 +65,15 @@ local function fields(entry, opts)
   end
   local code = label .. (opts.label_details and not file and detail or "")
   code = text.clean(code, opts.max_label_bytes)
+  local source = source_names[entry.source_id] or entry.source_id
+  if entry.source_id == "lsp" and type(item._client_name) == "string" and item._client_name ~= "" then
+    source = item._client_name
+  end
   return {
     kind_icon = text.clean(icon, 32),
     label = code,
     kind = name,
-    source = text.clean(source_names[entry.source_id] or entry.source_id, opts.max_label_bytes),
+    source = text.clean(source, opts.max_label_bytes),
     label_detail = detail,
     label_description = metadata,
     file = file,

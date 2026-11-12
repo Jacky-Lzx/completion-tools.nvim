@@ -151,6 +151,9 @@ characters, and rank below literal matches. Command-line matching/order is
 unaffected.
 
                                                     *completion-tools-sources*
+The menu's source column shows the originating LSP client name (for example,
+lua_ls or texlab), falling back to LSP when the name is unavailable.
+
 Built-ins: lsp, path, buffer, snippets; optional Ex cmdline. Opt-in sources:
 dictionary, spell, copilot. All are independent of Blink.
 snippets.preset="luasnip" enables the optional literal-trigger LuaSnip

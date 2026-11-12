@@ -438,6 +438,8 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
             os.write(primary, b"i(\x00")
             snapshot = wait(lambda s: s["visible"] and s.get("selected") == "alpha",
                             "manual completion after blocked symbol")
+            snapshot = wait(lambda s: "lua_ls" in s.get("menu_screen", "")
+                            and "texlab" in "\n".join(s.get("menu_rows", [])), "LSP client names paint in terminal")
             window = snapshot["menu"]["win"]
             selected = "alpha" if attempt % 2 == 0 else "alpine"
             if selected == "alpine":

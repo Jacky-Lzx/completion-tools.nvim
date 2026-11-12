@@ -442,7 +442,7 @@ test("LSP empty partial responses retain pending state across clients", function
   local ok, err = xpcall(function()
     local clients = {}
     for i = 1, 2 do
-      clients[i] = { id = i, offset_encoding = "utf-8", server_capabilities = {} }
+      clients[i] = { id = i, name = "server" .. i, offset_encoding = "utf-8", server_capabilities = {} }
       clients[i].request = function(_, _, _, callback)
         callbacks[i] = callback
         return true, i
@@ -463,6 +463,7 @@ test("LSP empty partial responses retain pending state across clients", function
     callbacks[2](nil, { { label = "alpha" } })
     assert(not published[2].pending and published[2].reusable)
     eq("alpha", published[2].items[1].label)
+    eq("server2", published[2].items[1]._client_name)
   end, debug.traceback)
   vim.lsp.get_clients = original
   assert(ok, err)

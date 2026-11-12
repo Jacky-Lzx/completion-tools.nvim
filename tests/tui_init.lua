@@ -101,18 +101,23 @@ function _G.completion_tui_manual()
   local maps = vim.deepcopy(require("completion_tools.config").defaults.keymap)
   maps["<C-Space>"] = {
     function(cmp)
-      return cmp.show({ sources = { "manual" } })
+      return cmp.show({ sources = { "lsp" } })
     end,
   }
   require("completion-tools").setup({
     sources = {},
     keymap = maps,
     providers = {
-      manual = {
+      lsp = {
         complete = function(_, callback)
           completion_manual.calls = completion_manual.calls + 1
           local function publish()
-            callback({ items = { { label = "alpha" }, { label = "alpine" } } })
+            callback({
+              items = {
+                { label = "alpha", _client_name = "lua_ls" },
+                { label = "alpine", _client_name = "texlab" },
+              },
+            })
           end
           if completion_manual.calls == 1 then
             publish()
