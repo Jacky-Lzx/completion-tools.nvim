@@ -102,6 +102,41 @@ local line = string.rep("中", 2000)
 vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line })
 opts.max_bytes = 7
 doc.highlight(buf, ns, { line }, { { row = 0, first = 0, last = #line, filetype = "unknown" } }, opts)
+-- Parse whole blocks, preserving blank rows and keeping adjacent fences separate.
+local block_lines, block_ranges = doc.build({
+  documentation = "```bibtex\n@article{中,\n\n  title = {First\nsecond},\n}\n```\n```bibtex\n@book{other}\n```",
+}, "tex")
+local first = block_ranges[1].block
+eq({ "@article{中,", "", "  title = {First", "second},", "}" }, first.lines)
+assert(block_ranges[#block_ranges].block ~= first)
+local highlight = require("completion_tools.highlight")
+local original_block = highlight.block
+local seen = {}
+highlight.block = function(text, ft)
+  eq("bibtex", ft)
+  seen[#seen + 1] = text
+  if text:find("First", 1, true) then
+    return { { row = 2, first = 11, end_row = 3, last = 6, group = "@string.bibtex", priority = 130 } }
+  end
+  return {}
+end
+vim.api.nvim_buf_set_lines(buf, 0, -1, false, block_lines)
+vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
+opts.max_bytes = 4096
+doc.highlight(buf, ns, block_lines, block_ranges, opts)
+highlight.block = original_block
+eq(2, #seen)
+local multiline = false
+for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
+  if mark[4].hl_group == "@string.bibtex" then
+    eq(2, mark[2])
+    eq(11, mark[3])
+    eq(3, mark[4].end_row)
+    eq(6, mark[4].end_col)
+    multiline = true
+  end
+end
+assert(multiline)
 vim.api.nvim_buf_delete(buf, { force = true })
 print("documentation: code, Markdown conceal/styles/rules, literal text and UTF-8 bounds passed")
 

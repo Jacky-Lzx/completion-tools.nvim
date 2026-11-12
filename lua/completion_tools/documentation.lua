@@ -144,13 +144,17 @@ function M.build(item, filetype)
   local function append(line, display)
     lines[#lines + 1], visible[#visible + 1] = line, display or line
   end
-  local function code(line, ft)
+  local function code(line, ft, block)
     append(line)
+    if block then
+      block.lines[#block.lines + 1] = line
+    end
     ranges[#ranges + 1] = {
       row = #lines - 1,
       first = 0,
       last = #line,
       filetype = ft,
+      block = block,
     }
   end
   local file = item.kind == 17 or item.kind == 19
@@ -181,7 +185,7 @@ function M.build(item, filetype)
     if #lines > 0 then
       append("")
     end
-    local opened, language
+    local opened, language, block
     for _, line in ipairs(vim.split(value, "\n", { plain = true })) do
       local marker, info
       if markdown then
@@ -191,10 +195,11 @@ function M.build(item, filetype)
         if marker and marker:sub(1, 1) == opened:sub(1, 1) and #marker >= #opened and not info:find("%S") then
           opened = nil
         else
-          code(line, language)
+          code(line, language, block)
         end
       elseif marker then
         opened, language = marker, info:match("^%s*([^%s]+)") or filetype
+        block = { row = #lines, filetype = language, lines = {} }
       elseif markdown and (line:match("^    ") or line:match("^\t")) then
         code(line, filetype)
       elseif markdown and rule(line) then
@@ -244,7 +249,11 @@ function M.highlight(buf, ns, lines, ranges, opts, width)
   local highlight = require("completion_tools.highlight")
   -- Menu callbacks receive real candidate entries, so they do not run for documents.
   opts = vim.tbl_extend("force", opts, { custom = false })
+  local blocks = {}
   for _, range in ipairs(ranges) do
+    if range.block then
+      blocks[range.block] = true
+    end
     if range.rule then
       vim.api.nvim_buf_set_extmark(buf, ns, range.row, range.first, {
         end_col = range.last,
@@ -271,13 +280,26 @@ function M.highlight(buf, ns, lines, ranges, opts, width)
       if #original > opts.max_bytes then
         code = code:sub(1, -4)
       end
-      for _, span in ipairs(highlight.get(code, 0, { item = {} }, { filetype = range.filetype or "" }, opts)) do
+      local line_opts = range.block and vim.tbl_extend("force", opts, { treesitter = false }) or opts
+      for _, span in
+        ipairs(highlight.get(code, 0, { item = {} }, { filetype = range.filetype or "" }, line_opts))
+      do
         vim.api.nvim_buf_set_extmark(buf, ns, range.row, range.first + span[1], {
           end_col = range.first + span[2],
           hl_group = span[3],
           priority = span[4],
         })
       end
+    end
+  end
+  for block in pairs(blocks) do
+    for _, span in ipairs(highlight.block(table.concat(block.lines, "\n"), block.filetype, opts)) do
+      vim.api.nvim_buf_set_extmark(buf, ns, block.row + span.row, span.first, {
+        end_row = block.row + span.end_row,
+        end_col = span.last,
+        hl_group = span.group,
+        priority = span.priority,
+      })
     end
   end
 end
