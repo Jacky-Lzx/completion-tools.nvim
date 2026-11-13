@@ -455,6 +455,10 @@ function M.documentation(item, config)
     close_doc_view()
   end
   doc_buf = scratch(doc_buf, "markdown")
+  -- FileType hooks may start a native Markdown highlighter. Our rendered buffer
+  -- has no code fences, so it would conceal source brackets as shortcut links.
+  -- Documentation owns both code highlighting and prose decorations below.
+  vim.treesitter.stop(doc_buf)
   if not reuse then
     vim.bo[doc_buf].syntax = ""
     vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)

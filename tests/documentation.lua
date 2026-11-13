@@ -1,3 +1,15 @@
+-- Optional real-parser regression for configurations that start Tree-sitter on FileType.
+local native_started = 0
+if vim.env.COMPLETION_DOC_PARSER_RTP then
+  vim.opt.rtp:append(vim.env.COMPLETION_DOC_PARSER_RTP)
+  vim.api.nvim_create_autocmd("FileType", {
+    pattern = "markdown",
+    callback = function(ev)
+      vim.treesitter.start(ev.buf)
+      native_started = native_started + 1
+    end,
+  })
+end
 local doc = require("completion_tools.documentation")
 local function eq(expected, actual)
   assert(vim.deep_equal(expected, actual), vim.inspect({ expected = expected, actual = actual }))
@@ -147,6 +159,10 @@ local cfg = config.validate({
   documentation = {
     on_render = function(ctx)
       assert(vim.api.nvim_win_get_buf(ctx.win) == ctx.buf and ctx.item.documentation == "first")
+      assert(
+        not vim.treesitter.highlighter.active[ctx.buf],
+        "native Markdown parser must not conceal rendered code"
+      )
       calls = calls + 1
     end,
   },
@@ -168,6 +184,9 @@ assert(ui.documentation({ documentation = "first" }, cfg) and calls == 2)
 ui.hide()
 assert(not ui.documentation({ documentation = "first" }, cfg) and calls == 2)
 ui.dispose()
+if vim.env.COMPLETION_DOC_PARSER_RTP then
+  assert(native_started > 0, "real Markdown highlighter was not exercised")
+end
 print("documentation render hook: current window, re-render, hidden state and validation passed")
 
 vim.cmd("qa!")

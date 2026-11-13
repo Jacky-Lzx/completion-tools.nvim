@@ -69,3 +69,12 @@ run `python3 scripts/sync-test-runner.py --check` there to detect drift, or use
 README Lua syntax, help entry points and isolated native setup. It does not
 download dependencies or write generated tags into the checkout. The canonical
 checker is maintained with the shared runner in plugin-tools.nvim.
+
+To exercise documentation rendering with a real Markdown highlighter started by a
+`FileType` hook, point to an existing runtime directory containing the `markdown`
+and `markdown_inline` parsers (no installation is performed):
+
+```sh
+COMPLETION_DOC_PARSER_RTP=/path/to/parser-runtime \
+  nvim --headless -u tests/minimal_init.lua -i NONE -l tests/documentation.lua
+```
