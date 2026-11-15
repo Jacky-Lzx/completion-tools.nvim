@@ -33,9 +33,11 @@ local function fields(entry, opts)
   -- Older servers put a one-line signature in detail instead of labelDetails.
   if not detail and type(item.detail) == "string" and not item.detail:find("[\r\n]") then
     detail = item.detail
-    -- Legacy detail also carries prose. Only treat recognizable signatures or
-    -- callable details as code; labelDetails.detail is explicitly a signature.
-    detail_code = item.kind == 2 or item.kind == 3 or item.kind == 4 or detail:find("^%s*[%(:<{%[]") ~= nil
+    -- Kind describes the candidate, not its detail: even functions can carry
+    -- prose here. Require signature syntax rather than a callable kind.
+    detail_code = detail:find("^%s*[%(:<{%[]") ~= nil
+      or detail:find("^%s*function%s+[%w_.:]+%s*%(") ~= nil
+      or detail:find("^%s*fn%s+[%w_]+%s*%(") ~= nil
     if detail:sub(1, #label) == label then
       detail = detail:sub(#label + 1)
       detail_code = detail_code or detail:find("^%s*[%(:<{%[]") ~= nil

@@ -125,26 +125,29 @@ end)
 test("legacy prose stays muted in inline and separate details while signatures retain syntax", function()
   for _, columns in ipairs({ { { "label" } }, { { "label" }, { "label_detail" } } }) do
     local menu = config.validate({ menu = { columns = columns, max_width = 160 } }).menu
-    for _, detail in ipairs({
-      "Requested image width",
-      "PDF box used for natural image dimensions",
-      "Use the high-resolution bounding box",
-    }) do
-      local e = entry({ label = "width", kind = 10, detail = detail })
-      local original = vim.deepcopy(e)
-      local layout = render.prepare({ e }, menu, 160)
-      local line, spans = render.row(layout, 1, e, { before = "wi", filetype = "tex" }, menu)
-      local first = assert(line:find(detail, 1, true)) - 1
-      local muted = false
-      for _, span in ipairs(spans) do
-        if span[1] < first + #detail and span[2] > first then
-          eq("CompletionToolsSource", span[3])
-          muted = span[1] <= first and span[2] >= first + #detail
+    for _, kind in ipairs({ 2, 3, 4, 10, 12, 18 }) do
+      for _, detail in ipairs({
+        "Requested image width",
+        "Include an image [graphicx]",
+        "PDF box used for natural image dimensions",
+        "Use the high-resolution bounding box",
+      }) do
+        local e = entry({ label = "width", kind = kind, detail = detail, _client_name = "latex_lsp_human" })
+        local original = vim.deepcopy(e)
+        local layout = render.prepare({ e }, menu, 160)
+        local line, spans = render.row(layout, 1, e, { before = "wi", filetype = "tex" }, menu)
+        local first = assert(line:find(detail, 1, true)) - 1
+        local muted = false
+        for _, span in ipairs(spans) do
+          if span[1] < first + #detail and span[2] > first then
+            eq("CompletionToolsSource", span[3])
+            muted = span[1] <= first and span[2] >= first + #detail
+          end
         end
+        assert(muted, "prose must have a uniform metadata color")
+        assert(#span_for(spans, "CompletionToolsMatch") > 0)
+        eq(original, e)
       end
-      assert(muted, "prose must have a uniform metadata color")
-      assert(#span_for(spans, "CompletionToolsMatch") > 0)
-      eq(original, e)
     end
     for _, item in ipairs({
       { label = "decode", kind = 3, detail = "function decode(value: string)" },

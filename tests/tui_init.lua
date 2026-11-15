@@ -405,7 +405,14 @@ function _G.completion_tui_prose()
       fixture = {
         complete = function(_, callback)
           callback({
-            items = { { label = "width", kind = 10, detail = "Requested PDF high-resolution width" } },
+            items = {
+              {
+                label = "width",
+                kind = 3,
+                detail = "Requested PDF high-resolution width [graphicx]",
+                _client_name = "latex_lsp_human",
+              },
+            },
           })
         end,
       },

@@ -238,7 +238,7 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         attrs = snapshot["menu_attrs"]
         assert len({attrs[word] for word in ("Requested", "PDF", "high", "-", "resolution")}) == 1, snapshot
         os.write(primary, b"\t\x1b")
-        wait(lambda s: s["line"] == "width" and s["mode"] == "n" and not s["visible"],
+        wait(lambda s: s["line"] == "width()" and s["mode"] == "n" and not s["visible"],
              "prose detail does not change accepted text")
         os.write(primary, b":lua completion_tui_snippet()\r")
         wait(lambda s: s["line"] == "" and s["mode"] == "n", "snippet fixture")
