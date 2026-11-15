@@ -230,6 +230,16 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         os.write(primary, b"\t!\x1b")
         wait(lambda s: s["line"] == "decode(!)" and s["mode"] == "n" and not s["visible"],
              "display-only signature acceptance")
+        os.write(primary, b":lua completion_tui_prose()\r")
+        wait(lambda s: s["line"] == "" and s["mode"] == "n", "prose fixture")
+        os.write(primary, b"iwi")
+        snapshot = wait(lambda s: s["visible"] and "Requested PDF high-resolution width" in s.get("menu_screen", ""),
+                        "prose detail terminal menu")
+        attrs = snapshot["menu_attrs"]
+        assert len({attrs[word] for word in ("Requested", "PDF", "high", "-", "resolution")}) == 1, snapshot
+        os.write(primary, b"\t\x1b")
+        wait(lambda s: s["line"] == "width" and s["mode"] == "n" and not s["visible"],
+             "prose detail does not change accepted text")
         os.write(primary, b":lua completion_tui_snippet()\r")
         wait(lambda s: s["line"] == "" and s["mode"] == "n", "snippet fixture")
         os.write(primary, b"iign")

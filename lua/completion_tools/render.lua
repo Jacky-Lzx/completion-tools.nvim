@@ -28,12 +28,17 @@ local function fields(entry, opts)
   local label = text.clean(item.label, opts.max_label_bytes)
   local details = item.labelDetails or {}
   local detail = details.detail
+  local detail_code = detail ~= nil
   -- Keep display text separate from the CompletionItem used for acceptance.
   -- Older servers put a one-line signature in detail instead of labelDetails.
   if not detail and type(item.detail) == "string" and not item.detail:find("[\r\n]") then
     detail = item.detail
+    -- Legacy detail also carries prose. Only treat recognizable signatures or
+    -- callable details as code; labelDetails.detail is explicitly a signature.
+    detail_code = item.kind == 2 or item.kind == 3 or item.kind == 4 or detail:find("^%s*[%(:<{%[]") ~= nil
     if detail:sub(1, #label) == label then
       detail = detail:sub(#label + 1)
+      detail_code = detail_code or detail:find("^%s*[%(:<{%[]") ~= nil
     elseif detail ~= "" then
       detail = "  " .. detail
     end
@@ -75,6 +80,7 @@ local function fields(entry, opts)
     kind = name,
     source = text.clean(source, opts.max_label_bytes),
     label_detail = detail,
+    detail_code = detail_code,
     label_description = metadata,
     file = file,
     code = code,
@@ -225,11 +231,15 @@ function M.row(layout, index, entry, ctx, opts)
     elseif
       column.name == "source"
       or column.name == "label_description"
-      or (row.file and column.name == "label_detail")
+      or ((row.file or not row.detail_code) and column.name == "label_detail")
     then
       add(start, start + #value, "CompletionToolsSource")
     elseif column.name == "label" or column.name == "label_detail" then
       local code = column.name == "label" and row.code or row.label_detail
+      if column.name == "label" and not row.detail_code then
+        add(start + row.label_bytes, start + #value, "CompletionToolsSource")
+        code = code:sub(1, row.label_bytes)
+      end
       for _, span in
         ipairs(
           highlight.get(code, column.name == "label" and row.label_bytes or 0, entry, ctx, opts.highlight)

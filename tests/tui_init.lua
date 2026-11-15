@@ -394,6 +394,28 @@ function _G.completion_tui_semantic()
   vim.api.nvim_set_hl(0, "@variable.parameter", { fg = "#61afef" })
   vim.api.nvim_set_hl(0, "CompletionToolsSelected", { bg = "#123456" })
 end
+function _G.completion_tui_prose()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.bo.filetype = "tex"
+  require("completion-tools").setup({
+    sources = { "fixture" },
+    documentation = { auto_show = false },
+    menu = { max_width = 100, columns = { { "label" }, { "label_detail" }, { "kind" } } },
+    providers = {
+      fixture = {
+        complete = function(_, callback)
+          callback({
+            items = { { label = "width", kind = 10, detail = "Requested PDF high-resolution width" } },
+          })
+        end,
+      },
+    },
+  })
+  vim.api.nvim_set_hl(0, "CompletionToolsSource", { fg = "#a0a0a0" })
+  vim.api.nvim_set_hl(0, "@type", { fg = "#34d399" })
+  vim.api.nvim_set_hl(0, "@constant", { fg = "#ef4545" })
+  vim.api.nvim_set_hl(0, "@operator", { fg = "#61afef" })
+end
 function _G.completion_tui_snippet()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.bo.filetype = "tex"
@@ -821,6 +843,10 @@ timer:start(
             "alpha",
             "pha",
             "Text",
+            "Requested",
+            "PDF",
+            "high",
+            "resolution",
             "decode",
             "code",
             "string",
