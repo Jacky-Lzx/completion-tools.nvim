@@ -72,7 +72,7 @@ M.defaults = {
     preselect_current_word = true,
     suggest_when_correct = false,
   },
-  snippets = { preset = "default", collection = {} },
+  snippets = { collection = {} },
   copilot = {
     debounce_ms = 150,
     request_mode = "cycling",
@@ -389,33 +389,6 @@ local function validate_documentation(documentation)
   assert(documentation.delay_ms >= 0, "completion-tools: invalid documentation delay")
 end
 
-local function configure_snippets(snippets)
-  assert(snippets.preset == "default" or snippets.preset == "luasnip", "completion-tools: invalid snippets.preset")
-  if snippets.preset ~= "luasnip" then
-    return
-  end
-
-  snippets.expand = snippets.expand
-    or function(text, options)
-      require("luasnip").lsp_expand(text, {
-        indent = not (options and options.insert_text_mode),
-      })
-    end
-  snippets.active = snippets.active
-    or function(direction)
-      return require("luasnip").locally_jumpable(direction)
-    end
-  snippets.jump = snippets.jump
-    or function(direction)
-      local ls = require("luasnip")
-      if ls.locally_jumpable(direction) then
-        ls.jump(direction)
-        return true
-      end
-      return false
-    end
-end
-
 function M.validate(opts)
   assert(type(opts) == "table", "completion-tools: setup expects a table")
   local config = merge_options(opts)
@@ -429,7 +402,7 @@ function M.validate(opts)
   validate_dictionary(config.dictionary)
   validate_spell(config.spell)
   validate_path(config.path)
-  configure_snippets(config.snippets)
+  assert(type(config.snippets) == "table", "completion-tools: invalid snippets")
   return config
 end
 

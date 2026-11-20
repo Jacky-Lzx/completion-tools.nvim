@@ -99,8 +99,8 @@ action. Plain Function/Method items insert complete () with the cursor inside,
 regardless of following text or pair mappings. Existing following ( and server
 snippets retain their layout. Ordinary TextEdit ranges are unchanged. LSP
 insertTextMode=1 preserves whitespace; 2 adjusts continuation indentation. The
-advertised LSP default is 2. Native snippets and LuaSnip retain placeholders
-without double indentation. Custom snippets.expand(text, options) receives
+advertised LSP default is 2. Native snippets retain placeholders without
+double indentation. Custom snippets.expand(text, options) receives
 adjusted text and {insert_text_mode?, indentation, bufnr}; disable engine
 indentation when a mode is present. Non-LSP items without a mode keep their
 previous behavior.
@@ -156,8 +156,7 @@ lua_ls or texlab), falling back to LSP when the name is unavailable.
 
 Built-ins: lsp, path, buffer, snippets; optional Ex cmdline. Opt-in sources:
 dictionary, spell, copilot. All are independent of Blink.
-snippets.preset="luasnip" enables the optional literal-trigger LuaSnip
-adapter. cmdline.enabled=true enables command/search completion; see below.
+Set cmdline.enabled=true to enable command and search completion.
 
 Global timeout_ms=2000 bounds pending async requests; 0 disables the deadline.
 providers[id].timeout_ms overrides it. Timeouts cancel requests, reject late
@@ -537,7 +536,7 @@ in `config.lua` (../lua/completion_tools/config.lua).
         min_keyword_length = 2, max_items = 3, debounce_ms = 60, timeout_ms = 5000,
         sort = "match", preselect_current_word = true, suggest_when_correct = false,
       },
-      snippets = { preset = "default", collection = {} },
+      snippets = { collection = {} },
       copilot = { debounce_ms = 150, max_items = 3 },
       cmdline = {
         enabled = false, auto_show = true, fuzzy = true,
@@ -728,14 +727,13 @@ LSP `insertTextMode=1` preserves supplied whitespace; `2` adjusts continuation
 lines to the receiving indentation while retaining relative indentation. The
 LSP capability advertises default mode `2`; items without an explicit mode
 from LSP use that default. Other sources retain their previous behavior unless
-they specify `insertTextMode`. Native snippets and the LuaSnip preset avoid
-double indentation and retain placeholder editing/jumping.
+they specify `insertTextMode`. Native snippets avoid double indentation and
+retain placeholder editing and jumping.
 
 Custom `snippets.expand(text, options)` callbacks receive already-adjusted
 text and `{ insert_text_mode?, indentation, bufnr }`. When a mode is present,
-disable the engine's own automatic indentation. For example, LuaSnip uses
-`lsp_expand(text, { indent = not options.insert_text_mode })`. The indentation
-modes follow the LSP specification
+disable the engine's own automatic indentation. The indentation modes follow
+the LSP specification
 (https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#insertTextMode).
 
 ==============================================================================
@@ -800,7 +798,8 @@ size and automatic display settings apply to file previews as well.
 ==============================================================================
 SNIPPETS                                 *completion-tools-reference-snippets*
 
-The default preset uses `vim.snippet` and accepts per-filetype definitions:
+The built-in source reads per-filetype definitions from `snippets.collection`
+and uses `vim.snippet` to expand them.
 
 >lua
     snippets = {
@@ -820,20 +819,19 @@ The default preset uses `vim.snippet` and accepts per-filetype definitions:
 <
 
 `collection` may also be `function(ctx) -> table`. Custom engines can
-implement `snippets.expand(text)`, `active(direction)` and `jump(direction)`.
+implement `snippets.expand(text, options)`, `active(direction)` and
+`jump(direction)`.
 
-To use existing LuaSnip definitions:
+With snippet-tools.nvim configured, pass its adapter options to setup.
 
 >lua
-    snippets = { preset = "luasnip" }
+    require("completion-tools").setup(
+      require("snippet_tools.integrations.completion_tools").options()
+    )
 <
 
-Install and configure LuaSnip separately. This preset reads visible, non-regex
-snippets for the current filetype and its extensions, respects
-`show_condition`, and uses LuaSnip for expansion, jumping and LSP snippets. It
-does not read `collection`; regex snippets still use LuaSnip's own expansion
-mechanism. Native snippet selection follows Neovim's input queue: wait for
-placeholder selection to finish before typing replacement text.
+Native snippet selection follows Neovim's input queue. Wait for placeholder
+selection to finish before typing replacement text.
 
 ==============================================================================
 COMMAND LINE                         *completion-tools-reference-command-line*

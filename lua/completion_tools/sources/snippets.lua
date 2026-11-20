@@ -1,9 +1,6 @@
 local M = {}
 
 function M.new(opts)
-  if opts.preset == "luasnip" then
-    return require("completion_tools.sources.snippets.luasnip").new()
-  end
   return {
     score_offset = 30,
     complete = function(ctx, callback)

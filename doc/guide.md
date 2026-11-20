@@ -99,14 +99,13 @@ With command-line completion enabled, `Tab` accepts without executing,
 ```lua
 require("completion-tools").setup({
   sources = { "lsp", "path", "buffer", "snippets" },
-  snippets = { preset = "luasnip" }, -- Optional; requires your LuaSnip setup
   menu = { border = "rounded", max_height = 10 },
   documentation = { delay_ms = 150 },
   cmdline = { enabled = true },
 })
 ```
 
-Keep the default snippet preset to use `vim.snippet` and your own snippet collection.
+Set `snippets.collection` to supply per-filetype definitions for `vim.snippet`.
 See the [configuration guide](configuration.md) for dictionaries, spelling,
 keymaps, menu styling, custom sources and external command-line UI integration.
 
