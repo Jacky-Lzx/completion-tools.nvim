@@ -1,7 +1,7 @@
 local function eq(expected, actual)
   assert(vim.deep_equal(expected, actual), vim.inspect({ expected = expected, actual = actual }))
 end
-local native = require("completion_tools.copilot")
+local native = require("completion_tools.sources.copilot.client")
 local original = native.new
 local requests, cancelled = {}, {}
 local client = { initialized = true }

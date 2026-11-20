@@ -13,7 +13,7 @@ function M.params(ctx, root)
     uri = vim.uri_from_bufnr(buf),
     version = vim.lsp.util.buf_versions[buf] or 0,
     relativePath = root
-        and require("completion_tools.copilot_context").relative(vim.api.nvim_buf_get_name(buf), root)
+        and require("completion_tools.sources.copilot.context").relative(vim.api.nvim_buf_get_name(buf), root)
       or vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":."),
     position = { line = ctx.row, character = vim.str_utfindex(ctx.line, "utf-16", ctx.col, false) },
     tabSize = tabsize,
@@ -36,7 +36,7 @@ function M.new(opts)
   local pending, sequence, last_error, status = {}, 0, nil, nil
   local documents, renaming = {}, {}
   local folders = {}
-  local context = require("completion_tools.copilot_context")
+  local context = require("completion_tools.sources.copilot.context")
   local command = "CompletionToolsCopilot"
   instance = instance + 1
   local group = vim.api.nvim_create_augroup("CompletionToolsCopilot" .. instance, { clear = true })
@@ -266,11 +266,7 @@ function M.new(opts)
       drain(nil)
       return
     elseif action == "status" then
-      vim.notify(
-        vim.inspect(manager.get_status()),
-        vim.log.levels.INFO,
-        { title = "Copilot", filetype = "lua" }
-      )
+      vim.notify(vim.inspect(manager.get_status()), vim.log.levels.INFO, { title = "Copilot", filetype = "lua" })
       return
     end
     manager.ensure(vim.api.nvim_get_current_buf(), function(c)

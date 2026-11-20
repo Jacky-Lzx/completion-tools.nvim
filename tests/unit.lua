@@ -115,13 +115,11 @@ test("command-line fuzzy defaults and opt-out respect native options", function(
   vim.api.nvim_create_user_command("FixtureFuzzyAlpha", function() end, {})
   local function complete(opts)
     local result
-    source
-      .new(opts)
-      .complete({ before = "FxFzAp", prefix = "FxFzAp", completion_type = "command" }, function(reply)
-        result = vim.tbl_map(function(item)
-          return item.label
-        end, reply.items)
-      end)
+    source.new(opts).complete({ before = "FxFzAp", prefix = "FxFzAp", completion_type = "command" }, function(reply)
+      result = vim.tbl_map(function(item)
+        return item.label
+      end, reply.items)
+    end)
     return result
   end
   local ok, err = pcall(function()
@@ -358,21 +356,11 @@ test("UTF-16 cached edit ranges rebase typed suffix correctly", function()
   local ctx = { before = "😀foo", row = 0 }
   eq(
     { start = { line = 0, character = 2 }, ["end"] = { line = 0, character = 5 } },
-    edits.rebase(
-      { start = { line = 0, character = 2 }, ["end"] = { line = 0, character = 4 } },
-      old,
-      ctx,
-      "utf-16"
-    )
+    edits.rebase({ start = { line = 0, character = 2 }, ["end"] = { line = 0, character = 4 } }, old, ctx, "utf-16")
   )
   eq(
     { start = { line = 0, character = 4 }, ["end"] = { line = 0, character = 5 } },
-    edits.rebase(
-      { start = { line = 0, character = 4 }, ["end"] = { line = 0, character = 4 } },
-      old,
-      ctx,
-      "utf-16"
-    )
+    edits.rebase({ start = { line = 0, character = 4 }, ["end"] = { line = 0, character = 4 } }, old, ctx, "utf-16")
   )
 end)
 test("setup and disposal restore prior mappings without clobbering later mappings", function()
@@ -424,12 +412,9 @@ test("async path completion handles Unicode, hidden files and cancellation", fun
     eq(3, #response.items)
   end)
   local cancelled = false
-  local cancel = source.complete(
-    { before = "/unlikely-nonexistent-directory/", col = 32, bufnr = 0 },
-    function()
-      cancelled = true
-    end
-  )
+  local cancel = source.complete({ before = "/unlikely-nonexistent-directory/", col = 32, bufnr = 0 }, function()
+    cancelled = true
+  end)
   cancel()
   vim.wait(30)
   assert(not cancelled)

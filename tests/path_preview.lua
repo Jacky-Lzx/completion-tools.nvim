@@ -47,10 +47,7 @@ assert(vim.deep_equal(original, items["source.lua"]), "Resolve mutated a cached 
 assert(text._path_preview.filetype == "lua" and text._path_preview.truncated)
 local lines, ranges = doc.build(text, "tex")
 assert(
-  vim.deep_equal(
-    lines,
-    { text.detail, "", "-- **literal** `code`", "\treturn '中文'", "… preview truncated" }
-  )
+  vim.deep_equal(lines, { text.detail, "", "-- **literal** `code`", "\treturn '中文'", "… preview truncated" })
 )
 assert(ranges[1].filetype == "lua" and ranges[1].row == 2, "Preview must use the file's syntax")
 assert(resolve(items["binary.bin"]).documentation.value:find("Binary file", 1, true))

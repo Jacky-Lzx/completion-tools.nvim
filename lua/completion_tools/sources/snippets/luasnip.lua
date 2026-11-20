@@ -22,10 +22,8 @@ function M.new()
               insertText = "",
               kind = 15,
               _snippet = snippet,
-              sortText = string.format(
-                "%010d",
-                1000000000 - math.min(snippet.effective_priority or 1000, 1000000000)
-              ) .. snippet.trigger,
+              sortText = string.format("%010d", 1000000000 - math.min(snippet.effective_priority or 1000, 1000000000))
+                .. snippet.trigger,
             }
           end
         end

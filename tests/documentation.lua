@@ -27,10 +27,7 @@ local literal = "```\n  keep `ticks`\n```"
 eq(vim.split(literal, "\n"), doc.build({ documentation = { kind = "plaintext", value = literal } }, "tex"))
 eq(vim.split(literal, "\n"), doc.build({ detail = literal }, "markdown"))
 eq({ "literal", "text `unmatched" }, doc.build({ documentation = "```literal```\ntext `unmatched" }, "lua"))
-eq(
-  { "```", "text", "~~~", "value" },
-  doc.build({ documentation = "~~~~lua\n```\ntext\n~~~\nvalue\n~~~~" }, "lua")
-)
+eq({ "```", "text", "~~~", "value" }, doc.build({ documentation = "~~~~lua\n```\ntext\n~~~\nvalue\n~~~~" }, "lua"))
 eq({ "unclosed code" }, doc.build({ documentation = "```lua\nunclosed code" }, "lua"))
 eq({}, doc.build({ documentation = "```lua\n```" }, "lua"))
 local path = "/Users/test/Research/Very_Long_Project/TeX/4_Experimental_Results.tex"
@@ -40,10 +37,7 @@ eq({}, file_ranges)
 file_lines, file_ranges = doc.build({ kind = 17, labelDetails = { description = path } }, "tex")
 eq({ path }, file_lines)
 eq({}, file_ranges)
-eq(
-  { path },
-  doc.build({ kind = 17, detail = path, labelDetails = { detail = path, description = path } }, "tex")
-)
+eq({ path }, doc.build({ kind = 17, detail = path, labelDetails = { detail = path, description = path } }, "tex"))
 eq(
   { "(value: string)", "module", "", "Help." },
   doc.build({
@@ -84,8 +78,7 @@ for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = 
   groups[mark[4].hl_group] = true
 end
 assert(groups.CompletionToolsDocCode and groups["@function"] and groups["@string"])
-local styled, decorations =
-  doc.build({ documentation = "---\n@*param* `url`: **bold** and ***both***" }, "lua")
+local styled, decorations = doc.build({ documentation = "---\n@*param* `url`: **bold** and ***both***" }, "lua")
 vim.api.nvim_buf_set_lines(buf, 0, -1, false, styled)
 vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
 doc.highlight(buf, ns, styled, decorations, opts, 28)
@@ -159,10 +152,7 @@ local cfg = config.validate({
   documentation = {
     on_render = function(ctx)
       assert(vim.api.nvim_win_get_buf(ctx.win) == ctx.buf and ctx.item.documentation == "first")
-      assert(
-        not vim.treesitter.highlighter.active[ctx.buf],
-        "native Markdown parser must not conceal rendered code"
-      )
+      assert(not vim.treesitter.highlighter.active[ctx.buf], "native Markdown parser must not conceal rendered code")
       calls = calls + 1
     end,
   },

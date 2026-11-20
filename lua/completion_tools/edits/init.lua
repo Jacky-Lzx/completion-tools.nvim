@@ -20,10 +20,7 @@ function M.rebase(range, old, ctx, encoding)
   local old_col = units(old.before, encoding)
   local delta = units(ctx.before, encoding) - old_col
   for i, position in ipairs({ result.start, result["end"] }) do
-    if
-      position.line == old.row
-      and (position.character > old_col or (i == 2 and position.character == old_col))
-    then
+    if position.line == old.row and (position.character > old_col or (i == 2 and position.character == old_col)) then
       position.character = position.character + delta
     end
   end
@@ -81,12 +78,10 @@ function M.apply(entry, ctx, config, opts)
   end
   local range, encoding = M.range(entry, ctx, opts and opts.mode or config.accept.mode)
   local insert_mode = item.insertTextMode or (item._client_id and 2 or nil)
-  local insertion = require("completion_tools.insertion")
-  local end_line = vim.api.nvim_buf_get_lines(ctx.bufnr, range["end"].line, range["end"].line + 1, false)[1]
-    or ""
+  local insertion = require("completion_tools.edits.insertion")
+  local end_line = vim.api.nvim_buf_get_lines(ctx.bufnr, range["end"].line, range["end"].line + 1, false)[1] or ""
   local cursor_offset
-  text, cursor_offset =
-    insertion.brackets(text, item, end_line:sub(byte_col(ctx.bufnr, range["end"], encoding) + 1))
+  text, cursor_offset = insertion.brackets(text, item, end_line:sub(byte_col(ctx.bufnr, range["end"], encoding) + 1))
   local indentation = ctx.before:match("^[ \t]*")
   if insert_mode == 2 then
     text = insertion.indent(text, indentation)
@@ -181,8 +176,7 @@ function M.apply_resolved(entry, ctx, item, transaction)
       if position.line > old_end.line then
         position.line = position.line + new_end.line - old_end.line
       elseif position.line == old_end.line and position.character >= old_end.character then
-        position.line, position.character =
-          new_end.line, new_end.character + position.character - old_end.character
+        position.line, position.character = new_end.line, new_end.character + position.character - old_end.character
       end
     end
     edits[#edits + 1] = { newText = edit.newText, range = range }

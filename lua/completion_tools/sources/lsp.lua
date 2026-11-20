@@ -121,10 +121,7 @@ function M.new()
     local character = last_character(ctx.before)
     for _, client in ipairs(vim.lsp.get_clients({ bufnr = ctx.bufnr, method = "textDocument/completion" })) do
       if
-        vim.list_contains(
-          (client.server_capabilities.completionProvider or {}).triggerCharacters or {},
-          character
-        )
+        vim.list_contains((client.server_capabilities.completionProvider or {}).triggerCharacters or {}, character)
       then
         return true
       end

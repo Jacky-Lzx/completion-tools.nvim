@@ -203,7 +203,7 @@ local function update_menu_status()
     local record = state.run and state.run.records.copilot
     local client = provider and provider.get_status and provider.get_status()
     local count = state.groups.copilot and #state.groups.copilot.items or 0
-    ui.set_status(require("completion_tools.copilot_status").format(client, record, count))
+    ui.set_status(require("completion_tools.sources.copilot.status").format(client, record, count))
   else
     ui.set_status(nil)
   end
@@ -383,8 +383,7 @@ local function request(manual, override, select_first)
       break
     end
   end
-  local minimum = ctx.mode == "cmdline" and state.config.cmdline.min_keyword_length
-    or state.config.min_keyword_length
+  local minimum = ctx.mode == "cmdline" and state.config.cmdline.min_keyword_length or state.config.min_keyword_length
   if not manual and #ctx.prefix < minimum and not triggered and not ctx.before:match("[/\\][^%s]*$") then
     if #cached_ids == 0 then
       M.hide("min_keyword_length")
@@ -421,11 +420,7 @@ local function request(manual, override, select_first)
   state.select_first = select_first
   state.ready = false
   state.reason = "pending"
-  if
-    #cached_ids == 0
-    and not context.same(previous_context, ctx)
-    and not context.continues(previous_context, ctx)
-  then
+  if #cached_ids == 0 and not context.same(previous_context, ctx) and not context.continues(previous_context, ctx) then
     state.items, state.selected = {}, nil
     state.selection_manual = false
     state.doc_entry = nil
@@ -459,10 +454,7 @@ local function request(manual, override, select_first)
     -- The first frame of a session is immediate. Share the deadline across
     -- requests too, so each keystroke cannot restart an unbounded paint burst.
     local interval = state.config.menu.update_interval_ms
-    local remaining = ui.visible()
-        and state.last_render
-        and interval - (vim.uv.hrtime() - state.last_render) / 1e6
-      or 0
+    local remaining = ui.visible() and state.last_render and interval - (vim.uv.hrtime() - state.last_render) / 1e6 or 0
     if remaining > 0 then
       render_timer = vim.defer_fn(flush, math.ceil(remaining))
     else
@@ -545,8 +537,7 @@ local function request(manual, override, select_first)
         context = ctx,
         reusable = response.reusable and not response.pending,
         incomplete = response.is_incomplete,
-        response = state.providers[id].reuse and (not response.pending or response.stable) and response
-          or nil,
+        response = state.providers[id].reuse and (not response.pending or response.stable) and response or nil,
         cursor_col = ctx.col,
       }
       return matches
@@ -761,11 +752,7 @@ function M.setup(opts)
     group = group,
     callback = function(args)
       state.cache.lsp = nil
-      if
-        args.buf == vim.api.nvim_get_current_buf()
-        and state.context
-        and (config.auto_show or state.manual)
-      then
+      if args.buf == vim.api.nvim_get_current_buf() and state.context and (config.auto_show or state.manual) then
         queue()
       end
     end,
@@ -951,12 +938,7 @@ function M.show_status()
   return status
 end
 local function select(direction, opts)
-  if
-    #state.items == 0
-    or not state.ready
-    or not ui.visible()
-    or not context.same(state.context, current())
-  then
+  if #state.items == 0 or not state.ready or not ui.visible() or not context.same(state.context, current()) then
     return false
   end
   -- Navigation follows screen direction; only the painted row order is reversed.
@@ -984,8 +966,7 @@ function M.select_prev(opts)
 end
 function M.accept(opts)
   assert(
-    opts == nil
-      or (type(opts) == "table" and (opts.mode == nil or opts.mode == "insert" or opts.mode == "replace")),
+    opts == nil or (type(opts) == "table" and (opts.mode == nil or opts.mode == "insert" or opts.mode == "replace")),
     "completion-tools: invalid accept mode"
   )
   if not state.ready or not context.same(state.context, current()) then

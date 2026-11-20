@@ -69,7 +69,7 @@ end
 
 function M.new(opts)
   opts = opts or {}
-  local native = require("completion_tools.copilot")
+  local native = require("completion_tools.sources.copilot.client")
   local copilot = native.new(opts)
   local function params(ctx)
     return copilot.params and copilot.params(ctx) or native.params(ctx)
@@ -82,8 +82,7 @@ function M.new(opts)
     end
   end
   local function matches(record, ctx)
-    return require("completion_tools.context").same(record.context, ctx)
-      and vim.deep_equal(record.params, params(ctx))
+    return require("completion_tools.context").same(record.context, ctx) and vim.deep_equal(record.params, params(ctx))
   end
   local function subscribe(record, callback)
     local token = {}
@@ -229,10 +228,7 @@ function M.new(opts)
           local range = item.textEdit.range
           return item.textEdit.newText
             .. "\0"
-            .. table.concat(
-              { range.start.line, range.start.character, range["end"].line, range["end"].character },
-              ":"
-            )
+            .. table.concat({ range.start.line, range.start.character, range["end"].line, range["end"].character }, ":")
         end
         for _, item in ipairs(items) do
           seen[key(item)] = true
@@ -312,13 +308,8 @@ function M.new(opts)
       return
     end
     local range = require("completion_tools.edits").range(entry, ctx)
-    item = vim.tbl_extend(
-      "force",
-      {},
-      item,
-      { textEdit = { newText = item.textEdit.newText, range = range } }
-    )
-    return require("completion_tools.copilot_partial").plan(item, ctx, part, normalise)
+    item = vim.tbl_extend("force", {}, item, { textEdit = { newText = item.textEdit.newText, range = range } })
+    return require("completion_tools.sources.copilot.partial").plan(item, ctx, part, normalise)
   end
   function source.execute(entry)
     local item = entry.item

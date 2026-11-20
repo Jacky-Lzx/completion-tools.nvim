@@ -1,7 +1,7 @@
 -- One persistent headless Neovim per source. Keep at most one running request
 -- and one latest replacement; cancelled work must never build an input backlog.
 local M = {}
-local script = debug.getinfo(1, "S").source:sub(2):gsub("worker.lua$", "worker_main.lua")
+local script = debug.getinfo(1, "S").source:sub(2):gsub("init%.lua$", "main.lua")
 function M.warnings(name)
   local seen = {}
   return function(result)

@@ -85,8 +85,7 @@ local function emphasis(line, code_ranges)
         local escaping = line:sub(1, pos - 1):match("\\+$") or ""
         if size <= 3 and #escaping % 2 == 0 then
           local before, after = line:sub(pos - 1, pos - 1), line:sub(ending + 1, ending + 1)
-          local before_space, after_space =
-            before == "" or before:match("%s"), after == "" or after:match("%s")
+          local before_space, after_space = before == "" or before:match("%s"), after == "" or after:match("%s")
           local before_punct, after_punct = before:match("%p"), after:match("%p")
           local left = not after_space and (not after_punct or before_space or before_punct)
           local right = not before_space and (not before_punct or after_space or after_punct)
@@ -281,9 +280,7 @@ function M.highlight(buf, ns, lines, ranges, opts, width)
         code = code:sub(1, -4)
       end
       local line_opts = range.block and vim.tbl_extend("force", opts, { treesitter = false }) or opts
-      for _, span in
-        ipairs(highlight.get(code, 0, { item = {} }, { filetype = range.filetype or "" }, line_opts))
-      do
+      for _, span in ipairs(highlight.get(code, 0, { item = {} }, { filetype = range.filetype or "" }, line_opts)) do
         vim.api.nvim_buf_set_extmark(buf, ns, range.row, range.first + span[1], {
           end_col = range.first + span[2],
           hl_group = span[3],

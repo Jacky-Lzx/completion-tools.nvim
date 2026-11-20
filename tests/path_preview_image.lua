@@ -91,6 +91,4 @@ assert(#vim.api.nvim_list_wins() == 1 and #commands > 0)
 ui.dispose()
 source.dispose()
 image.dispose()
-print(
-  "path preview image-tools: real PNG, viewport-rasterized PDF, embedded placeholders and lease cleanup passed"
-)
+print("path preview image-tools: real PNG, viewport-rasterized PDF, embedded placeholders and lease cleanup passed")

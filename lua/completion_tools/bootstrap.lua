@@ -19,9 +19,6 @@ function M.setup(opts)
   end
   group = vim.api.nvim_create_augroup("CompletionToolsBootstrap", { clear = true })
   vim.api.nvim_create_autocmd({ "InsertEnter", "CmdlineEnter" }, { group = group, callback = M.ensure })
-  vim.api.nvim_create_autocmd(
-    "CmdUndefined",
-    { group = group, pattern = "CompletionTools*", callback = M.ensure }
-  )
+  vim.api.nvim_create_autocmd("CmdUndefined", { group = group, pattern = "CompletionTools*", callback = M.ensure })
 end
 return M

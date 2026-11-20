@@ -48,11 +48,7 @@ cmp.dispose()
 assert(cmp.get_status().reason == "disposed")
 assert(not vim.api.nvim_get_commands({}).CompletionToolsInfo)
 cmp.setup({ sources = {} })
-vim.api.nvim_create_user_command(
-  "CompletionToolsInfo",
-  function() end,
-  { force = true, desc = "owned by user" }
-)
+vim.api.nvim_create_user_command("CompletionToolsInfo", function() end, { force = true, desc = "owned by user" })
 cmp.dispose()
 local user_command = vim.api.nvim_get_commands({}).CompletionToolsInfo
 assert(user_command and user_command.definition == "owned by user", vim.inspect(user_command))

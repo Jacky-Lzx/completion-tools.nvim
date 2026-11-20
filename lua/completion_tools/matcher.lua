@@ -53,11 +53,7 @@ function M.score(text, query)
       or prev == 46
       or prev == 47
       or (prev and prev >= 97 and prev <= 122 and char >= 65 and char <= 90)
-    score = score
-      + 16
-      + (boundary and 24 or 0)
-      + (at == previous + 1 and 12 or 0)
-      - math.min(at - previous - 1, 20)
+    score = score + 16 + (boundary and 24 or 0) + (at == previous + 1 and 12 or 0) - math.min(at - previous - 1, 20)
     previous, pos = at, at + 1
   end
   return score - math.min(#text - #query, 100)

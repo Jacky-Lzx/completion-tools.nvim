@@ -256,9 +256,7 @@ local ok, err = xpcall(function()
       require('completion_tools').hide();require('completion_tools').show()]])
     wait("return require('completion_tools').is_menu_visible()")
     input("<Tab>")
-    wait(
-      "return vim.fn.getcmdline()=='edit '..vim.fn.fnameescape(cmdroot..'/dir space/file name.lua')..' suffix'"
-    )
+    wait("return vim.fn.getcmdline()=='edit '..vim.fn.fnameescape(cmdroot..'/dir space/file name.lua')..' suffix'")
     lua("vim.fn.setcmdline('edit '..vim.fn.fnameescape(cmdroot)..'/a*.lua')")
     wait("return require('completion_tools').is_menu_visible()")
     input("<Tab>")
@@ -459,9 +457,7 @@ local ok, err = xpcall(function()
           row
         )
         input(":set ")
-        wait(
-          "return require('completion_tools').is_menu_visible() and require('input-tools').get_layout()~=nil"
-        )
+        wait("return require('completion_tools').is_menu_visible() and require('input-tools').get_layout()~=nil")
         local check = [[
           local box=require('input-tools').get_layout()
           for _,win in ipairs(vim.api.nvim_list_wins()) do

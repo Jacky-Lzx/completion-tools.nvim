@@ -37,8 +37,7 @@ local results = {
 }
 for _, size in ipairs({ 1000, 10000, 20000 }) do
   local items = corpus(size)
-  local groups =
-    { { items = items, source_id = "bench", score_offset = 0, priority = 1, start_col = 0, context = {} } }
+  local groups = { { items = items, source_id = "bench", score_offset = 0, priority = 1, start_col = 0, context = {} } }
   blink.set_provider_items("bench", items)
   local opts = {
     max_typos = 0,

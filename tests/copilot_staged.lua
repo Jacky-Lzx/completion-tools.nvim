@@ -1,7 +1,7 @@
 local function eq(expected, actual)
   assert(vim.deep_equal(expected, actual), vim.inspect({ expected = expected, actual = actual }))
 end
-local native, requests, cancellations = require("completion_tools.copilot"), {}, {}
+local native, requests, cancellations = require("completion_tools.sources.copilot.client"), {}, {}
 local original, synchronous = native.new, false
 local client = { initialized = true }
 function client:is_stopped()

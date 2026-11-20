@@ -1,7 +1,7 @@
 local M = {}
 function M.new(opts)
   local worker = require("completion_tools.worker").new()
-  local documentation = require("completion_tools.dictionary_documentation").new(opts.documentation)
+  local documentation = require("completion_tools.sources.dictionary.documentation").new(opts.documentation)
   local warn = require("completion_tools.worker").warnings("dictionary")
   return {
     score_offset = 5,

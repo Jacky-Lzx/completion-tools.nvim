@@ -2,8 +2,7 @@ local config = require("completion_tools.config")
 local factory = require("completion_tools.ranking")
 local matcher = require("completion_tools.matcher")
 local path = vim.fn.tempname() .. "/history.json"
-local opts =
-  config.validate({ ranking = { history = { enabled = true, path = path, max_entries = 2 } } }).ranking
+local opts = config.validate({ ranking = { history = { enabled = true, path = path, max_entries = 2 } } }).ranking
 local ctx = { mode = "insert", filetype = "lua", bufnr = 0, row = 0 }
 local entry = { item = { label = "alpine" }, source_id = "test" }
 local rank = factory.new(opts)
@@ -80,8 +79,7 @@ print("ranking: persistent bounded history, scope, corrupt data, proximity and o
 -- Cross-provider numeric sortText must not win equal-score source/client ties.
 do
   local human = { label = "Peng18", detail = "human", _client_name = "preferred", _client_id = 20 }
-  local tex =
-    { label = "Peng18", sortText = "00Peng18", detail = "other", _client_name = "other", _client_id = 10 }
+  local tex = { label = "Peng18", sortText = "00Peng18", detail = "other", _client_name = "other", _client_id = 10 }
   local snippets = {}
   for i = 1, 70 do
     snippets[i] = { label = string.format("snippet%02d", i), sortText = string.format("%010d", i) }
@@ -94,8 +92,7 @@ do
     start_col = 6,
     client_order = { "preferred", "other" },
   }
-  local snippet_group =
-    { items = snippets, source_id = "snippets", priority = 2, score_offset = 60, start_col = 6 }
+  local snippet_group = { items = snippets, source_id = "snippets", priority = 2, score_offset = 60, start_col = 6 }
   local empty = { before = "\\cite{", prefix = "" }
   for _, items in ipairs({ { tex, human }, { human, tex } }) do
     lsp.items = items
@@ -258,6 +255,4 @@ for _, position in ipairs({ 0, -1, 1.5, "3", math.huge, false }) do
   assert(not pcall(config.validate, { providers = { copilot = { insert_at = position } } }))
 end
 assert(pcall(config.validate, { providers = { copilot = { insert_at = 3, max_items = 3 } } }))
-print(
-  "ranking: fixed provider blocks, cutoffs, empty/short sources, deduplication and command-line isolation passed"
-)
+print("ranking: fixed provider blocks, cutoffs, empty/short sources, deduplication and command-line isolation passed")

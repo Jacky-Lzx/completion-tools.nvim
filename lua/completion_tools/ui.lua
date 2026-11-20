@@ -167,8 +167,7 @@ local function placement(count, width, ctx, config)
     if anchor then
       input_top, input_bottom, anchor_col = anchor.row, anchor.row + anchor.height - 1, anchor.col
     else
-      local rows =
-        math.max(1, vim.o.cmdheight, math.ceil((1 + vim.fn.strdisplaywidth(ctx.line)) / vim.o.columns))
+      local rows = math.max(1, vim.o.cmdheight, math.ceil((1 + vim.fn.strdisplaywidth(ctx.line)) / vim.o.columns))
       input_top, input_bottom = math.max(0, vim.o.lines - rows), vim.o.lines - 1
       anchor_col = (1 + vim.fn.strdisplaywidth(ctx.before:sub(1, ctx.start_col))) % vim.o.columns
     end
@@ -507,7 +506,7 @@ function M.documentation(item, config)
     else
       local token, target_buf, target_win = {}, doc_buf, doc_win
       doc_token = token
-      doc_view = require("completion_tools.path_preview").render(preview, target_buf, target_win, function()
+      doc_view = require("completion_tools.sources.path.preview").render(preview, target_buf, target_win, function()
         return doc_token == token and valid(target_win) and vim.api.nvim_win_get_buf(target_win) == target_buf
       end)
     end

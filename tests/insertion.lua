@@ -1,4 +1,4 @@
-local insertion = require("completion_tools.insertion")
+local insertion = require("completion_tools.edits.insertion")
 local edits = require("completion_tools.edits")
 local config = require("completion_tools.config")
 local function eq(a, b)

@@ -5,8 +5,7 @@ local function eq(expected, actual)
   assert(vim.deep_equal(expected, actual), vim.inspect({ expected = expected, actual = actual }))
 end
 local function source(name, opts)
-  local provider =
-    require("completion_tools.sources." .. name).new(config.validate({ [name] = opts or {} })[name])
+  local provider = require("completion_tools.sources." .. name).new(config.validate({ [name] = opts or {} })[name])
   sources[#sources + 1] = provider
   return provider
 end
@@ -122,8 +121,7 @@ local ok, err = xpcall(function()
   vim.env.COMPLETION_DICTIONARY_TRACE = trace
   local command = vim.fn.getcwd() .. "/tests/dictionary_command.py"
   test("dictionary definitions are lazy, literal, cached and use the original word", function()
-    local dict =
-      source("dictionary", { files = { file({ "apple" }) }, documentation = { command = command } })
+    local dict = source("dictionary", { files = { file({ "apple" }) }, documentation = { command = command } })
     local item = complete(dict, "APP")[1]
     eq("APPLE", item.label)
     eq("apple", item.data.dictionary_word)

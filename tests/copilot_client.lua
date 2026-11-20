@@ -2,7 +2,7 @@ local function eq(expected, actual)
   assert(vim.deep_equal(expected, actual), vim.inspect({ expected = expected, actual = actual }))
 end
 local log = vim.fn.tempname()
-local native = require("completion_tools.copilot")
+local native = require("completion_tools.sources.copilot.client")
 local function messages(method)
   local found = {}
   -- Only newline-terminated records are complete while the server is appending.
@@ -21,13 +21,7 @@ local function wait(f)
 end
 vim.cmd("edit " .. vim.fn.fnameescape(vim.fn.tempname() .. ".lua"))
 vim.bo.filetype = "lua"
-vim.api.nvim_buf_set_lines(
-  0,
-  0,
-  -1,
-  false,
-  { "-- preceding context", "中😀 = pr", "-- following context" }
-)
+vim.api.nvim_buf_set_lines(0, 0, -1, false, { "-- preceding context", "中😀 = pr", "-- following context" })
 local buf = vim.api.nvim_get_current_buf()
 local manager = native.new({
   command = { "python3", "tests/fixtures/copilot_server.py", log },
@@ -113,10 +107,7 @@ assert(not pcall(vim.cmd, "file " .. vim.fn.fnameescape(vim.fn.tempname() .. ".l
 wait(function()
   return vim.lsp.buf_is_attached(buf, client.id) and #messages("textDocument/didOpen") > opens_before_failure
 end)
-eq(
-  vim.uri_from_bufnr(buf),
-  messages("textDocument/didOpen")[#messages("textDocument/didOpen")].params.textDocument.uri
-)
+eq(vim.uri_from_bufnr(buf), messages("textDocument/didOpen")[#messages("textDocument/didOpen")].params.textDocument.uri)
 
 -- A new unnamed buffer is closed under its old URI before its first :write.
 vim.cmd("enew!")

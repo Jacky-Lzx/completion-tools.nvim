@@ -79,8 +79,7 @@ function M.new(opts, refresh)
     local function rebuild()
       state.generation = state.generation + 1
       local generation, row = state.generation, 0
-      state.lines, state.counts, state.size, state.items, state.indices, state.ready =
-        {}, {}, 0, {}, {}, false
+      state.lines, state.counts, state.size, state.items, state.indices, state.ready = {}, {}, 0, {}, {}, false
       state.scanned = 0
       local function batch()
         if closed or states[buf] ~= state or generation ~= state.generation then

@@ -290,7 +290,7 @@ function _G.completion_tui_copilot(staged)
     end, staged and (method == "getCompletions" and 30 or 250) or (stale and 300 or 60))
     return true, id
   end
-  local native = require("completion_tools.copilot")
+  local native = require("completion_tools.sources.copilot.client")
   local real_new = native.new
   native.new = function()
     return {
@@ -958,9 +958,7 @@ timer:start(
     if completion_empty_menu and data.mode == "i" and ctx then
       local stats = completion_empty_menu
       stats.samples = stats.samples + 1
-      if
-        data.visible and (#cmp.get_items() == 0 or vim.trim(table.concat(data.menu_rows or {}, "")) == "")
-      then
+      if data.visible and (#cmp.get_items() == 0 or vim.trim(table.concat(data.menu_rows or {}, "")) == "") then
         stats.blank = stats.blank + 1
       end
     end

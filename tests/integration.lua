@@ -42,9 +42,8 @@ local function test(name, run)
   if not ok then
     error(name .. ": " .. err)
   end
-  local errors = lua(
-    "return vim.tbl_filter(function(n) return n.level and n.level>=vim.log.levels.ERROR end,test_notifications)"
-  )
+  local errors =
+    lua("return vim.tbl_filter(function(n) return n.level and n.level>=vim.log.levels.ERROR end,test_notifications)")
   assert(#errors == 0, name .. ": " .. vim.inspect(errors))
   passed = passed + 1
   print("input: " .. name)
@@ -80,7 +79,7 @@ local function copilot_cache_fixture(texts, preselect)
       end,cache_response_delay)
       return true,id
     end
-    local native=require('completion_tools.copilot')
+    local native=require('completion_tools.sources.copilot.client')
     local original=native.new
     native.new=function() return {
       eligible=function() return cache_allowed end,
@@ -155,17 +154,11 @@ local ok, err = xpcall(function()
       end}}})
     ]])
     input("i(<C-Space>")
-    wait(
-      "return require('completion_tools').is_menu_visible()",
-      "manual menu after typing and triggering together"
-    )
+    wait("return require('completion_tools').is_menu_visible()", "manual menu after typing and triggering together")
     vim.wait(100)
     assert(lua("return require('completion_tools')._can('accept')"), "delayed text event closed manual menu")
     input("(")
-    wait(
-      "return not require('completion_tools').is_menu_visible()",
-      "new punctuation still closes the session"
-    )
+    wait("return not require('completion_tools').is_menu_visible()", "new punctuation still closes the session")
   end)
   test("manual completion survives LSP refreshes at a blocked symbol", function()
     lua([[
@@ -393,11 +386,9 @@ local ok, err = xpcall(function()
       assert(require('completion_tools').get_selected_item().label=='alpha08')]])
   end)
   test("entering insert and moving the cursor do not open automatic completion", function()
-    lua(
-      [[require('completion_tools').setup({sources={'test'},min_keyword_length=0,providers={test={
+    lua([[require('completion_tools').setup({sources={'test'},min_keyword_length=0,providers={test={
       complete=function(_,cb) cb({items={{label='alpha'}}}) end
-    }}}); vim.api.nvim_buf_set_lines(0,0,-1,false,{'alpha','   '}); vim.api.nvim_win_set_cursor(0,{1,0})]]
-    )
+    }}}); vim.api.nvim_buf_set_lines(0,0,-1,false,{'alpha','   '}); vim.api.nvim_win_set_cursor(0,{1,0})]])
     input("A")
     wait("return vim.api.nvim_get_mode().mode=='i'")
     vim.wait(60)
@@ -407,10 +398,7 @@ local ok, err = xpcall(function()
     )
     lua("vim.api.nvim_exec_autocmds('LspAttach',{buffer=0,data={client_id=999999}})")
     vim.wait(60)
-    assert(
-      not lua("return require('completion_tools').is_menu_visible()"),
-      "LspAttach opened completion before typing"
-    )
+    assert(not lua("return require('completion_tools').is_menu_visible()"), "LspAttach opened completion before typing")
     input("<Left>")
     vim.wait(60)
     assert(not lua("return require('completion_tools').is_menu_visible()"))
@@ -418,10 +406,7 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_mode().mode=='i' and vim.api.nvim_win_get_cursor(0)[1]==2")
     input(" ")
     vim.wait(60)
-    assert(
-      not lua("return require('completion_tools').is_menu_visible()"),
-      "Whitespace opened an unfiltered list"
-    )
+    assert(not lua("return require('completion_tools').is_menu_visible()"), "Whitespace opened an unfiltered list")
     input("<C-Space>")
     wait("return require('completion_tools').is_menu_visible()")
     input("<C-e>a")
@@ -439,19 +424,14 @@ local ok, err = xpcall(function()
     vim.wait(10)
     input("<BS>")
     vim.wait(100)
-    assert(
-      not lua("return require('completion_tools').is_menu_visible()"),
-      "Late results reopened an empty query"
-    )
+    assert(not lua("return require('completion_tools').is_menu_visible()"), "Late results reopened an empty query")
   end)
   test("upper menu and tall documentation leave the input screen row clear", function()
-    lua(
-      [[local items={};for i=1,25 do items[i]={label='alpha'..i,detail=string.rep('documentation\n',30)} end
+    lua([[local items={};for i=1,25 do items[i]={label='alpha'..i,detail=string.rep('documentation\n',30)} end
       require('completion_tools').setup({sources={'test'},menu={max_height=4},documentation={delay_ms=5},
         providers={test={complete=function(_,cb) cb({items=items}) end}}})
       local lines={};for i=1,80 do lines[i]='' end
-      vim.api.nvim_buf_set_lines(0,0,-1,false,lines);vim.api.nvim_win_set_cursor(0,{80,0});vim.cmd('normal! zb')]]
-    )
+      vim.api.nvim_buf_set_lines(0,0,-1,false,lines);vim.api.nvim_win_set_cursor(0,{80,0});vim.cmd('normal! zb')]])
     input("Aalpha")
     wait(
       "local c=require('completion_tools');return c.get_context() and c.get_context().prefix=='alpha' and c._can('accept')"
@@ -583,18 +563,14 @@ local ok, err = xpcall(function()
     wait("return require('completion_tools').get_selected_item().label=='alpine'")
     input("<Tab><Esc>")
     wait("return vim.api.nvim_get_mode().mode=='n' and vim.api.nvim_get_current_line()=='alpine'")
-    lua(
-      "history_setup(true);vim.api.nvim_buf_set_lines(0,0,-1,false,{''});vim.api.nvim_win_set_cursor(0,{1,0})"
-    )
+    lua("history_setup(true);vim.api.nvim_buf_set_lines(0,0,-1,false,{''});vim.api.nvim_win_set_cursor(0,{1,0})")
     input("ial")
     wait(
       "return require('completion_tools')._can('accept') and require('completion_tools').get_selected_item().label=='alpine'"
     )
     input("<Esc>")
     wait("return vim.api.nvim_get_mode().mode=='n'")
-    lua(
-      "history_setup(false);vim.api.nvim_buf_set_lines(0,0,-1,false,{''});vim.api.nvim_win_set_cursor(0,{1,0})"
-    )
+    lua("history_setup(false);vim.api.nvim_buf_set_lines(0,0,-1,false,{''});vim.api.nvim_win_set_cursor(0,{1,0})")
     input("ial")
     wait(
       "return require('completion_tools')._can('accept') and require('completion_tools').get_selected_item().label=='alpha'"
@@ -615,10 +591,7 @@ local ok, err = xpcall(function()
     lua("main_reply({items={{label='unrelated'}}})")
     wait("return require('completion_tools')._can('accept')")
     eq(1, lua("return fallback_calls"))
-    eq(
-      { "alpha" },
-      lua("return vim.tbl_map(function(i) return i.label end,require('completion_tools').get_items())")
-    )
+    eq({ "alpha" }, lua("return vim.tbl_map(function(i) return i.label end,require('completion_tools').get_items())"))
     input("<Tab>!")
     wait("return vim.api.nvim_get_current_line()=='alpha!'")
   end)
@@ -703,10 +676,8 @@ local ok, err = xpcall(function()
       test_notifications={};diag_fail=false]])
     input("l")
     wait("return require('completion_tools')._can('accept')")
-    lua(
-      [[local p=require('completion_tools').get_status().sources.test
-      assert(p.status=='done' and p.errors==1 and p.last_error:find('diagnostic fixture failure',1,true))]]
-    )
+    lua([[local p=require('completion_tools').get_status().sources.test
+      assert(p.status=='done' and p.errors==1 and p.last_error:find('diagnostic fixture failure',1,true))]])
   end)
   test("source eligibility callback errors are diagnosed and release fallback", function()
     lua([[require('completion_tools').setup({sources={'bad','fallback'},providers={
@@ -736,12 +707,10 @@ local ok, err = xpcall(function()
     eq("al", lua("return vim.api.nvim_get_current_line()"))
   end)
   test("a vanished manual selection stays empty until navigation or another edit", function()
-    lua(
-      [[stream_reply=nil;require('completion_tools').setup({sources={'stream'},documentation={delay_ms=5},providers={
+    lua([[stream_reply=nil;require('completion_tools').setup({sources={'stream'},documentation={delay_ms=5},providers={
       stream={complete=function(_,cb) stream_reply=cb;cb({items={{label='alpha',detail='first'},
         {label='alphaZ',detail='selected'}}}) end}
-    }})]]
-    )
+    }})]])
     input("ial")
     wait("return require('completion_tools')._can('accept')")
     input("<C-n>")
@@ -837,9 +806,7 @@ local ok, err = xpcall(function()
       id
     )
     input("l")
-    wait(
-      "return require('completion_tools').get_context() and require('completion_tools').get_context().prefix=='al'"
-    )
+    wait("return require('completion_tools').get_context() and require('completion_tools').get_context().prefix=='al'")
     vim.wait(30)
     assert(
       lua("local c=require('completion_tools');return c.is_menu_visible() and not c.accept()"),
@@ -849,9 +816,7 @@ local ok, err = xpcall(function()
     wait("return require('completion_tools').get_selected_item().label=='alResult'")
     eq(true, lua("return vim.api.nvim_win_is_valid(...)", id))
     input("z")
-    wait(
-      "return require('completion_tools').get_context() and require('completion_tools').get_context().prefix=='alz'"
-    )
+    wait("return require('completion_tools').get_context() and require('completion_tools').get_context().prefix=='alz'")
     vim.wait(30)
     assert(lua("return require('completion_tools').is_menu_visible()"))
     wait("return not require('completion_tools').is_menu_visible()")
@@ -1012,9 +977,7 @@ local ok, err = xpcall(function()
         wait("return require('completion_tools').get_selected_item()~=nil")
       end
       lua(
-        "require('completion_tools')."
-          .. (case.reversed and "select_prev" or "select_next")
-          .. "({count=5,wrap=false})"
+        "require('completion_tools')." .. (case.reversed and "select_prev" or "select_next") .. "({count=5,wrap=false})"
       )
       menu = lua("return direction_menu()")
       assert(menu.lines[menu.cursor]:find("alpha06", 1, true))
@@ -1034,19 +997,11 @@ local ok, err = xpcall(function()
       input("<C-p>")
       wait("return require('completion_tools').get_selected_item().label=='alpha06'")
       lua("require('completion_tools').select_next({count=100,wrap=false})")
-      eq(
-        case.reversed and "alpha01" or "alpha08",
-        lua("return require('completion_tools').get_selected_item().label")
-      )
+      eq(case.reversed and "alpha01" or "alpha08", lua("return require('completion_tools').get_selected_item().label"))
       lua("require('completion_tools').select_prev({count=100,wrap=false})")
-      eq(
-        case.reversed and "alpha08" or "alpha01",
-        lua("return require('completion_tools').get_selected_item().label")
-      )
+      eq(case.reversed and "alpha08" or "alpha01", lua("return require('completion_tools').get_selected_item().label"))
       lua(
-        "require('completion_tools')."
-          .. (case.reversed and "select_next" or "select_prev")
-          .. "({count=3,wrap=false})"
+        "require('completion_tools')." .. (case.reversed and "select_next" or "select_prev") .. "({count=3,wrap=false})"
       )
       input("<Tab>!")
       wait("return vim.api.nvim_get_current_line()=='" .. (case.reversed and "alpha05!" or "alpha01!") .. "'")
@@ -1396,9 +1351,7 @@ local ok, err = xpcall(function()
     end;return ids]])
     for _, key in ipairs({ "p", "<BS>" }) do
       input(key)
-      wait(
-        "return require('completion_tools').get_context() and not require('completion_tools')._can('accept')"
-      )
+      wait("return require('completion_tools').get_context() and not require('completion_tools')._can('accept')")
       vim.wait(20)
       for _, id in ipairs(ids) do
         eq(true, lua("return vim.api.nvim_win_is_valid(...)", id))
@@ -1431,9 +1384,7 @@ local ok, err = xpcall(function()
     input("i" .. string.rep("a", 119))
     wait("return require('completion_tools').is_menu_visible()")
     input("a")
-    wait(
-      "return require('completion_tools').get_context() and #require('completion_tools').get_context().prefix==120"
-    )
+    wait("return require('completion_tools').get_context() and #require('completion_tools').get_context().prefix==120")
     lua([[local ctx=require('completion_tools').get_context()
       local cursor=vim.fn.screenpos(ctx.winid,ctx.row+1,ctx.col+1)
       assert(cursor.row>1,'fixture must wrap')
@@ -1448,13 +1399,11 @@ local ok, err = xpcall(function()
     ]])
   end)
   test("custom actions and non-expr fallback execute outside textlock", function()
-    lua(
-      [[vim.keymap.set('i','<CR>',function() vim.api.nvim_set_current_line(vim.api.nvim_get_current_line()..'!') end)
+    lua([[vim.keymap.set('i','<CR>',function() vim.api.nvim_set_current_line(vim.api.nvim_get_current_line()..'!') end)
       require('completion_tools').setup({sources={},keymap={
         ['<CR>']={'accept','fallback'},
         ['<F5>']={function(c) vim.api.nvim_set_current_line('custom'); return true end}
-      }})]]
-    )
+      }})]])
     input("iabc<CR>")
     wait("return vim.api.nvim_get_current_line() == 'abc!'")
     input("<F5>")
@@ -1613,10 +1562,7 @@ local ok, err = xpcall(function()
       input("<Tab>!")
       wait("return vim.api.nvim_buf_line_count(0)==3")
       local indent = mode == 2 and "    " or ""
-      eq(
-        { "    block", indent .. "\tinner", indent .. "end!" },
-        lua("return vim.api.nvim_buf_get_lines(0,0,-1,false)")
-      )
+      eq({ "    block", indent .. "\tinner", indent .. "end!" }, lua("return vim.api.nvim_buf_get_lines(0,0,-1,false)"))
     end)
     test("native snippet indentation retains placeholder editing for mode " .. mode, function()
       lua(
@@ -1679,9 +1625,7 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line() == 'foobar!TAIL'")
     eq({ "import thing", "foobar!TAIL" }, lua("return vim.api.nvim_buf_get_lines(0,0,-1,false)"))
     input("<Esc>u")
-    wait(
-      "return vim.api.nvim_buf_line_count(0)==1 and not vim.api.nvim_get_current_line():find('TAIL',1,true)"
-    )
+    wait("return vim.api.nvim_buf_line_count(0)==1 and not vim.api.nvim_get_current_line():find('TAIL',1,true)")
   end)
   test("snippets with an import at the same starting position", function()
     lua([[require('completion_tools').setup({sources={'test'},providers={test={complete=function(ctx,cb)
@@ -1709,9 +1653,7 @@ local ok, err = xpcall(function()
     assert(lua("return vim.api.nvim_get_current_line():match('function name') ~= nil"))
     wait("return vim.api.nvim_get_mode().mode == 's'")
     input("demo<Tab>")
-    wait(
-      "return vim.api.nvim_get_mode().mode == 's' and vim.api.nvim_get_current_line():find('demo',1,true) ~= nil"
-    )
+    wait("return vim.api.nvim_get_mode().mode == 's' and vim.api.nvim_get_current_line():find('demo',1,true) ~= nil")
     input("value<Tab>")
     wait("return vim.api.nvim_get_mode().mode == 'i'")
     input("body")
@@ -1720,11 +1662,9 @@ local ok, err = xpcall(function()
     )
   end)
   test("edits outside the completion row invalidate reusable lists", function()
-    lua(
-      [[calls=0; require('completion_tools').setup({sources={'test'},providers={test={complete=function(ctx,cb)
+    lua([[calls=0; require('completion_tools').setup({sources={'test'},providers={test={complete=function(ctx,cb)
       calls=calls+1; cb({reusable=true,items={{label='foobar'}}})
-    end}}}); vim.api.nvim_buf_set_lines(0,0,-1,false,{'header',''}); vim.api.nvim_win_set_cursor(0,{2,0})]]
-    )
+    end}}}); vim.api.nvim_buf_set_lines(0,0,-1,false,{'header',''}); vim.api.nvim_win_set_cursor(0,{2,0})]])
     input("if")
     wait("return require('completion_tools').is_menu_visible()")
     local calls = lua("return calls")
@@ -1750,11 +1690,9 @@ local ok, err = xpcall(function()
     wait("return #vim.api.nvim_list_wins() == 1")
   end)
   for _, automatic in ipairs({ true, false }) do
-    test(
-      "accepting directories continues nested path completion: auto_show=" .. tostring(automatic),
-      function()
-        lua(
-          [[
+    test("accepting directories continues nested path completion: auto_show=" .. tostring(automatic), function()
+      lua(
+        [[
         local automatic=...
         directory_root=vim.fn.tempname()
         vim.fn.mkdir(directory_root..'/outer/nested','p')
@@ -1763,26 +1701,25 @@ local ok, err = xpcall(function()
           trigger_characters={},menu={inverse=false},path={get_cwd=function() return directory_root end},
           providers={noise={complete=function(_,cb) cb({items={{label='wrongSibling'}}}) end}}})
       ]],
-          automatic
-        )
-        input("i./ou" .. (automatic and "" or "<C-Space>"))
-        wait(
-          "return require('completion_tools').get_selected_item() and require('completion_tools').get_selected_item().label=='outer/'"
-        )
-        input("<Tab>")
-        wait([[local c=require('completion_tools');return vim.api.nvim_get_current_line()=='./outer/'
+        automatic
+      )
+      input("i./ou" .. (automatic and "" or "<C-Space>"))
+      wait(
+        "return require('completion_tools').get_selected_item() and require('completion_tools').get_selected_item().label=='outer/'"
+      )
+      input("<Tab>")
+      wait([[local c=require('completion_tools');return vim.api.nvim_get_current_line()=='./outer/'
         and c.is_menu_visible() and c._can('accept') and c.get_selected_item().label=='nested/']])
-        eq(1, lua("return #require('completion_tools').get_items()"))
-        input("<Tab>")
-        wait([[local c=require('completion_tools');return vim.api.nvim_get_current_line()=='./outer/nested/'
+      eq(1, lua("return #require('completion_tools').get_items()"))
+      input("<Tab>")
+      wait([[local c=require('completion_tools');return vim.api.nvim_get_current_line()=='./outer/nested/'
         and c.is_menu_visible() and c._can('accept') and c.get_selected_item().label=='file.txt']])
-        input("<Tab>")
-        wait(
-          "return vim.api.nvim_get_current_line()=='./outer/nested/file.txt' and not require('completion_tools').is_menu_visible()"
-        )
-        lua("assert(vim.api.nvim_get_mode().mode=='i');vim.fn.delete(directory_root,'rf')")
-      end
-    )
+      input("<Tab>")
+      wait(
+        "return vim.api.nvim_get_current_line()=='./outer/nested/file.txt' and not require('completion_tools').is_menu_visible()"
+      )
+      lua("assert(vim.api.nvim_get_mode().mode=='i');vim.fn.delete(directory_root,'rf')")
+    end)
   end
   test("empty directories and canceled acceptance handlers do not reopen completion", function()
     lua([[
@@ -1850,9 +1787,7 @@ local ok, err = xpcall(function()
     input("<Tab>")
     wait("return vim.api.nvim_get_current_line()=='./previewc.pdf' and #vim.api.nvim_list_wins()==1")
     eq(2, lua("return preview_closed"))
-    lua(
-      "assert(not preview_requests[2].is_valid());package.loaded.image_tools=nil;vim.fn.delete(preview_root,'rf')"
-    )
+    lua("assert(not preview_requests[2].is_valid());package.loaded.image_tools=nil;vim.fn.delete(preview_root,'rf')")
   end)
   test("snippet colors and code previews hide Markdown markers and refresh highlights", function()
     lua([[
@@ -2050,9 +1985,7 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line() == 'foobar!'")
     vim.wait(150)
     eq({ "foobar!" }, lua("return vim.api.nvim_buf_get_lines(0,0,-1,false)"))
-    assert(
-      lua("for _,e in ipairs(fixture_trace) do if e.kind=='execute' then return false end end; return true")
-    )
+    assert(lua("for _,e in ipairs(fixture_trace) do if e.kind=='execute' then return false end end; return true"))
   end)
   if vim.env.REAL_LSP == "1" then
     test("real lua-language-server: member completion and accept", function()
@@ -2180,10 +2113,8 @@ local ok, err = xpcall(function()
         dictionary={files={dictionary_fixture},documentation={command=vim.fn.getcwd()..'/tests/dictionary_command.py'}}})
     ]])
     input("iapp")
-    wait(
-      [[local item=require('completion_tools').get_selected_item()
-      return item and item.documentation and item.documentation.value:find('Meaning of apple.',1,true)~=nil]]
-    )
+    wait([[local item=require('completion_tools').get_selected_item()
+      return item and item.documentation and item.documentation.value:find('Meaning of apple.',1,true)~=nil]])
     wait([[for _,w in ipairs(vim.api.nvim_list_wins()) do
       if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then
         return table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w),0,-1,false),'\n'):find('Meaning of apple.',1,true)~=nil
@@ -2214,10 +2145,8 @@ local ok, err = xpcall(function()
       wait([[local item=require('completion_tools').get_selected_item()
         return item and item.label=='APPLE' and item.documentation
           and item.documentation.value:find('Overview of noun apple',1,true)~=nil]])
-      wait(
-        [[for _,w in ipairs(vim.api.nvim_list_wins()) do
-        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false]]
-      )
+      wait([[for _,w in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false]])
       input("<Tab>!")
       wait("return vim.api.nvim_get_current_line()=='APPLE!'")
       lua("vim.fn.delete(dictionary_fixture)")
@@ -2255,19 +2184,13 @@ local ok, err = xpcall(function()
     lua([[partial_events={}; vim.api.nvim_create_autocmd('User',{pattern='CompletionToolsAccept',
       callback=function(args) partial_events[#partial_events+1]=args.data end})]])
     input("<C-l>")
-    wait(
-      [[return vim.api.nvim_get_current_line()=='中😀 = print)' and require('completion_tools')._can('accept')]]
-    )
+    wait([[return vim.api.nvim_get_current_line()=='中😀 = print)' and require('completion_tools')._can('accept')]])
     input("<M-l>")
     wait([[return vim.api.nvim_get_current_line()=='  )' and require('completion_tools')._can('accept')]])
     input("<C-l>")
-    wait(
-      [[return vim.api.nvim_get_current_line()=='  local )' and require('completion_tools')._can('accept')]]
-    )
+    wait([[return vim.api.nvim_get_current_line()=='  local )' and require('completion_tools')._can('accept')]])
     input("<C-l>")
-    wait(
-      [[return vim.api.nvim_get_current_line()=='  local 中文 )' and require('completion_tools')._can('accept')]]
-    )
+    wait([[return vim.api.nvim_get_current_line()=='  local 中文 )' and require('completion_tools')._can('accept')]])
     eq(1, lua("return cache_requests"))
     eq({ 11, 17, 23, 26 }, lua("return cache_accepted_lengths"))
     assert(lua([[return #partial_events==4 and partial_events[1].partial=='word'
@@ -2281,9 +2204,7 @@ local ok, err = xpcall(function()
   test("partial Copilot acceptance remains selectable without automatic preselection", function()
     copilot_cache_fixture({ "print(1)\nfinish()" }, false)
     input("<C-l>")
-    wait(
-      [[return vim.api.nvim_get_current_line()=='中😀 = print)' and require('completion_tools')._can('accept')]]
-    )
+    wait([[return vim.api.nvim_get_current_line()=='中😀 = print)' and require('completion_tools')._can('accept')]])
     input("(")
     wait(
       [[return vim.api.nvim_get_current_line()=='中😀 = print()' and require('completion_tools').get_status().ready]]
@@ -2317,9 +2238,7 @@ local ok, err = xpcall(function()
     input("i")
     wait("return require('completion_tools').get_status().sources.copilot.cache_hits==1")
     input("X")
-    wait(
-      "return vim.api.nvim_get_current_line()=='中😀 = priX)' and not require('completion_tools')._can('accept')"
-    )
+    wait("return vim.api.nvim_get_current_line()=='中😀 = priX)' and not require('completion_tools')._can('accept')")
     eq(1, lua("return cache_requests"))
     wait("return cache_requests==2 and require('completion_tools')._can('accept')")
     eq(1, lua("return require('completion_tools').get_status().sources.copilot.cache_hits"))
@@ -2420,9 +2339,7 @@ local ok, err = xpcall(function()
     copilot_cache_fixture()
     lua("cache_allowed=false")
     input("i")
-    wait(
-      "return #require('completion_tools').get_items()==0 and not require('completion_tools')._can('accept')"
-    )
+    wait("return #require('completion_tools').get_items()==0 and not require('completion_tools')._can('accept')")
     eq(1, lua("return cache_requests"))
     eq(0, lua("return require('completion_tools').get_status().sources.copilot.cache_hits"))
   end)
@@ -2430,9 +2347,7 @@ local ok, err = xpcall(function()
     copilot_cache_fixture()
     lua("cache_enabled=false")
     input("i")
-    wait(
-      "return #require('completion_tools').get_items()==0 and not require('completion_tools')._can('accept')"
-    )
+    wait("return #require('completion_tools').get_items()==0 and not require('completion_tools')._can('accept')")
     lua("cache_enabled=true")
     input("n")
     wait("return cache_requests==2 and require('completion_tools')._can('accept')")
@@ -2463,9 +2378,7 @@ local ok, err = xpcall(function()
     end return count]])
     )
     input("<Tab>!")
-    wait(
-      [[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),{'中😀 = print(1)','print("done")!)'})]]
-    )
+    wait([[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),{'中😀 = print(1)','print("done")!)'})]])
     wait([[for _,line in ipairs(vim.fn.readfile(copilot_protocol_log)) do
       local m=vim.json.decode(line)
       if m.method=='notifyAccepted' and m.params.uuid=='candidate-1' then return true end
@@ -2489,13 +2402,9 @@ local ok, err = xpcall(function()
   test("staged Copilot accepts partial and full suggestions before alternatives finish", function()
     copilot_staged_fixture()
     lua("assert(require('completion_tools').accept_word())")
-    wait(
-      [[return vim.api.nvim_get_current_line()=='中😀 = print)' and require('completion_tools')._can('accept')]]
-    )
+    wait([[return vim.api.nvim_get_current_line()=='中😀 = print)' and require('completion_tools')._can('accept')]])
     input("<Tab>!")
-    wait(
-      [[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),{'中😀 = print(1)','print("done")!)'})]]
-    )
+    wait([[return vim.deep_equal(vim.api.nvim_buf_get_lines(0,0,-1,false),{'中😀 = print(1)','print("done")!)'})]])
     vim.wait(350)
     assert(lua("return not require('completion_tools').is_menu_visible()"))
     eq(1, lua("return staged_count('getCompletions')"))
@@ -2506,10 +2415,8 @@ local ok, err = xpcall(function()
   test("typing along a first-stage Copilot candidate reuses it and cancels alternatives", function()
     copilot_staged_fixture()
     input("i")
-    wait(
-      [[return require('completion_tools').get_context().prefix=='pri' and require('completion_tools')._can('accept')
-      and require('completion_tools').get_status().sources.copilot.cache_hits==1]]
-    )
+    wait([[return require('completion_tools').get_context().prefix=='pri' and require('completion_tools')._can('accept')
+      and require('completion_tools').get_status().sources.copilot.cache_hits==1]])
     vim.wait(350)
     eq(1, lua("return #require('completion_tools').get_items()"))
     eq(1, lua("return staged_count('getCompletions')"))
@@ -2533,9 +2440,7 @@ local ok, err = xpcall(function()
     lua([[vim.cmd('file '..vim.fn.fnameescape(vim.fn.tempname()..'.lua'))]])
     vim.wait(300)
     assert(
-      lua(
-        "return not require('completion_tools').is_menu_visible() and not require('completion_tools')._can('accept')"
-      )
+      lua("return not require('completion_tools').is_menu_visible() and not require('completion_tools')._can('accept')")
     )
     input("<C-Space>")
     wait("return require('completion_tools')._can('accept')", "completion under new URI", 3000)
@@ -2562,26 +2467,20 @@ local ok, err = xpcall(function()
       end
     ]])
     input("ipr")
-    wait(
-      "return empty_calls==1 and require('completion_tools').get_status().sources.copilot.status=='pending'"
-    )
+    wait("return empty_calls==1 and require('completion_tools').get_status().sources.copilot.status=='pending'")
     vim.wait(100)
     assert(lua("return empty_menu_closed()"), "pending Copilot opened an empty menu")
     lua("empty_reply({items={},pending=true})")
     vim.wait(40)
     assert(lua("return empty_menu_closed()"), "empty partial opened a menu")
     lua("empty_reply({items={{label='print'}},pending=true})")
-    wait(
-      "return require('completion_tools').is_menu_visible() and #require('completion_tools').get_items()==1"
-    )
+    wait("return require('completion_tools').is_menu_visible() and #require('completion_tools').get_items()==1")
     lua("empty_reply({items={}})")
     wait("return require('completion_tools').get_status().sources.copilot.status=='done'")
     vim.wait(180)
     assert(lua("return empty_menu_closed()"), "final empty result left a status-only menu")
     lua("require('completion_tools').show()")
-    wait(
-      "return empty_calls==2 and require('completion_tools').get_status().sources.copilot.status=='timeout'"
-    )
+    wait("return empty_calls==2 and require('completion_tools').get_status().sources.copilot.status=='timeout'")
     assert(lua("return empty_menu_closed()"), "timed-out Copilot left an empty menu")
     lua([[
       empty_reply({items={{label='printLate'}}})
@@ -2592,9 +2491,7 @@ local ok, err = xpcall(function()
     lua("require('completion_tools').show()")
     wait("return empty_calls==3")
     lua("empty_reply({items={{label='printFresh'}}})")
-    wait(
-      "return require('completion_tools').is_menu_visible() and require('completion_tools')._can('accept')"
-    )
+    wait("return require('completion_tools').is_menu_visible() and require('completion_tools')._can('accept')")
     eq("printFresh", lua("return require('completion_tools').get_selected_item().label"))
   end)
   test("Copilot footer updates while real candidates remain visible", function()
@@ -2639,17 +2536,14 @@ local ok, err = xpcall(function()
     eq(status_win, lua("local _,win=fixture_footer();return win"))
     local ready_frame = lua("return fixture_footer()")
     local selected_label = lua("return require('completion_tools').get_selected_item().label")
-    local menu_tick = lua(
-      "local _,win=fixture_footer();return vim.api.nvim_buf_get_changedtick(vim.api.nvim_win_get_buf(win))"
-    )
+    local menu_tick =
+      lua("local _,win=fixture_footer();return vim.api.nvim_buf_get_changedtick(vim.api.nvim_win_get_buf(win))")
     vim.wait(180)
     eq(ready_frame, lua("return fixture_footer()"))
     eq(selected_label, lua("return require('completion_tools').get_selected_item().label"))
     eq(
       menu_tick,
-      lua(
-        "local _,win=fixture_footer();return vim.api.nvim_buf_get_changedtick(vim.api.nvim_win_get_buf(win))"
-      )
+      lua("local _,win=fixture_footer();return vim.api.nvim_buf_get_changedtick(vim.api.nvim_win_get_buf(win))")
     )
     lua([[
       local native=vim.lsp.get_clients({name='completion-tools-copilot'})[1]
@@ -2661,10 +2555,7 @@ local ok, err = xpcall(function()
     lua([[local c=vim.lsp.get_clients({name='completion-tools-copilot'})[1]
       c.handlers.didChangeStatus(nil,{kind='Normal'})]])
     vim.wait(60)
-    assert(
-      not lua("return require('completion_tools').is_menu_visible()"),
-      "Status event reopened hidden menu"
-    )
+    assert(not lua("return require('completion_tools').is_menu_visible()"), "Status event reopened hidden menu")
     lua("vim.fn.delete(copilot_status_log)")
   end)
   test("command-line Tab accepts without executing", function()

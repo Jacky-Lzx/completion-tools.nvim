@@ -135,11 +135,7 @@ function M.dispose()
         vim.fn.mapset(
           mapping.mode,
           false,
-          vim.tbl_extend(
-            "keep",
-            mapping.previous,
-            { abbr = 0, buffer = 0, mode = mapping.mode, scriptversion = 1 }
-          )
+          vim.tbl_extend("keep", mapping.previous, { abbr = 0, buffer = 0, mode = mapping.mode, scriptversion = 1 })
         )
       end
     end

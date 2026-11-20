@@ -45,6 +45,4 @@ completion.dispose()
 local previous = api.nvim_get_hl(0, { name = "CompletionToolsDefaultCopilot", link = false })
 t.refresh_palette()
 assert(vim.deep_equal(previous, api.nvim_get_hl(0, { name = "CompletionToolsDefaultCopilot", link = false })))
-print(
-  "completion theme: both setup orders, semantic purple, explicit overrides, restoration and cleanup passed"
-)
+print("completion theme: both setup orders, semantic purple, explicit overrides, restoration and cleanup passed")

@@ -115,11 +115,7 @@ for _, size in ipairs({ 1000, 10000, 20000 }) do
         local prefix = ""
         for _, char in ipairs({ "c", "o", "m", "p" }) do
           prefix = prefix .. char
-          lua(
-            "bench.started=vim.uv.hrtime(); bench.expected,bench.recording=...; bench.done=false",
-            prefix,
-            round > 5
-          )
+          lua("bench.started=vim.uv.hrtime(); bench.expected,bench.recording=...; bench.done=false", prefix, round > 5)
           input(char)
           wait("return bench.done")
           if round > 5 then

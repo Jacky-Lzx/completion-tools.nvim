@@ -120,10 +120,7 @@ function M.prepare(items, opts, available, previous)
           name == "kind_icon"
           and (
             opts.kind_icons == false
-            or (
-              package.loaded["theme_tools.icons"]
-              and package.loaded["theme_tools.icons"].current() == "none"
-            )
+            or (package.loaded["theme_tools.icons"] and package.loaded["theme_tools.icons"].current() == "none")
           )
         )
       then
@@ -135,8 +132,7 @@ function M.prepare(items, opts, available, previous)
           columns[#columns + 1] = {
             name = name,
             width = width,
-            gap = #columns == 0 and 0
-              or (group.automatic and 2 or j == 1 and opts.column_gap or group.gap or 1),
+            gap = #columns == 0 and 0 or (group.automatic and 2 or j == 1 and opts.column_gap or group.gap or 1),
           }
           seen[name] = columns[#columns]
         end
@@ -243,9 +239,7 @@ function M.row(layout, index, entry, ctx, opts)
         code = code:sub(1, row.label_bytes)
       end
       for _, span in
-        ipairs(
-          highlight.get(code, column.name == "label" and row.label_bytes or 0, entry, ctx, opts.highlight)
-        )
+        ipairs(highlight.get(code, column.name == "label" and row.label_bytes or 0, entry, ctx, opts.highlight))
       do
         if
           type(span) == "table"
@@ -264,8 +258,7 @@ function M.row(layout, index, entry, ctx, opts)
         local query, pos = (ctx.before or ""):sub((entry.start_col or 0) + 1), 1
         -- Match whole UTF-8 characters, with byte positions for extmarks.
         for char in query:gmatch(text.characters) do
-          local at =
-            row.label:sub(1, math.min(retained, row.label_bytes)):lower():find(char:lower(), pos, true)
+          local at = row.label:sub(1, math.min(retained, row.label_bytes)):lower():find(char:lower(), pos, true)
           if not at then
             break
           end

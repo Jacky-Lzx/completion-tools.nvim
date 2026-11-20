@@ -1,5 +1,5 @@
 -- JSON-lines worker; never loads the user's init or the Blink ecosystem.
-local root = debug.getinfo(1, "S").source:sub(2):gsub("completion_tools/worker_main.lua$", "")
+local root = debug.getinfo(1, "S").source:sub(2):gsub("completion_tools/worker/main%.lua$", "")
 package.path = root .. "?.lua;" .. package.path
 local matcher = require("completion_tools.matcher")
 local indexes, clock = {}, 0
@@ -65,8 +65,7 @@ local function dictionary(request)
   clock = clock + 1
   index.used = clock
   local query = request.query:lower()
-  local cache_key =
-    vim.json.encode({ request.query, request.matching, request.max_items, request.capitalize })
+  local cache_key = vim.json.encode({ request.query, request.matching, request.max_items, request.capitalize })
   local items = index.cache[cache_key]
   if not items then
     local candidates = index.words
@@ -83,9 +82,7 @@ local function dictionary(request)
         local last = top[#top]
         if #top < request.max_items or score > last.score or (score == last.score and word < last.word) then
           local at = #top + 1
-          while
-            at > 1 and (score > top[at - 1].score or (score == top[at - 1].score and word < top[at - 1].word))
-          do
+          while at > 1 and (score > top[at - 1].score or (score == top[at - 1].score and word < top[at - 1].word)) do
             at = at - 1
           end
           table.insert(top, at, { word = word, score = score })

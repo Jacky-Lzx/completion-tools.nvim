@@ -1,8 +1,8 @@
 local function eq(expected, actual)
   assert(vim.deep_equal(expected, actual), vim.inspect({ expected = expected, actual = actual }))
 end
-local native = require("completion_tools.copilot")
-local context = require("completion_tools.copilot_context")
+local native = require("completion_tools.sources.copilot.client")
+local context = require("completion_tools.sources.copilot.context")
 local tmp, log = vim.fn.tempname(), vim.fn.tempname()
 for _, path in ipairs({ "a/.git", "a/src", "b/.git", "extra" }) do
   vim.fn.mkdir(tmp .. "/" .. path, "p")

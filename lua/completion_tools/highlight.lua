@@ -96,13 +96,7 @@ local function treesitter(text, filetype, spans)
         local range = vim.treesitter.get_range(node, text, metadata[id])
         if range[1] == 0 and range[4] == 0 then
           local priority = tonumber((metadata[id] or {}).priority or metadata.priority) or 100
-          add(
-            spans,
-            range[2],
-            range[5],
-            "@" .. capture .. "." .. lang,
-            130 + math.min(50, math.max(0, priority - 100))
-          )
+          add(spans, range[2], range[5], "@" .. capture .. "." .. lang, 130 + math.min(50, math.max(0, priority - 100)))
         end
       end
     end

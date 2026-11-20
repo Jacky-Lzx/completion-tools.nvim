@@ -102,55 +102,57 @@ M.defaults = {
   },
 }
 
-function M.validate(opts)
-  assert(type(opts) == "table", "completion-tools: setup expects a table")
-  local config = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
-  -- Lists and keymaps are replacements. An empty table must disable them.
-  if opts.copilot and opts.copilot.command ~= nil then
-    config.copilot.command = vim.deepcopy(opts.copilot.command)
+local function replace_fields(target, overrides, fields, copy)
+  if not overrides then
+    return
   end
-  if opts.copilot and opts.copilot.workspace_folders ~= nil then
-    config.copilot.workspace_folders = vim.deepcopy(opts.copilot.workspace_folders)
-  end
-  if opts.sources ~= nil then
-    config.sources = opts.sources
-  end
-  if opts.trigger_characters ~= nil then
-    config.trigger_characters = opts.trigger_characters
-  end
-  if opts.keymap ~= nil then
-    config.keymap = opts.keymap
-  end
-  if opts.menu and opts.menu.columns ~= nil then
-    config.menu.columns = vim.deepcopy(opts.menu.columns)
-  end
-  if opts.dictionary and opts.dictionary.files ~= nil then
-    config.dictionary.files = opts.dictionary.files
-  end
-  if opts.cmdline then
-    for _, field in ipairs({ "keymap", "types" }) do
-      if opts.cmdline[field] ~= nil then
-        config.cmdline[field] = vim.deepcopy(opts.cmdline[field])
+
+  for _, field in ipairs(fields) do
+    local value = overrides[field]
+    if value ~= nil then
+      if copy then
+        value = copy(value)
       end
+      target[field] = value
     end
   end
+end
+
+local function merge_options(opts)
+  local config = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
+  -- These fields replace the defaults even when the override is empty.
+  replace_fields(config.copilot, opts.copilot, { "command", "workspace_folders" }, vim.deepcopy)
+  replace_fields(config, opts, { "sources", "trigger_characters", "keymap" })
+  replace_fields(config.menu, opts.menu, { "columns" }, vim.deepcopy)
+  replace_fields(config.dictionary, opts.dictionary, { "files" })
+  replace_fields(config.cmdline, opts.cmdline, { "keymap", "types" }, vim.deepcopy)
+  return config
+end
+
+local function integer(value, minimum)
+  return type(value) == "number" and value >= minimum and value % 1 == 0
+end
+
+local function optional_integer(value, minimum)
+  return value == nil or integer(value, minimum)
+end
+
+local function optional_function(value)
+  return value == nil or type(value) == "function"
+end
+
+local function validate_general(config)
   for _, name in ipairs({ "max_items", "min_keyword_length", "debounce_ms" }) do
     assert(type(config[name]) == "number" and config[name] >= 0, "completion-tools: invalid " .. name)
   end
-  assert(
-    config.max_items >= 1 and config.max_items % 1 == 0,
-    "completion-tools: max_items must be a positive integer"
-  )
+  assert(config.max_items >= 1 and config.max_items % 1 == 0, "completion-tools: max_items must be a positive integer")
   for _, field in ipairs({ "max_bytes", "max_words", "max_buffers", "batch_lines", "min_length" }) do
     assert(
       type(config.buffer[field]) == "number" and config.buffer[field] >= 1,
       "completion-tools: buffer." .. field .. " must be positive"
     )
   end
-  assert(
-    type(config.sources) == "table" or type(config.sources) == "function",
-    "completion-tools: invalid sources"
-  )
+  assert(type(config.sources) == "table" or type(config.sources) == "function", "completion-tools: invalid sources")
   assert(type(config.keymap) == "table", "completion-tools: invalid keymap")
   assert(type(config.keyword_pattern) == "string", "completion-tools: invalid keyword_pattern")
   assert(
@@ -165,30 +167,17 @@ function M.validate(opts)
       )
     end
   end
-  for _, section in ipairs({ "menu", "documentation" }) do
-    for _, field in ipairs({ "max_width", "max_height" }) do
-      assert(
-        type(config[section][field]) == "number"
-          and config[section][field] >= 1
-          and config[section][field] % 1 == 0,
-        "completion-tools: invalid " .. section .. "." .. field
-      )
-    end
-  end
-  assert(
-    config.menu.min_width >= 1 and config.menu.min_width <= config.menu.max_width,
-    "completion-tools: invalid menu.min_width"
-  )
-  local menu, components, seen = config.menu, require("completion_tools.render").components, {}
-  local function integer(value, minimum)
-    return type(value) == "number" and value >= minimum and value % 1 == 0
-  end
-  local ranking = config.ranking
-  assert(
-    config.accept.mode == "insert" or config.accept.mode == "replace",
-    "completion-tools: invalid accept.mode"
-  )
+  assert(config.accept.mode == "insert" or config.accept.mode == "replace", "completion-tools: invalid accept.mode")
   assert(integer(config.timeout_ms, 0), "completion-tools: invalid timeout_ms")
+end
+
+local function validate_window_size(window, section)
+  for _, field in ipairs({ "max_width", "max_height" }) do
+    assert(integer(window[field], 1), "completion-tools: invalid " .. section .. "." .. field)
+  end
+end
+
+local function validate_providers(providers)
   local visiting, visited = {}, {}
   local function visit(id)
     assert(not visiting[id], "completion-tools: cyclic provider fallback_for: " .. id)
@@ -196,17 +185,16 @@ function M.validate(opts)
       return
     end
     visiting[id] = true
-    local provider = config.providers[id] or {}
-    if provider.insert_at ~= nil then
-      assert(integer(provider.insert_at, 1), "completion-tools: invalid provider insert_at")
-    end
-    if provider.client_order ~= nil then
+    local provider = providers[id] or {}
+    assert(optional_integer(provider.insert_at, 1), "completion-tools: invalid provider insert_at")
+    local client_order = provider.client_order
+    if client_order ~= nil then
       assert(
-        id == "lsp" and type(provider.client_order) == "table" and vim.islist(provider.client_order),
+        id == "lsp" and type(client_order) == "table" and vim.islist(client_order),
         "completion-tools: client_order must be an LSP client name list"
       )
       local seen = {}
-      for _, name in ipairs(provider.client_order) do
+      for _, name in ipairs(client_order) do
         assert(
           type(name) == "string" and name ~= "" and not seen[name],
           "completion-tools: client_order expects unique nonempty client names"
@@ -214,24 +202,24 @@ function M.validate(opts)
         seen[name] = true
       end
     end
-    if provider.timeout_ms ~= nil then
-      assert(integer(provider.timeout_ms, 0), "completion-tools: invalid provider timeout_ms")
-    end
-    if provider.max_items ~= nil then
-      assert(integer(provider.max_items, 1), "completion-tools: invalid provider max_items")
-    end
-    if provider.fallback_for ~= nil then
-      assert(type(provider.fallback_for) == "table", "completion-tools: invalid fallback_for")
-      for _, dependency in ipairs(provider.fallback_for) do
+    assert(optional_integer(provider.timeout_ms, 0), "completion-tools: invalid provider timeout_ms")
+    assert(optional_integer(provider.max_items, 1), "completion-tools: invalid provider max_items")
+    local fallback_for = provider.fallback_for
+    if fallback_for ~= nil then
+      assert(type(fallback_for) == "table", "completion-tools: invalid fallback_for")
+      for _, dependency in ipairs(fallback_for) do
         assert(type(dependency) == "string", "completion-tools: fallback_for expects source IDs")
         visit(dependency)
       end
     end
     visiting[id], visited[id] = nil, true
   end
-  for id in pairs(config.providers) do
+  for id in pairs(providers) do
     visit(id)
   end
+end
+
+local function validate_ranking(ranking)
   assert(
     type(ranking.history.enabled) == "boolean" and type(ranking.proximity.enabled) == "boolean",
     "completion-tools: invalid ranking flags"
@@ -240,37 +228,28 @@ function M.validate(opts)
     integer(ranking.history.max_entries, 1) and integer(ranking.proximity.lines, 0),
     "completion-tools: invalid ranking limits"
   )
-  assert(
-    ranking.max_typos == 0 or ranking.max_typos == 1,
-    "completion-tools: ranking.max_typos must be 0 or 1"
-  )
+  assert(ranking.max_typos == 0 or ranking.max_typos == 1, "completion-tools: ranking.max_typos must be 0 or 1")
   assert(
     ranking.history.path == nil or (type(ranking.history.path) == "string" and ranking.history.path ~= ""),
     "completion-tools: invalid ranking.history.path"
   )
-  assert(integer(menu.shrink_delay_ms, 0), "completion-tools: invalid menu.shrink_delay_ms")
-  assert(integer(menu.update_interval_ms, 0), "completion-tools: invalid menu.update_interval_ms")
-  assert(integer(config.copilot.debounce_ms, 0), "completion-tools: invalid copilot.debounce_ms")
-  assert(integer(config.copilot.max_items, 1), "completion-tools: invalid copilot.max_items")
-  local copilot = config.copilot
+end
+
+local function validate_copilot(copilot)
+  assert(integer(copilot.debounce_ms, 0), "completion-tools: invalid copilot.debounce_ms")
+  assert(integer(copilot.max_items, 1), "completion-tools: invalid copilot.max_items")
   assert(
     copilot.request_mode == "cycling" or copilot.request_mode == "staged",
     "completion-tools: invalid copilot.request_mode"
   )
   assert(type(copilot.show_status) == "boolean", "completion-tools: invalid copilot.show_status")
-  assert(
-    type(copilot.command) == "table" and #copilot.command > 0,
-    "completion-tools: invalid copilot.command"
-  )
+  assert(type(copilot.command) == "table" and #copilot.command > 0, "completion-tools: invalid copilot.command")
   for _, arg in ipairs(copilot.command) do
     assert(type(arg) == "string" and arg ~= "", "completion-tools: invalid copilot.command argument")
   end
   assert(type(copilot.filetypes) == "table", "completion-tools: invalid copilot.filetypes")
   for ft, value in pairs(copilot.filetypes) do
-    assert(
-      type(ft) == "string" and type(value) == "boolean",
-      "completion-tools: invalid copilot.filetypes entry"
-    )
+    assert(type(ft) == "string" and type(value) == "boolean", "completion-tools: invalid copilot.filetypes entry")
   end
   assert(type(copilot.settings) == "table", "completion-tools: invalid copilot.settings")
   assert(
@@ -290,21 +269,10 @@ function M.validate(opts)
       "completion-tools: invalid copilot.language_ids entry"
     )
   end
-  assert(
-    copilot.should_attach == nil or type(copilot.should_attach) == "function",
-    "completion-tools: invalid copilot.should_attach"
-  )
-  assert(
-    menu.inverse == "auto" or type(menu.inverse) == "boolean",
-    'completion-tools: menu.inverse must be "auto", true or false'
-  )
-  for _, section in ipairs({ "dictionary", "spell" }) do
-    for _, field in ipairs({ "min_keyword_length", "max_items", "timeout_ms" }) do
-      assert(integer(config[section][field], 1), "completion-tools: invalid " .. section .. "." .. field)
-    end
-  end
-  local dict, spell = config.dictionary, config.spell
-  local cmdline = config.cmdline
+  assert(optional_function(copilot.should_attach), "completion-tools: invalid copilot.should_attach")
+end
+
+local function validate_cmdline(cmdline)
   assert(
     type(cmdline.enabled) == "boolean" and type(cmdline.auto_show) == "boolean",
     "completion-tools: invalid cmdline flags"
@@ -315,51 +283,68 @@ function M.validate(opts)
     type(cmdline.keymap) == "table" and type(cmdline.types) == "table",
     "completion-tools: invalid cmdline maps/types"
   )
-  assert(
-    cmdline.get_anchor == nil or type(cmdline.get_anchor) == "function",
-    "completion-tools: invalid cmdline.get_anchor"
-  )
+  assert(optional_function(cmdline.get_anchor), "completion-tools: invalid cmdline.get_anchor")
   for _, cmdtype in ipairs(cmdline.types) do
     assert(vim.tbl_contains({ ":", "/", "?" }, cmdtype), "completion-tools: unsupported cmdline type")
   end
-  assert(
-    type(dict.files) == "table" or type(dict.files) == "function",
-    "completion-tools: invalid dictionary.files"
-  )
-  if type(dict.files) == "table" then
-    for _, file in ipairs(dict.files) do
+end
+
+local function validate_dictionary(dictionary)
+  for _, field in ipairs({ "min_keyword_length", "max_items", "timeout_ms" }) do
+    assert(integer(dictionary[field], 1), "completion-tools: invalid dictionary." .. field)
+  end
+  local files = dictionary.files
+  assert(type(files) == "table" or type(files) == "function", "completion-tools: invalid dictionary.files")
+  if type(files) == "table" then
+    for _, file in ipairs(files) do
       assert(type(file) == "string" and file ~= "", "completion-tools: invalid dictionary path")
     end
   end
   for _, field in ipairs({ "max_bytes", "max_words", "max_word_bytes" }) do
-    assert(integer(dict[field], 1), "completion-tools: invalid dictionary." .. field)
+    assert(integer(dictionary[field], 1), "completion-tools: invalid dictionary." .. field)
   end
   assert(
-    dict.matching == "prefix" or dict.matching == "fuzzy",
+    dictionary.matching == "prefix" or dictionary.matching == "fuzzy",
     "completion-tools: invalid dictionary.matching"
   )
-  assert(type(dict.capitalize) == "boolean", "completion-tools: invalid dictionary.capitalize")
+  assert(type(dictionary.capitalize) == "boolean", "completion-tools: invalid dictionary.capitalize")
+  local documentation = dictionary.documentation
   assert(
-    type(dict.documentation) == "table"
-      and type(dict.documentation.enabled) == "boolean"
-      and type(dict.documentation.command) == "string"
-      and dict.documentation.command ~= ""
-      and integer(dict.documentation.timeout_ms, 1),
+    type(documentation) == "table"
+      and type(documentation.enabled) == "boolean"
+      and type(documentation.command) == "string"
+      and documentation.command ~= ""
+      and integer(documentation.timeout_ms, 1),
     "completion-tools: invalid dictionary.documentation"
   )
+end
+
+local function validate_spell(spell)
+  for _, field in ipairs({ "min_keyword_length", "max_items", "timeout_ms" }) do
+    assert(integer(spell[field], 1), "completion-tools: invalid spell." .. field)
+  end
   assert(integer(spell.debounce_ms, 0), "completion-tools: invalid spell.debounce_ms")
   assert(spell.sort == "match" or spell.sort == "suggestion", "completion-tools: invalid spell.sort")
   for _, field in ipairs({ "preselect_current_word", "suggest_when_correct" }) do
     assert(type(spell[field]) == "boolean", "completion-tools: invalid spell." .. field)
   end
+  assert(optional_function(spell.enable_in_context), "completion-tools: invalid spell.enable_in_context")
+end
+
+local function validate_menu(menu)
+  validate_window_size(menu, "menu")
+  assert(menu.min_width >= 1 and menu.min_width <= menu.max_width, "completion-tools: invalid menu.min_width")
+  assert(integer(menu.shrink_delay_ms, 0), "completion-tools: invalid menu.shrink_delay_ms")
+  assert(integer(menu.update_interval_ms, 0), "completion-tools: invalid menu.update_interval_ms")
   assert(
-    spell.enable_in_context == nil or type(spell.enable_in_context) == "function",
-    "completion-tools: invalid spell.enable_in_context"
+    menu.inverse == "auto" or type(menu.inverse) == "boolean",
+    'completion-tools: menu.inverse must be "auto", true or false'
   )
+  local components, seen = require("completion_tools.render").components, {}
   assert(type(menu.columns) == "table" and #menu.columns > 0, "completion-tools: empty menu.columns")
   for _, column in ipairs(menu.columns) do
     assert(type(column) == "table" and #column > 0, "completion-tools: invalid menu column")
-    assert(column.gap == nil or integer(column.gap, 0), "completion-tools: invalid column gap")
+    assert(optional_integer(column.gap, 0), "completion-tools: invalid column gap")
     for _, name in ipairs(column) do
       assert(components[name] and not seen[name], "completion-tools: unknown or repeated menu component")
       seen[name] = true
@@ -369,10 +354,7 @@ function M.validate(opts)
     assert(integer(menu[field], 0), "completion-tools: invalid menu." .. field)
   end
   assert(integer(menu.max_label_bytes, 4), "completion-tools: invalid menu.max_label_bytes")
-  assert(
-    type(menu.kind_icons) == "boolean" or type(menu.kind_icons) == "table",
-    "completion-tools: invalid kind_icons"
-  )
+  assert(type(menu.kind_icons) == "boolean" or type(menu.kind_icons) == "table", "completion-tools: invalid kind_icons")
   if type(menu.kind_icons) == "table" then
     for _, icon in pairs(menu.kind_icons) do
       assert(type(icon) == "string", "completion-tools: kind icons must be strings")
@@ -388,50 +370,66 @@ function M.validate(opts)
     integer(menu.highlight.cache_size, 0) and integer(menu.highlight.max_bytes, 1),
     "completion-tools: invalid highlight limits"
   )
-  assert(
-    menu.highlight.custom == nil or type(menu.highlight.custom) == "function",
-    "completion-tools: invalid highlight callback"
-  )
-  assert(config.path.max_entries >= 1 and config.path.cache_ms >= 0, "completion-tools: invalid path limits")
-  local preview = config.path.preview
-  assert(
-    type(preview) == "table" and type(preview.enabled) == "boolean",
-    "completion-tools: invalid path.preview"
-  )
+  assert(optional_function(menu.highlight.custom), "completion-tools: invalid highlight callback")
+end
+
+local function validate_path(path)
+  assert(path.max_entries >= 1 and path.cache_ms >= 0, "completion-tools: invalid path limits")
+  local preview = path.preview
+  assert(type(preview) == "table" and type(preview.enabled) == "boolean", "completion-tools: invalid path.preview")
   assert(
     integer(preview.max_bytes, 1) and integer(preview.max_lines, 1),
     "completion-tools: invalid path preview limits"
   )
-  assert(
-    config.documentation.on_render == nil or type(config.documentation.on_render) == "function",
-    "completion-tools: documentation.on_render must be a function"
-  )
-  assert(config.documentation.delay_ms >= 0, "completion-tools: invalid documentation delay")
-  assert(
-    config.snippets.preset == "default" or config.snippets.preset == "luasnip",
-    "completion-tools: invalid snippets.preset"
-  )
-  if config.snippets.preset == "luasnip" then
-    config.snippets.expand = config.snippets.expand
-      or function(text, options)
-        require("luasnip").lsp_expand(text, {
-          indent = not (options and options.insert_text_mode),
-        })
-      end
-    config.snippets.active = config.snippets.active
-      or function(direction)
-        return require("luasnip").locally_jumpable(direction)
-      end
-    config.snippets.jump = config.snippets.jump
-      or function(direction)
-        local ls = require("luasnip")
-        if ls.locally_jumpable(direction) then
-          ls.jump(direction)
-          return true
-        end
-        return false
-      end
+end
+
+local function validate_documentation(documentation)
+  validate_window_size(documentation, "documentation")
+  assert(optional_function(documentation.on_render), "completion-tools: documentation.on_render must be a function")
+  assert(documentation.delay_ms >= 0, "completion-tools: invalid documentation delay")
+end
+
+local function configure_snippets(snippets)
+  assert(snippets.preset == "default" or snippets.preset == "luasnip", "completion-tools: invalid snippets.preset")
+  if snippets.preset ~= "luasnip" then
+    return
   end
+
+  snippets.expand = snippets.expand
+    or function(text, options)
+      require("luasnip").lsp_expand(text, {
+        indent = not (options and options.insert_text_mode),
+      })
+    end
+  snippets.active = snippets.active
+    or function(direction)
+      return require("luasnip").locally_jumpable(direction)
+    end
+  snippets.jump = snippets.jump
+    or function(direction)
+      local ls = require("luasnip")
+      if ls.locally_jumpable(direction) then
+        ls.jump(direction)
+        return true
+      end
+      return false
+    end
+end
+
+function M.validate(opts)
+  assert(type(opts) == "table", "completion-tools: setup expects a table")
+  local config = merge_options(opts)
+  validate_general(config)
+  validate_providers(config.providers)
+  validate_ranking(config.ranking)
+  validate_menu(config.menu)
+  validate_documentation(config.documentation)
+  validate_copilot(config.copilot)
+  validate_cmdline(config.cmdline)
+  validate_dictionary(config.dictionary)
+  validate_spell(config.spell)
+  validate_path(config.path)
+  configure_snippets(config.snippets)
   return config
 end
 

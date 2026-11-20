@@ -32,11 +32,7 @@ function M.create(name, callback, opts, buffer)
     if buffer and not api.nvim_buf_is_valid(buffer) then
       return
     end
-    if
-      owned[scope]
-      and owned[scope][name] == installed
-      and vim.deep_equal(current(name, buffer), installed)
-    then
+    if owned[scope] and owned[scope][name] == installed and vim.deep_equal(current(name, buffer), installed) then
       M.delete(name, buffer)
     end
   end

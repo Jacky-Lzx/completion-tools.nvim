@@ -24,7 +24,7 @@ function client:request(method, params, callback, buf)
   requests[#requests + 1] = { params = params, callback = callback, buf = buf }
   return sent, #requests
 end
-local native = require("completion_tools.copilot")
+local native = require("completion_tools.sources.copilot.client")
 local real_new = native.new
 native.new = function()
   return {
@@ -286,7 +286,7 @@ for _, value in ipairs({ -1, 0, 0.5, "three" }) do
   assert(not pcall(require("completion_tools.config").validate, { copilot = { max_items = value } }))
 end
 native.new = real_new
-local format = require("completion_tools.copilot_status").format
+local format = require("completion_tools.sources.copilot.status").format
 for _, case in ipairs({
   { {}, { status = "pending" }, 0, "Waiting" },
   { { running = true }, { status = "pending" }, 0, "Starting" },
@@ -313,6 +313,4 @@ eq("", format({}, { status = "done" }, 3).text)
 eq("", format({ enabled = false }, {}, 0).text)
 eq("", format({ last_error = "offline" }, {}, 0).text)
 eq("", format({ server = { kind = "Error" } }, {}, 0).text)
-print(
-  "copilot: native requests, eligibility, UTF-16 multiline edits, literal text, cancellation and debounce passed"
-)
+print("copilot: native requests, eligibility, UTF-16 multiline edits, literal text, cancellation and debounce passed")
