@@ -99,13 +99,16 @@ function M.prepare(items, opts, available, previous)
   for _, column in ipairs(previous and previous.columns or {}) do
     retained[column.name] = column
   end
+
   for i, entry in ipairs(items) do
     rows[i] = fields(entry, opts)
   end
+
   local groups, explicit_description = {}, false
   for _, group in ipairs(opts.columns) do
     explicit_description = explicit_description or vim.tbl_contains(group, "label_description")
   end
+
   for _, group in ipairs(opts.columns) do
     groups[#groups + 1] = group
     if opts.label_details and not explicit_description and vim.tbl_contains(group, "label") then
@@ -113,6 +116,7 @@ function M.prepare(items, opts, available, previous)
       groups[#groups + 1] = { "label_description", gap = 2, automatic = true }
     end
   end
+
   for _, group in ipairs(groups) do
     for j, name in ipairs(group) do
       if
@@ -139,6 +143,7 @@ function M.prepare(items, opts, available, previous)
       end
     end
   end
+
   local limit = math.min(available, opts.max_width)
   local padding = math.min(opts.padding, math.floor(limit / 2))
   if previous then
@@ -150,6 +155,7 @@ function M.prepare(items, opts, available, previous)
       local old = retained[column.name]
       reserved = reserved + (old and old.width + old.gap or 0)
     end
+
     local spare = math.max(0, limit - reserved)
     for _, column in ipairs(columns) do
       local old = retained[column.name]
@@ -160,10 +166,12 @@ function M.prepare(items, opts, available, previous)
       spare, column.width = spare - grow_width, width + grow_width
     end
   end
+
   local natural = padding * 2
   for _, column in ipairs(columns) do
     natural = natural + column.width + column.gap
   end
+
   local width = math.min(limit, math.max(opts.min_width, natural))
   local excess = natural - width
   -- Spend excess metadata width before truncating the candidate itself, while
@@ -172,10 +180,12 @@ function M.prepare(items, opts, available, previous)
     local take = math.min(excess, math.max(0, seen.label_description.width - 12))
     seen.label_description.width, excess = seen.label_description.width - take, excess - take
   end
+
   if seen.label and excess > 0 then
     local take = math.min(excess, math.max(0, seen.label.width - 8))
     seen.label.width, excess = seen.label.width - take, excess - take
   end
+
   for _, name in ipairs({ "label_description", "label_detail", "source", "kind", "kind_icon", "label" }) do
     local column = seen[name]
     if column and excess > 0 then
@@ -183,16 +193,19 @@ function M.prepare(items, opts, available, previous)
       column.width, excess = column.width - take, excess - take
     end
   end
+
   for i = #columns, 1, -1 do
     if excess > 0 then
       local take = math.min(excess, columns[i].gap)
       columns[i].gap, excess = columns[i].gap - take, excess - take
     end
   end
+
   -- Give spare space to the label, keeping auxiliary columns aligned at the right.
   if natural < width and seen.label then
     seen.label.width = seen.label.width + width - natural
   end
+
   return { rows = rows, columns = columns, width = width, padding = padding }
 end
 
@@ -215,6 +228,7 @@ function M.row(layout, index, entry, ctx, opts)
       spans[#spans + 1] = { first, last, group, priority or 110 }
     end
   end
+
   for _, column in ipairs(layout.columns) do
     line = line .. string.rep(" ", column.gap)
     local start = #line
@@ -224,6 +238,7 @@ function M.row(layout, index, entry, ctx, opts)
       or text.truncate
     local value, retained = truncate(row[column.name], column.width)
     line = line .. value .. string.rep(" ", math.max(0, column.width - vim.fn.strdisplaywidth(value)))
+
     if column.name == "kind" or column.name == "kind_icon" then
       add(start, start + #value, row.kind_group)
     elseif
@@ -238,6 +253,7 @@ function M.row(layout, index, entry, ctx, opts)
         add(start + row.label_bytes, start + #value, "CompletionToolsSource")
         code = code:sub(1, row.label_bytes)
       end
+
       for _, span in
         ipairs(highlight.get(code, column.name == "label" and row.label_bytes or 0, entry, ctx, opts.highlight))
       do
@@ -254,6 +270,7 @@ function M.row(layout, index, entry, ctx, opts)
           end
         end
       end
+
       if column.name == "label" then
         local query, pos = (ctx.before or ""):sub((entry.start_col or 0) + 1), 1
         -- Match whole UTF-8 characters, with byte positions for extmarks.
@@ -262,20 +279,24 @@ function M.row(layout, index, entry, ctx, opts)
           if not at then
             break
           end
+
           add(start + at - 1, start + at - 1 + #char, "CompletionToolsMatch", 200)
           pos = at + #char
         end
+
         if entry.item.deprecated or vim.tbl_contains(entry.item.tags or {}, 1) then
           add(start, start + math.min(retained, row.label_bytes), "CompletionToolsDeprecated", 210)
         end
       end
     end
+
     -- Keep every Copilot field purple while retaining match/deprecation styles
     -- and the selected row's background. Other Text sources retain their colors.
     if entry.source_id == "copilot" then
       add(start, start + #value, "CompletionToolsCopilot", 195)
     end
   end
+
   return line .. string.rep(" ", math.max(0, layout.width - vim.fn.strdisplaywidth(line))), spans
 end
 

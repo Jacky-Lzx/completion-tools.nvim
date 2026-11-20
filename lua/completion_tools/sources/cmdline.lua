@@ -20,6 +20,7 @@ local kinds = {
   ["function"] = 3,
   filetype = 14,
 }
+
 function M.new(opts)
   opts = opts or {}
   return {

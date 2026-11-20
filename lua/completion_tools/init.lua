@@ -214,23 +214,28 @@ local function render(pending)
   if not ctx or not context.same(ctx, current()) then
     return
   end
+
   update_menu_status()
+
   local groups = {}
   local matcher = require("completion_tools.matcher")
   local match_options = {
     max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
     bonus = state.ranking.scorer(ctx),
   }
+
   for _, id in ipairs(state.source_ids) do
     local suppressed = false
     for _, dependency in ipairs((state.config.providers[id] or {}).fallback_for or {}) do
       local record = state.run and state.run.records[dependency]
       suppressed = suppressed or (record and (record.matches or record.status == "skipped"))
     end
+
     local record = state.run and state.run.records[id]
     if state.groups[id] or not record or record.status ~= "pending" then
       state.retained[id] = nil
     end
+
     local source_group = state.groups[id] or (record and record.status == "pending" and state.retained[id])
     if source_group and not suppressed then
       local cap = (state.config.providers[id] or {}).max_items
@@ -244,10 +249,12 @@ local function render(pending)
       groups[#groups + 1] = source_group
     end
   end
+
   local previous = selected_entry()
   local items = matcher.select(groups, ctx, state.config.max_items, match_options)
   state.reason = #items > 0 and "ready" or (pending and "pending" or "no_matches")
   state.last_request_reason = state.reason
+
   -- An empty partial result is not a final "no matches". Keep the last ready
   -- frame until a useful replacement or the last provider's response arrives.
   if #items == 0 and pending and ui.visible() then
@@ -255,18 +262,22 @@ local function render(pending)
     ui.reposition(ctx, state.config)
     return
   end
+
   state.ready = false
   for _, entry in ipairs(items) do
     entry.stale = state.groups[entry.source_id] == nil
     state.ready = state.ready or not entry.stale
   end
+
   if #items > 0 and not state.ready then
     state.reason, state.last_request_reason = "pending", "pending"
   end
+
   state.items = items
   state.diagnostics.shown(items)
   -- A vanished manual choice stays empty until navigation or another edit.
   state.selected = not state.selection_manual and state.config.preselect and #items > 0 and 1 or nil
+
   if previous then
     for i, entry in ipairs(items) do
       if entry.source_id == previous.source_id and entry.key == previous.key then
@@ -280,12 +291,14 @@ local function render(pending)
       end
     end
   end
+
   if state.select_first and state.ready and #items > 0 then
     if not state.selected then
       state.selected, state.selection_manual = 1, true
     end
     state.select_first = nil
   end
+
   ui.render(items, state.selected, ctx, state.config)
   documentation(false)
   return #items > 0 or not pending
@@ -433,6 +446,7 @@ local function receive_response(generation, ctx, id, priority, response)
   if not valid(generation, ctx) then
     return false
   end
+
   response = response or { items = {} }
   if response.cached then
     state.groups[id] = response.cached.group
@@ -441,11 +455,13 @@ local function receive_response(generation, ctx, id, priority, response)
       max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
     })
   end
+
   local configured = state.config.providers[id] or {}
   local items = response.items or response
   if configured.transform_items then
     items = configured.transform_items(ctx, items)
   end
+
   local result = {
     items = items,
     source_id = id,
@@ -456,6 +472,7 @@ local function receive_response(generation, ctx, id, priority, response)
     start_col = response.start_col or ctx.start_col,
     context = response.context or ctx,
   }
+
   for _, item in ipairs(items) do
     local edit = item.textEdit
     local range = edit and (edit.range or edit.replace or edit.insert)
@@ -466,15 +483,18 @@ local function receive_response(generation, ctx, id, priority, response)
         or vim.str_byteindex(ctx.line, encoding, range.start.character, false)
     end
   end
+
   local matches = require("completion_tools.matcher").has_match(result, ctx, {
     max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
   })
+
   -- Empty partials are not an authoritative replacement for a retained
   -- source, even when other sources already have fresh matches to show.
   if not (response.pending and not matches and state.retained[id]) then
     state.groups[id] = result
     state.retained[id] = nil
   end
+
   state.diagnostics.receive(id, #items)
   state.cache[id] = {
     group = result,
@@ -484,6 +504,7 @@ local function receive_response(generation, ctx, id, priority, response)
     response = state.providers[id].reuse and (not response.pending or response.stable) and response or nil,
     cursor_col = ctx.col,
   }
+
   return matches
 end
 
@@ -499,9 +520,11 @@ local function run_request(generation, ctx, ids, options, reused)
         end
       end
     end
+
     if render_queued then
       return
     end
+
     render_queued = true
 
     local function flush()

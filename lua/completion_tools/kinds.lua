@@ -28,6 +28,7 @@ local definitions = {
   { "Operator", "󰆕", "@operator" },
   { "TypeParameter", "󰅲", "@type" },
 }
+
 local unknown = { "Unknown", "?", "Special" }
 
 function M.get(kind, icons)
@@ -36,6 +37,7 @@ function M.get(kind, icons)
   local shared = package.loaded["theme_tools.icons"]
   local group = "CompletionToolsKind" .. name
   local mode
+
   if type(shared) == "table" and type(shared.get) == "function" and icons ~= false then
     mode = shared.current()
     local shared_group
@@ -44,11 +46,13 @@ function M.get(kind, icons)
       group = shared_group
     end
   end
+
   if icons == false then
     icon = ""
   elseif mode ~= "ascii" and mode ~= "none" and type(icons) == "table" and icons[name] ~= nil then
     icon = icons[name]
   end
+
   return name, icon, group
 end
 

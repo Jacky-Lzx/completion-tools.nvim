@@ -2,30 +2,46 @@
 -- diagnostics/tests; only the icon and the optional spinner enter the footer.
 local M = {}
 local spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+local empty = {}
+-- stylua: ignore
+local statuses = {
+  waiting        = { text = "", label = "Waiting",          highlight = "Special", frames = spinner },
+  disabled       = { text = "", label = "Disabled",         highlight = "Comment"                   },
+  timeout        = { text = "", label = "Timed out",        highlight = "DiagnosticWarn"            },
+  sign_in        = { text = "", label = "Sign in required", highlight = "DiagnosticError"           },
+  unavailable    = { text = "", label = "Unavailable",      highlight = "DiagnosticWarn"            },
+  starting       = { text = "", label = "Starting",         highlight = "Special", frames = spinner },
+  generating     = { text = "", label = "Generating",       highlight = "Special", frames = spinner },
+  ready          = { text = "", label = "Ready",            highlight = "DiagnosticOk"              },
+  no_suggestions = { text = "", label = "No suggestions",   highlight = "Comment"                   },
+}
+
+--- Return a shared footer status. Treat the result and its frames as read-only.
 function M.format(client, record, count)
-  client, record = client or {}, record or {}
-  local label, icon, group, busy = "Waiting", "", "Special", true
-  local server = client.server or {}
-  if client.enabled == false or record.status == "skipped" then
-    label, icon, group, busy = "Disabled", "", "Comment", false
-  elseif record.status == "timeout" then
-    label, icon, group, busy = "Timed out", "", "DiagnosticWarn", false
+  client = client or empty
+  local status = record and record.status
+  local server = client.server or empty
+
+  if client.enabled == false or status == "skipped" then
+    return statuses.disabled
+  elseif status == "timeout" then
+    return statuses.timeout
   elseif server.kind == "Error" then
-    label, icon, group, busy = "Sign in required", "", "DiagnosticError", false
-  elseif client.last_error or record.status == "error" or server.kind == "Warning" then
-    label, icon, group, busy = "Unavailable", "", "DiagnosticWarn", false
-  elseif record.status == "pending" then
+    return statuses.sign_in
+  elseif client.last_error or status == "error" or server.kind == "Warning" then
+    return statuses.unavailable
+  elseif status == "pending" then
     if client.running and not client.initialized then
-      label = "Starting"
+      return statuses.starting
     elseif client.initialized then
-      label = "Generating"
+      return statuses.generating
     end
-  elseif record.status == "done" then
-    label = (count or 0) > 0 and "Ready" or "No suggestions"
-    group, busy = (count or 0) > 0 and "DiagnosticOk" or "Comment", false
+  elseif status == "done" then
+    return (count or 0) > 0 and statuses.ready or statuses.no_suggestions
   elseif server.busy then
-    label = "Generating"
+    return statuses.generating
   end
-  return { text = icon, label = label, highlight = group, frames = busy and spinner or nil }
+  return statuses.waiting
 end
+
 return M

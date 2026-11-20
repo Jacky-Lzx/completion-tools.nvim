@@ -4,11 +4,13 @@ function M.new(opts, refresh)
   local states, closed = {}, false
   local clock = 0
   local source = {}
+
   local function retire(state)
     state.generation = state.generation + 1
     state.active, state.ready = false, false
     state.lines, state.counts, state.items, state.indices, state.size = {}, {}, {}, {}, 0
   end
+
   local function activate(state)
     local active, oldest = 0, nil
     for _, candidate in pairs(states) do
@@ -25,11 +27,13 @@ function M.new(opts, refresh)
     state.active = true
     state.rebuild()
   end
+
   local function allowed(buf)
     return vim.api.nvim_buf_is_loaded(buf)
       and vim.bo[buf].buftype == ""
       and vim.api.nvim_buf_get_offset(buf, vim.api.nvim_buf_line_count(buf)) <= opts.max_bytes
   end
+
   local function words(line)
     local result = {}
     -- Non-ASCII identifiers are retained. ASCII punctuation is a separator.
@@ -40,10 +44,12 @@ function M.new(opts, refresh)
     end
     return result
   end
+
   local function adjust(state, set, delta)
     for word in pairs(set or {}) do
       local previous = state.counts[word]
       local count = (previous or 0) + delta
+
       if previous and count <= 0 then
         state.counts[word] = nil
         state.size = state.size - 1
@@ -59,12 +65,15 @@ function M.new(opts, refresh)
           state.items[#state.items + 1] = { label = word, kind = 1 }
           state.indices[word] = #state.items
         end
+
         state.counts[word] = count
       end
     end
   end
+
   local function attach(buf)
     clock = clock + 1
+
     if states[buf] then
       local state = states[buf]
       state.last_used = clock
@@ -73,30 +82,37 @@ function M.new(opts, refresh)
       end
       return state
     end
+
     local state = { lines = {}, counts = {}, size = 0, generation = 0, last_used = clock }
     states[buf] = state
+
     local scan
     local function rebuild()
       state.generation = state.generation + 1
       local generation, row = state.generation, 0
       state.lines, state.counts, state.size, state.items, state.indices, state.ready = {}, {}, 0, {}, {}, false
       state.scanned = 0
+
       local function batch()
         if closed or states[buf] ~= state or generation ~= state.generation then
           return
         end
+
         if not allowed(buf) then
           retire(state)
           return
         end
+
         local last = math.min(row + opts.batch_lines, vim.api.nvim_buf_line_count(buf))
         for i, line in ipairs(vim.api.nvim_buf_get_lines(buf, row, last, false)) do
           local set = words(line)
           state.lines[row + i] = set
           adjust(state, set, 1)
         end
+
         row = last
         state.scanned = row
+
         if row < vim.api.nvim_buf_line_count(buf) then
           vim.schedule(batch)
         else
@@ -104,8 +120,10 @@ function M.new(opts, refresh)
           refresh()
         end
       end
+
       vim.schedule(batch)
     end
+
     scan = rebuild
     state.rebuild = rebuild
     vim.api.nvim_buf_attach(buf, false, {
@@ -120,6 +138,7 @@ function M.new(opts, refresh)
           retire(state)
           return
         end
+
         if not state.ready then
           if old_last == new_last and old_last - first <= opts.batch_lines then
             -- Ordinary typing must not restart a large initial scan. Rows
@@ -130,6 +149,7 @@ function M.new(opts, refresh)
               for i = first + 1, last do
                 adjust(state, state.lines[i], -1)
               end
+
               for offset, line in ipairs(vim.api.nvim_buf_get_lines(buf, first, last, false)) do
                 local set = words(line)
                 state.lines[first + offset] = set
@@ -146,9 +166,11 @@ function M.new(opts, refresh)
           scan()
           return
         end
+
         for i = first + 1, old_last do
           adjust(state, state.lines[i], -1)
         end
+
         local old_count, shift = #state.lines, new_last - old_last
         if shift ~= 0 then
           table.move(state.lines, old_last + 1, old_count, new_last + 1)
@@ -156,29 +178,35 @@ function M.new(opts, refresh)
             state.lines[i] = nil
           end
         end
+
         for offset, line in ipairs(vim.api.nvim_buf_get_lines(buf, first, new_last, false)) do
           local set = words(line)
           state.lines[first + offset] = set
           adjust(state, set, 1)
         end
       end,
+
       on_detach = function()
         if states[buf] == state then
           states[buf] = nil
         end
       end,
+
       on_reload = function()
         if state.active then
           scan()
         end
       end,
     })
+
     activate(state)
     return state
   end
+
   function source.complete(ctx, callback)
     local buffers = opts.get_bufnrs and opts.get_bufnrs(ctx) or { ctx.bufnr }
     local items = {}
+
     for _, buf in ipairs(buffers) do
       if allowed(buf) then
         local state = attach(buf)
@@ -186,6 +214,7 @@ function M.new(opts, refresh)
           callback({ items = state.ready and state.items or {} })
           return
         end
+
         for _, item in ipairs(state.ready and state.items or {}) do
           items[#items + 1] = item
         end
@@ -193,11 +222,13 @@ function M.new(opts, refresh)
     end
     callback({ items = items })
   end
+
   function source.warmup(buf)
     if allowed(buf) then
       attach(buf)
     end
   end
+
   function source.dispose()
     closed = true
     for _, state in pairs(states) do
@@ -205,6 +236,7 @@ function M.new(opts, refresh)
     end
     states = {}
   end
+
   return source
 end
 

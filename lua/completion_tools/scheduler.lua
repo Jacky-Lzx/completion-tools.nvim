@@ -1,9 +1,31 @@
 local M = {}
 
+---@alias completion_tools.SchedulerStatus
+---| "waiting" # Waiting to start, possibly for fallback dependencies.
+---| "disabled" # The provider is disabled or unavailable.
+---| "pending" # The provider has started and may still send results.
+---| "done" # The provider delivered its final response.
+---| "skipped" # A fallback dependency matched or was itself skipped.
+---| "timeout" # The provider's deadline expired.
+---| "error" # Provider eligibility, startup, or response processing failed.
+---| "cancelled" # The run was cancelled while this provider was waiting or pending.
+
+---@class completion_tools.SchedulerRecord
+---@field status completion_tools.SchedulerStatus Current provider state for this request.
+---@field matches boolean Whether the latest response contained a matching candidate.
+---@field error? string Provider error message.
+---@field started? integer Monotonic start time in nanoseconds.
+---@field elapsed_ms? number Milliseconds elapsed at the latest response or termination.
+---@field timer? uv.uv_timer_t Active deadline timer.
+---@field cancel? fun(keep_context?: table) Provider cancellation hook with an optional context for reusing work.
+
 -- A request owns its deadlines and cancellation. Dependencies are evaluated
 -- against matched results, not raw lists, and wait for final responses.
 function M.run(args)
-  local records, cancelled, pumping, again = {}, false, false, false
+  --- Per-provider state keyed by source ID for the lifetime of this run.
+  ---@type table<string, completion_tools.SchedulerRecord>
+  local records = {}
+  local cancelled, pumping, again = false, false, false
 
   local run = { records = records }
   for _, id in ipairs(args.ids) do
@@ -48,6 +70,7 @@ function M.run(args)
           if cancelled or record.status ~= "pending" then
             return
           end
+
           close(record)
           record.status = "timeout"
           record.elapsed_ms = (vim.uv.hrtime() - record.started) / 1e6
@@ -64,6 +87,7 @@ function M.run(args)
       if cancelled or record.status == "timeout" or record.status == "error" then
         return
       end
+
       local ok, matches = pcall(args.receive, id, response)
       if not ok then
         fail(id, matches)
@@ -76,6 +100,7 @@ function M.run(args)
         end
         args.changed()
       end
+
       pump()
     end
 
@@ -105,6 +130,7 @@ function M.run(args)
       again = true
       return
     end
+
     pumping = true
     repeat
       again = false
@@ -121,6 +147,7 @@ function M.run(args)
               blocked = blocked or other.matches or other.status == "skipped"
             end
           end
+
           if ready then
             if blocked then
               record.status = "skipped"
@@ -133,6 +160,7 @@ function M.run(args)
         end
       end
     until not again or cancelled
+
     pumping = false
   end
 

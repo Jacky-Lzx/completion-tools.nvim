@@ -1,8 +1,18 @@
 local M = {}
+
+--- Status displayed in the completion menu footer.
+---@class completion_tools.MenuStatus
+---@field text string Text or icon displayed in the footer.
+---@field highlight string Highlight group for the footer text.
+---@field frames? string[] Non-empty sequence of animation frames appended to the text in turn.
+---@field label? string Human-readable status for diagnostics.
+
 local ns = vim.api.nvim_create_namespace("completion-tools-menu")
 local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
-local geometry, doc_item, menu_status
+local geometry, doc_item
+---@type completion_tools.MenuStatus|nil
+local menu_status
 local doc_view, doc_token
 local frame_items, frame_selected
 local frame_layout, frame_lines, frame_spans, frame_config
@@ -22,6 +32,7 @@ end
 local function valid(id)
   return id and vim.api.nvim_win_is_valid(id)
 end
+
 local function stop_status_animation()
   status_token = nil
   if status_timer and not status_timer:is_closing() then
@@ -30,6 +41,7 @@ local function stop_status_animation()
   end
   status_timer, status_frame = nil, 1
 end
+
 local function status_text()
   if not menu_status then
     return ""
@@ -37,6 +49,7 @@ local function status_text()
   local frame = menu_status.frames and menu_status.frames[status_frame] or nil
   return menu_status.text .. (frame and " " .. frame or "")
 end
+
 local function status_footer(width)
   if not menu_status then
     return ""
@@ -44,6 +57,7 @@ local function status_footer(width)
   local label = require("completion_tools.text").truncate(status_text(), width - 2)
   return { { " " .. label .. " ", menu_status.highlight } }
 end
+
 local function sync_status_animation()
   if not valid(win) or not menu_status or not menu_status.frames then
     stop_status_animation()
@@ -52,6 +66,7 @@ local function sync_status_animation()
   if status_timer then
     return
   end
+
   local token = {}
   status_token = token
   status_timer = vim.uv.new_timer()
@@ -66,6 +81,7 @@ local function sync_status_animation()
         stop_status_animation()
         return
       end
+
       status_frame = status_frame % #menu_status.frames + 1
       local footer = status_footer(vim.api.nvim_win_get_width(win))
       -- Animation changes only the border, leaving text, selection and geometry intact.
@@ -74,19 +90,24 @@ local function sync_status_animation()
     end)
   )
 end
+
 local function close(id)
   if valid(id) then
     vim.api.nvim_win_close(id, true)
   end
 end
+
 local function scratch(id, filetype)
   if id and vim.api.nvim_buf_is_valid(id) then
     return id
   end
+
   id = vim.api.nvim_create_buf(false, true)
   vim.bo[id].bufhidden, vim.bo[id].filetype = "hide", filetype
+
   return id
 end
+
 function M.highlights()
   for name, target in pairs({
     CompletionToolsSelected = "PmenuSel",
@@ -117,10 +138,14 @@ function M.hide_documentation()
   close(doc_win)
   doc_win, doc_item = nil, nil
 end
+
+--- Update the footer status and synchronize its animation timer.
+---@param status completion_tools.MenuStatus|nil Pass nil to clear the status.
 function M.set_status(status)
   menu_status = status
   sync_status_animation()
 end
+
 function M.hide()
   stop_status_animation()
   menu_status = nil
@@ -131,9 +156,11 @@ function M.hide()
   frame_layout, frame_lines, frame_spans, frame_config = nil, nil, nil, nil
   M.hide_documentation()
 end
+
 function M.visible()
   return valid(win) or false
 end
+
 function M.is_inverse()
   return M.visible() and geometry and geometry.inverse or false
 end
@@ -238,6 +265,7 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
   local opts = config.menu
   local height = window_config.height
   local target = selected or 1
+
   if target < viewport then
     viewport = target
   end
@@ -245,6 +273,7 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
     viewport = target - height + 1
   end
   viewport = math.max(1, math.min(viewport, #items - height + 1))
+
   local lines, spans = {}, {}
   for row = 1, height do
     local i = viewport + (next_geometry.inverse and height - row or row - 1)
@@ -254,13 +283,16 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
     end
     lines[#lines + 1], spans[#spans + 1] = line, marks
   end
+
   local old_buf = buf
   buf = scratch(buf, "completion-tools-menu")
+
   local replace = buf ~= old_buf or not frame_lines or #frame_lines ~= #lines
   if replace then
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   end
+
   for i, marks in ipairs(spans) do
     local changed = replace or frame_lines[i] ~= lines[i]
     if changed and not replace then
@@ -326,6 +358,7 @@ local function draw(items, selected, ctx, config, settled)
     M.hide()
     return
   end
+
   local opts = config.menu
   local layout = render.prepare(items, opts, vim.o.columns - 4, frame_layout)
   local window_config, next_geometry = placement(#items, layout.width, ctx, config)
@@ -333,6 +366,7 @@ local function draw(items, selected, ctx, config, settled)
     M.hide()
     return
   end
+
   if
     not settled
     and valid(win)
@@ -349,6 +383,7 @@ local function draw(items, selected, ctx, config, settled)
         if shrink_token ~= token then
           return
         end
+
         shrink_timer, shrink_token = nil, nil
         local context = require("completion_tools.context")
         if valid(win) and context.same(ctx, context.get(config)) then
@@ -408,6 +443,7 @@ function M.documentation(item, config)
     M.hide_documentation()
     return false
   end
+
   local opts = config.documentation
   local preview = item._path_preview
   local media = preview and preview.kind == "media"
