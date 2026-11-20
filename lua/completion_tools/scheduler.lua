@@ -4,6 +4,7 @@ local M = {}
 -- against matched results, not raw lists, and wait for final responses.
 function M.run(args)
   local records, cancelled, pumping, again = {}, false, false, false
+
   local run = { records = records }
   for _, id in ipairs(args.ids) do
     local options = args.options[id]
@@ -13,6 +14,7 @@ function M.run(args)
       matches = false,
     }
   end
+
   local function close(record)
     if record.timer then
       record.timer:stop()
@@ -20,6 +22,7 @@ function M.run(args)
       record.timer = nil
     end
   end
+
   local pump
   local function fail(id, err)
     local record = records[id]
@@ -32,6 +35,7 @@ function M.run(args)
     args.failed(id, err)
     args.changed()
   end
+
   local function start(id)
     local record, options = records[id], args.options[id]
     record.status, record.started = "pending", vim.uv.hrtime()
@@ -55,6 +59,7 @@ function M.run(args)
         end)
       )
     end
+
     local function publish(response)
       if cancelled or record.status == "timeout" or record.status == "error" then
         return
@@ -73,6 +78,7 @@ function M.run(args)
       end
       pump()
     end
+
     local ok, cancel = pcall(args.start, id, function(response)
       if vim.in_fast_event() then
         vim.schedule(function()
@@ -82,6 +88,7 @@ function M.run(args)
         publish(response)
       end
     end)
+
     if ok then
       record.cancel = type(cancel) == "function" and cancel or nil
       if record.cancel and (cancelled or record.status == "error") then
@@ -92,6 +99,7 @@ function M.run(args)
       fail(id, cancel)
     end
   end
+
   pump = function()
     if pumping then
       again = true
@@ -127,6 +135,7 @@ function M.run(args)
     until not again or cancelled
     pumping = false
   end
+
   function run.pending()
     for _, record in pairs(records) do
       if record.status == "waiting" or record.status == "pending" then
@@ -135,6 +144,7 @@ function M.run(args)
     end
     return false
   end
+
   function run.cancel(keep)
     cancelled = true
     for id, record in pairs(records) do
@@ -151,8 +161,10 @@ function M.run(args)
       end
     end
   end
+
   pump()
   args.changed()
+
   return run
 end
 

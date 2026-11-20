@@ -300,17 +300,7 @@ local function source_ids(ctx, override)
   return ids
 end
 
-local function request(manual, override, select_first)
-  if not enabled() then
-    M.hide("disabled")
-    return false
-  end
-  local ctx = current()
-  if not ctx or vim.fn.pumvisible() == 1 or (ctx.mode == "cmdline" and vim.fn.wildmenumode() == 1) then
-    M.hide(ctx and "native_completion" or "unsupported_context")
-    return false
-  end
-  local ids = source_ids(ctx, override)
+local function prepare_sources(ctx, ids)
   local options, reused = {}, {}
   for _, id in ipairs(ids) do
     local configured = state.config.providers[id] or {}
@@ -352,6 +342,10 @@ local function request(manual, override, select_first)
   local cached_ids = vim.tbl_filter(function(id)
     return reused[id] ~= nil
   end, ids)
+  return options, reused, cached_ids
+end
+
+local function filter_sources(ctx, ids, cached_ids, manual)
   local character_trigger = false
   if not manual then
     local allowed
@@ -363,7 +357,7 @@ local function request(manual, override, select_first)
     if not allowed then
       if #cached_ids == 0 then
         M.hide("trigger_filtered")
-        return false
+        return
       end
       -- A cached literal continuation may cross spaces and punctuation, but
       -- that must not launch other providers at otherwise blocked characters.
@@ -372,7 +366,7 @@ local function request(manual, override, select_first)
   end
   if not manual and context.same(state.accepted, ctx) then
     state.reason = "accepted"
-    return false
+    return
   end
   state.accepted = nil
   local triggered = character_trigger or ctx.argument_trigger or false
@@ -387,10 +381,14 @@ local function request(manual, override, select_first)
   if not manual and #ctx.prefix < minimum and not triggered and not ctx.before:match("[/\\][^%s]*$") then
     if #cached_ids == 0 then
       M.hide("min_keyword_length")
-      return false
+      return
     end
     ids = cached_ids
   end
+  return ids
+end
+
+local function begin_request(ctx, ids, options, has_cached, manual, select_first)
   state.generation = state.generation + 1
   local generation = state.generation
   local keep = {}
@@ -420,7 +418,7 @@ local function request(manual, override, select_first)
   state.select_first = select_first
   state.ready = false
   state.reason = "pending"
-  if #cached_ids == 0 and not context.same(previous_context, ctx) and not context.continues(previous_context, ctx) then
+  if not has_cached and not context.same(previous_context, ctx) and not context.continues(previous_context, ctx) then
     state.items, state.selected = {}, nil
     state.selection_manual = false
     state.doc_entry = nil
@@ -428,7 +426,70 @@ local function request(manual, override, select_first)
   else
     ui.reposition(ctx, state.config)
   end
+  return generation
+end
+
+local function receive_response(generation, ctx, id, priority, response)
+  if not valid(generation, ctx) then
+    return false
+  end
+  response = response or { items = {} }
+  if response.cached then
+    state.groups[id] = response.cached.group
+    state.diagnostics.receive(id, #response.cached.group.items)
+    return require("completion_tools.matcher").has_match(response.cached.group, ctx, {
+      max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
+    })
+  end
+  local configured = state.config.providers[id] or {}
+  local items = response.items or response
+  if configured.transform_items then
+    items = configured.transform_items(ctx, items)
+  end
+  local result = {
+    items = items,
+    source_id = id,
+    priority = priority,
+    insert_at = configured.insert_at,
+    client_order = id == "lsp" and configured.client_order or nil,
+    score_offset = configured.score_offset or state.providers[id].score_offset or 0,
+    start_col = response.start_col or ctx.start_col,
+    context = response.context or ctx,
+  }
+  for _, item in ipairs(items) do
+    local edit = item.textEdit
+    local range = edit and (edit.range or edit.replace or edit.insert)
+    if range and range.start.line == ctx.row then
+      result.start_cols = result.start_cols or {}
+      local encoding = item._encoding or "utf-8"
+      result.start_cols[item] = encoding == "utf-8" and range.start.character
+        or vim.str_byteindex(ctx.line, encoding, range.start.character, false)
+    end
+  end
+  local matches = require("completion_tools.matcher").has_match(result, ctx, {
+    max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
+  })
+  -- Empty partials are not an authoritative replacement for a retained
+  -- source, even when other sources already have fresh matches to show.
+  if not (response.pending and not matches and state.retained[id]) then
+    state.groups[id] = result
+    state.retained[id] = nil
+  end
+  state.diagnostics.receive(id, #items)
+  state.cache[id] = {
+    group = result,
+    context = ctx,
+    reusable = response.reusable and not response.pending,
+    incomplete = response.is_incomplete,
+    response = state.providers[id].reuse and (not response.pending or response.stable) and response or nil,
+    cursor_col = ctx.col,
+  }
+  return matches
+end
+
+local function run_request(generation, ctx, ids, options, reused)
   local render_queued, run, render_timer = false, nil, nil
+
   local function queue_render()
     if run then
       state.diagnostics.update(run.records)
@@ -442,6 +503,7 @@ local function request(manual, override, select_first)
       return
     end
     render_queued = true
+
     local function flush()
       render_timer = nil
       render_queued = false
@@ -451,6 +513,7 @@ local function request(manual, override, select_first)
         end
       end
     end
+
     -- The first frame of a session is immediate. Share the deadline across
     -- requests too, so each keystroke cannot restart an unbounded paint burst.
     local interval = state.config.menu.update_interval_ms
@@ -461,10 +524,12 @@ local function request(manual, override, select_first)
       vim.schedule(flush)
     end
   end
+
   local priorities = {}
   for priority, id in ipairs(ids) do
     priorities[id] = priority
   end
+
   run = require("completion_tools.scheduler").run({
     ids = ids,
     options = options,
@@ -476,6 +541,7 @@ local function request(manual, override, select_first)
       local old = state.cache[id]
       local cached = reused[id] or (old and old.reusable and context.extends(old.context, ctx))
       state.diagnostics.start(id, cached)
+
       if reused[id] then
         receive(reused[id])
       elseif cached then
@@ -486,63 +552,10 @@ local function request(manual, override, select_first)
       end
     end,
     receive = function(id, response)
-      if not valid(generation, ctx) then
-        return false
-      end
-      response = response or { items = {} }
-      if response.cached then
-        state.groups[id] = response.cached.group
-        state.diagnostics.receive(id, #response.cached.group.items)
-        return require("completion_tools.matcher").has_match(response.cached.group, ctx, {
-          max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
-        })
-      end
-      local configured = state.config.providers[id] or {}
-      local items = response.items or response
-      if configured.transform_items then
-        items = configured.transform_items(ctx, items)
-      end
-      local result = {
-        items = items,
-        source_id = id,
-        priority = priorities[id],
-        insert_at = configured.insert_at,
-        client_order = id == "lsp" and configured.client_order or nil,
-        score_offset = configured.score_offset or state.providers[id].score_offset or 0,
-        start_col = response.start_col or ctx.start_col,
-        context = response.context or ctx,
-      }
-      for _, item in ipairs(items) do
-        local edit = item.textEdit
-        local range = edit and (edit.range or edit.replace or edit.insert)
-        if range and range.start.line == ctx.row then
-          result.start_cols = result.start_cols or {}
-          local encoding = item._encoding or "utf-8"
-          result.start_cols[item] = encoding == "utf-8" and range.start.character
-            or vim.str_byteindex(ctx.line, encoding, range.start.character, false)
-        end
-      end
-      local matches = require("completion_tools.matcher").has_match(result, ctx, {
-        max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
-      })
-      -- Empty partials are not an authoritative replacement for a retained
-      -- source, even when other sources already have fresh matches to show.
-      if not (response.pending and not matches and state.retained[id]) then
-        state.groups[id] = result
-        state.retained[id] = nil
-      end
-      state.diagnostics.receive(id, #items)
-      state.cache[id] = {
-        group = result,
-        context = ctx,
-        reusable = response.reusable and not response.pending,
-        incomplete = response.is_incomplete,
-        response = state.providers[id].reuse and (not response.pending or response.stable) and response or nil,
-        cursor_col = ctx.col,
-      }
-      return matches
+      return receive_response(generation, ctx, id, priorities[id], response)
     end,
   })
+
   state.run = run
   state.diagnostics.update(run.records)
   queue_render()
@@ -552,6 +565,28 @@ local function request(manual, override, select_first)
     run.cancel(preserve)
     state.diagnostics.update(run.records)
   end
+end
+
+local function request(manual, override, select_first)
+  if not enabled() then
+    M.hide("disabled")
+    return false
+  end
+  local ctx = current()
+  if not ctx or vim.fn.pumvisible() == 1 or (ctx.mode == "cmdline" and vim.fn.wildmenumode() == 1) then
+    M.hide(ctx and "native_completion" or "unsupported_context")
+    return false
+  end
+
+  local ids = source_ids(ctx, override)
+  local options, reused, cached_ids = prepare_sources(ctx, ids)
+  ids = filter_sources(ctx, ids, cached_ids, manual)
+  if not ids then
+    return false
+  end
+
+  local generation = begin_request(ctx, ids, options, #cached_ids > 0, manual, select_first)
+  run_request(generation, ctx, ids, options, reused)
   return true
 end
 
@@ -559,6 +594,7 @@ local function queue()
   if state.disposed then
     return
   end
+
   local ctx = current()
   local same = context.same(state.context, ctx)
   local cached_forward = false
@@ -568,6 +604,7 @@ local function queue()
       break
     end
   end
+
   -- LSP attachment and other background refreshes do not create a new edit.
   -- Keep an explicit session's trigger policy and source override at that snapshot.
   local manual = same and state.manual or false
@@ -577,9 +614,11 @@ local function queue()
     cancel_requests()
   end
   cancel_doc()
+
   state.ready = false
   state.reason = "pending"
   stop_timer(timer)
+
   if not same then
     state.selection_manual = false
   end
@@ -589,12 +628,15 @@ local function queue()
     ui.hide()
     state.doc_entry = nil
   end
+
   local generation = state.generation
+
   local function run()
     if generation == state.generation and not state.disposed then
       request(manual, sources)
     end
   end
+
   if state.config.debounce_ms == 0 then
     vim.schedule(run)
   else
@@ -602,56 +644,7 @@ local function queue()
   end
 end
 
-function M.setup(opts)
-  assert(opts == nil or type(opts) == "table", "completion-tools.nvim: setup expects a table")
-  opts = vim.deepcopy(opts or {})
-  local config = require("completion_tools.config").validate(opts or {})
-  if vim.fn.has("nvim-0.11") ~= 1 then
-    error("completion-tools requires Neovim 0.11+")
-  end
-  M.dispose()
-  state.config, state.disposed = config, false
-  state.diagnostics = require("completion_tools.diagnostics").new()
-  state.run, state.reason, state.last_request_reason = nil, "idle", nil
-  state.dispose_command = require("completion_tools.diagnostics").command()
-  state.ranking = require("completion_tools.ranking").new(config.ranking)
-  -- setup may itself run inside Lazy's first InsertEnter callback.
-  state.edit_buf, state.edit_tick = vim.api.nvim_get_current_buf(), vim.api.nvim_buf_get_changedtick(0)
-  timer, doc_timer = vim.uv.new_timer(), vim.uv.new_timer()
-  for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline", "dictionary", "spell", "copilot" }) do
-    state.providers[id] = require("completion_tools.sources." .. id).new(config[id] or {}, function()
-      if state.context and state.context.bufnr == vim.api.nvim_get_current_buf() then
-        local same = context.same(state.context, current())
-        if same or config.auto_show then
-          request(same and state.manual or false, same and state.source_ids or nil)
-        else
-          M.hide()
-        end
-      end
-    end)
-  end
-  for id, provider in pairs(config.providers) do
-    if provider.complete then
-      M.register_source(id, provider)
-    elseif provider.module then
-      local factory = require(provider.module)
-      M.register_source(id, factory.new and factory.new(provider.opts or {}) or factory)
-    end
-  end
-  local function warmup(buf)
-    if
-      type(config.sources) ~= "table"
-      or not vim.list_contains(config.sources, "buffer")
-      or (config.providers.buffer or {}).enabled == false
-    then
-      return
-    end
-    local provider = state.providers.buffer
-    if provider and provider.warmup then
-      provider.warmup(buf)
-    end
-  end
-  ui.highlights()
+local function register_autocmds(config, warmup)
   group = vim.api.nvim_create_augroup("CompletionTools", { clear = true })
   vim.api.nvim_create_autocmd("InsertEnter", {
     group = group,
@@ -778,6 +771,66 @@ function M.setup(opts)
     end,
   })
   vim.api.nvim_create_autocmd("VimLeavePre", { group = group, callback = M.dispose })
+end
+
+function M.setup(opts)
+  if vim.fn.has("nvim-0.11") ~= 1 then
+    error("completion-tools requires Neovim 0.11+")
+  end
+
+  assert(opts == nil or type(opts) == "table", "completion-tools.nvim: setup expects a table")
+  opts = vim.deepcopy(opts or {})
+  local config = require("completion_tools.config").validate(opts)
+
+  M.dispose()
+  state.config, state.disposed = config, false
+  state.diagnostics = require("completion_tools.diagnostics").new()
+  state.run, state.reason, state.last_request_reason = nil, "idle", nil
+  state.dispose_command = require("completion_tools.diagnostics").command()
+  state.ranking = require("completion_tools.ranking").new(config.ranking)
+  -- setup may itself run inside Lazy's first InsertEnter callback.
+  state.edit_buf, state.edit_tick = vim.api.nvim_get_current_buf(), vim.api.nvim_buf_get_changedtick(0)
+  timer, doc_timer = vim.uv.new_timer(), vim.uv.new_timer()
+
+  for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline", "dictionary", "spell", "copilot" }) do
+    state.providers[id] = require("completion_tools.sources." .. id).new(config[id] or {}, function()
+      if state.context and state.context.bufnr == vim.api.nvim_get_current_buf() then
+        local same = context.same(state.context, current())
+        if same or config.auto_show then
+          request(same and state.manual or false, same and state.source_ids or nil)
+        else
+          M.hide()
+        end
+      end
+    end)
+  end
+
+  for id, provider in pairs(config.providers) do
+    if provider.complete then
+      M.register_source(id, provider)
+    elseif provider.module then
+      local factory = require(provider.module)
+      M.register_source(id, factory.new and factory.new(provider.opts or {}) or factory)
+    end
+  end
+
+  local function warmup(buf)
+    if
+      type(config.sources) ~= "table"
+      or not vim.list_contains(config.sources, "buffer")
+      or (config.providers.buffer or {}).enabled == false
+    then
+      return
+    end
+    local provider = state.providers.buffer
+    if provider and provider.warmup then
+      provider.warmup(buf)
+    end
+  end
+
+  ui.highlights()
+
+  register_autocmds(config, warmup)
   require("completion_tools.keymap").setup(config)
   warmup(vim.api.nvim_get_current_buf())
   watch(vim.api.nvim_get_current_buf())

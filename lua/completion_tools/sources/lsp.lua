@@ -4,6 +4,15 @@ local function last_character(text)
   return text:match("[%z\1-\127\194-\244][\128-\191]*$") or ""
 end
 
+---@class completion_tools.LspCompletionItem: lsp.CompletionItem
+---@field _client_id integer ID of the client that returned the item.
+---@field _client_name string Name of the client that returned the item.
+---@field _encoding lsp.PositionEncodingKind Encoding used for edit positions.
+
+--- Apply supported list defaults and attach client metadata to completion items.
+---@param result lsp.CompletionList|lsp.CompletionItem[]|nil|vim.NIL Raw completion response from the server.
+---@param client vim.lsp.Client Client that returned the response.
+---@return completion_tools.LspCompletionItem[] items Normalized items, or an empty array for a null response.
 local function normalise(result, client)
   if not result or result == vim.NIL then
     return {}
@@ -35,7 +44,12 @@ end
 
 function M.new()
   local source = { score_offset = 40 }
+
+  --- Last successful completion state, keyed by LSP client ID.
+  --- Each entry holds the request context and the response's isIncomplete flag.
+  ---@type table<integer, { context: table, incomplete: boolean }>
   local history = {}
+
   function source.complete(ctx, callback)
     local clients = vim.lsp.get_clients({ bufnr = ctx.bufnr, method = "textDocument/completion" })
     if #clients == 0 then
@@ -43,18 +57,22 @@ function M.new()
       callback({ items = {}, reusable = true })
       return
     end
+
     table.sort(clients, function(a, b)
       return a.id < b.id
     end)
+
     local active = {}
     for _, client in ipairs(clients) do
       active[client.id] = true
     end
+
     for id in pairs(history) do
       if not active[id] then
         history[id] = nil
       end
     end
+
     local cancelled, cancels, results, incomplete, pending = false, {}, {}, {}, #clients
     local function publish()
       local items, is_incomplete = {}, false
@@ -71,6 +89,7 @@ function M.new()
         reusable = pending == 0 and not is_incomplete,
       })
     end
+
     for _, client in ipairs(clients) do
       local params = vim.lsp.util.make_position_params(ctx.winid, client.offset_encoding)
       local character = last_character(ctx.before)
@@ -82,6 +101,7 @@ function M.new()
         triggerKind = trigger and 2 or (retrigger and 3 or 1),
         triggerCharacter = trigger and character or nil,
       }
+
       local finished = false
       local ok, id = client:request("textDocument/completion", params, function(err, result)
         finished = true
@@ -96,6 +116,7 @@ function M.new()
         end
         publish()
       end, ctx.bufnr)
+
       if ok then
         cancels[#cancels + 1] = function()
           if not finished then
@@ -107,9 +128,11 @@ function M.new()
         pending = pending - 1
       end
     end
+
     if pending == 0 then
       publish()
     end
+
     return function()
       cancelled = true
       for _, cancel in ipairs(cancels) do
@@ -117,6 +140,7 @@ function M.new()
       end
     end
   end
+
   function source.trigger(ctx)
     local character = last_character(ctx.before)
     for _, client in ipairs(vim.lsp.get_clients({ bufnr = ctx.bufnr, method = "textDocument/completion" })) do
@@ -128,12 +152,14 @@ function M.new()
     end
     return false
   end
+
   function source.resolve(entry, callback)
     local client = entry.item._client_id and vim.lsp.get_client_by_id(entry.item._client_id)
     if not client or not (client.server_capabilities.completionProvider or {}).resolveProvider then
       callback(entry.item)
       return
     end
+
     local raw = vim.tbl_extend("force", {}, entry.item)
     raw._client_id, raw._encoding = nil, nil
     raw._client_name = nil
@@ -146,10 +172,12 @@ function M.new()
       end
       callback(vim.tbl_extend("force", {}, entry.item, item))
     end, entry.context.bufnr)
+
     if not ok then
       callback(entry.item)
       return
     end
+
     return function()
       if not finished then
         finished = true
@@ -157,9 +185,11 @@ function M.new()
       end
     end
   end
+
   function source.dispose()
     history = {}
   end
+
   return source
 end
 

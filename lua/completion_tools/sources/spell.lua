@@ -1,7 +1,9 @@
 local M = {}
+
 function M.new(opts)
   local worker = require("completion_tools.worker").new()
   local warn = require("completion_tools.worker").warnings("spell")
+
   return {
     score_offset = 10,
     complete = function(ctx, callback)
@@ -13,6 +15,7 @@ function M.new(opts)
         callback({ items = {} })
         return
       end
+
       local payload = {
         kind = "spell",
         query = ctx.prefix,
@@ -28,6 +31,7 @@ function M.new(opts)
         preselect_current_word = opts.preselect_current_word,
         suggest_when_correct = opts.suggest_when_correct,
       }
+
       return worker.request(payload, function(result)
         if
           not vim.api.nvim_win_is_valid(ctx.winid)
@@ -46,4 +50,5 @@ function M.new(opts)
     dispose = worker.dispose,
   }
 end
+
 return M

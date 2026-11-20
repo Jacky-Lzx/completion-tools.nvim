@@ -1,5 +1,19 @@
 vim.opt.rtp:prepend(vim.fn.getcwd())
 local plugin = require("completion_tools")
+
+local has = vim.fn.has
+vim.fn.has = function(feature)
+  if feature == "nvim-0.11" then
+    return 0
+  end
+  return has(feature)
+end
+for _, opts in ipairs({ false, { max_items = -1 } }) do
+  local ok, err = pcall(plugin.setup, opts)
+  assert(not ok and err:find("completion-tools requires Neovim 0.11+", 1, true), tostring(err))
+end
+vim.fn.has = has
+
 local options = { sources = {}, cmdline = { enabled = false } }
 local caller = vim.deepcopy(options)
 plugin.setup(options)
@@ -11,7 +25,7 @@ assert(vim.deep_equal(commands, vim.api.nvim_get_commands({})), "Invalid setup r
 assert(vim.deep_equal(handlers, vim.api.nvim_get_autocmds({})), "Invalid setup replaced handlers")
 plugin.setup(caller)
 assert(#vim.api.nvim_get_autocmds({}) == #handlers, "Repeated setup duplicated automatic handlers")
-print("completion-tools.nvim: setup input isolation, invalid configuration and registration lifetime passed")
+print("completion-tools.nvim: setup version guard, input isolation and registration lifetime passed")
 
 local before = plugin.get_status()
 assert(not pcall(plugin.setup, { max_items = -1 }))
