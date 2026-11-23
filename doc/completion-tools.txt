@@ -1424,6 +1424,10 @@ metadata is omitted. Partial acceptance also provides `partial = "word" |
 "line"` and the inserted `text`. `dispose()` closes UI, cancels work, releases
 caches and restores mappings.
 
+An overflowing text document shows a scrollbar and the current scroll
+percentage when base-tools provides its shared preview module. Position is
+based on screen rows, with wrapping and hidden Markdown fences accounted for.
+
 documentation.on_render(ctx) optionally decorates a ready LSP/provider document.
 ctx contains buf, win, item and optional preview metadata; the callback runs
 synchronously after the buffer and window have been configured on each render,

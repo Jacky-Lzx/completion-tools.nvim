@@ -1,6 +1,12 @@
 local M = {}
 local float = require("base_tools.float")
 local base_text = require("base_tools.text")
+local has_preview, preview_window = pcall(require, "base_tools.preview")
+local document_window = has_preview and preview_window or float
+local document_scrollbar = {
+  track_highlight = "CompletionToolsDocBorder",
+  thumb_highlight = "CompletionToolsDocScrollThumb",
+}
 
 --- Status displayed in the completion menu footer.
 ---@class completion_tools.MenuStatus
@@ -16,8 +22,9 @@ local viewport = 1
 local geometry, doc_item, doc_content
 ---@type completion_tools.MenuStatus|nil
 local menu_status
-local doc_view, doc_token
+local doc_view, doc_token, doc_media
 local doc_lines, doc_language
+local doc_position, doc_footer
 local frame_items, frame_selected
 local frame_layout, frame_lines, frame_spans, frame_config
 local shrink_timer, shrink_token
@@ -107,6 +114,7 @@ function M.highlights()
   for name, target in pairs({
     CompletionToolsSelected = "PmenuSel",
     CompletionToolsSource = "Comment",
+    CompletionToolsDocScrollThumb = "Title",
   }) do
     vim.api.nvim_set_hl(0, name, { default = true, link = target })
   end
@@ -115,6 +123,68 @@ function M.highlights()
   vim.api.nvim_set_hl(0, "CompletionToolsMatch", { default = true, bold = true, underline = true })
   vim.api.nvim_set_hl(0, "CompletionToolsDeprecated", { default = true, strikethrough = true })
   require("completion_tools.kinds").highlights()
+end
+
+local function clear_doc_footer()
+  if doc_footer and valid(doc) then
+    doc:update({ footer = "" })
+  end
+  doc_footer = nil
+end
+
+local function close_doc_position()
+  if doc_position then
+    doc_position:close()
+    doc_position = nil
+  end
+end
+
+local function update_doc_position(position)
+  if not position then
+    clear_doc_footer()
+    close_doc_position()
+    return
+  end
+
+  local label = ("%d%%"):format(math.floor(position.progress * 100))
+  local config = vim.api.nvim_win_get_config(doc.win)
+  if type(config.border) == "table" and config.border[6] ~= "" then
+    close_doc_position()
+    local footer = { { " " .. label .. " ", "CompletionToolsDocBorder" } }
+    if not vim.deep_equal(config.footer, footer) then
+      doc:update({ footer = footer, footer_pos = "right" })
+    end
+    doc_footer = true
+    return
+  end
+
+  clear_doc_footer()
+  local width = vim.api.nvim_win_get_width(doc.win)
+  label = base_text.clip(label, width)
+  local cells = vim.fn.strdisplaywidth(label)
+  local placement = {
+    relative = "win",
+    win = doc.win,
+    row = position.visible,
+    col = width - cells,
+    width = cells,
+    height = 1,
+    style = "minimal",
+    border = "none",
+    focusable = false,
+    mouse = false,
+    zindex = (config.zindex or 50) + 1,
+  }
+  if valid(doc_position) then
+    doc_position:update(placement)
+  else
+    placement.noautocmd = true
+    doc_position = float.open({
+      config = placement,
+      win_options = { winhighlight = "Normal:CompletionToolsDocBorder" },
+    })
+  end
+  vim.api.nvim_buf_set_lines(doc_position.buf, 0, -1, false, { label })
 end
 
 local function close_doc_view()
@@ -126,10 +196,11 @@ local function close_doc_view()
 end
 function M.hide_documentation()
   close_doc_view()
+  close_doc_position()
   if doc then
     doc:close()
   end
-  doc, doc_item, doc_content = nil, nil, nil
+  doc, doc_item, doc_content, doc_media, doc_footer = nil, nil, nil, nil, nil
   doc_lines, doc_language = nil, nil
 end
 
@@ -466,7 +537,7 @@ function M.documentation(item, config, document)
     return false
   end
   local preview = not document and item._path_preview or nil
-  local media = preview and preview.kind == "media"
+  local media = preview ~= nil and preview.kind == "media"
   local width = opts.max_width
   if not media then
     width = 12
@@ -485,14 +556,6 @@ function M.documentation(item, config, document)
     vim.treesitter.stop(doc_buf)
     vim.api.nvim_buf_clear_namespace(doc_buf, doc_ns, 0, -1)
     vim.bo[doc_buf].syntax = ""
-    vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
-    if language then
-      pcall(vim.treesitter.start, doc_buf, vim.treesitter.language.get_lang(language) or language)
-    end
-    if language == "markdown" then
-      conceal_markdown_fences(doc_buf)
-    end
-    doc_lines, doc_language = lines, language
   end
 
   local height = media and max_height or 1
@@ -512,19 +575,48 @@ function M.documentation(item, config, document)
       vim.api.nvim_win_set_width(doc.win, width)
     end
   else
-    doc = float.open({
+    doc = document_window.open({
       buf = doc_buf,
       config = wc,
+      scrollbar = not media and document_scrollbar or nil,
       win_options = {
         winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsDocBorder"
           .. ",Search:None,IncSearch:None,CurSearch:None",
       },
     })
+    doc_media = media
+    if has_preview then
+      local owner = doc
+      vim.api.nvim_create_autocmd("WinClosed", {
+        pattern = tostring(owner.win),
+        once = true,
+        callback = function()
+          if doc == owner then
+            close_doc_position()
+          end
+        end,
+      })
+    end
   end
   local doc_win = doc.win
   vim.wo[doc_win].wrap = not media
+  vim.wo[doc_win].smoothscroll = not media
   vim.wo[doc_win].conceallevel = markdown and 2 or 0
   vim.wo[doc_win].concealcursor = "nvic"
+  if replace then
+    if has_preview then
+      doc:set_lines(lines)
+    else
+      vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
+    end
+    if language then
+      pcall(vim.treesitter.start, doc_buf, vim.treesitter.language.get_lang(language) or language)
+    end
+    if language == "markdown" then
+      conceal_markdown_fences(doc_buf)
+    end
+    doc_lines, doc_language = lines, language
+  end
   if not media then
     wc.height = math.min(max_height, math.max(1, vim.api.nvim_win_text_height(doc_win, {}).all))
     wc.row = math.max(top, math.min(geometry.row, bottom - wc.height - 1))
@@ -532,6 +624,10 @@ function M.documentation(item, config, document)
   doc:update(wc)
   if replace then
     vim.api.nvim_win_set_cursor(doc_win, { 1, 0 })
+  end
+  if has_preview and doc_media ~= media then
+    doc:set_scrollbar(not media and document_scrollbar or false)
+    doc_media = media
   end
   if opts.on_render then
     local ok, err = pcall(opts.on_render, { buf = doc_buf, win = doc_win, item = item, preview = preview })
@@ -541,6 +637,7 @@ function M.documentation(item, config, document)
   end
   doc_item, doc_content = item, document
   if media then
+    update_doc_position(nil)
     if reuse_media then
       if doc_view then
         doc_view:resize()
@@ -554,6 +651,8 @@ function M.documentation(item, config, document)
           and vim.api.nvim_win_get_buf(target_win) == target_buf
       end)
     end
+  elseif has_preview then
+    update_doc_position(doc:refresh())
   end
   return true
 end
@@ -562,8 +661,27 @@ function M.scroll_documentation(delta)
   if not valid(doc) or doc_view then
     return false
   end
-  vim.api.nvim_win_call(doc.win, function()
-    vim.cmd("normal! " .. math.abs(delta) .. (delta > 0 and "\5" or "\25"))
+  if has_preview then
+    local scrolled, position = doc:scroll(delta)
+    if not doc_media then
+      update_doc_position(position)
+    end
+    return scrolled
+  end
+  local win = doc.win
+  vim.api.nvim_win_call(win, function()
+    local count = math.abs(delta)
+    if delta > 0 then
+      local view = vim.fn.winsaveview()
+      local remaining = vim.api.nvim_win_text_height(win, {
+        start_row = view.topline - 1,
+        start_vcol = view.skipcol,
+      }).all
+      count = math.min(count, remaining - vim.api.nvim_win_get_height(win))
+    end
+    if count > 0 then
+      vim.cmd("normal! " .. count .. (delta > 0 and "\5" or "\25"))
+    end
   end)
   return true
 end

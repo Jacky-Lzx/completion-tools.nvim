@@ -160,9 +160,27 @@ assert(not vim.treesitter.highlighter.active[current.buf])
 local long = {
   documentation = { kind = "plaintext", value = string.rep(string.rep("word ", 12) .. "\n", 40) },
 }
+local has_scrollbar = pcall(require, "base_tools.preview")
+local function anchors(win)
+  return vim.tbl_filter(function(candidate)
+    return vim.api.nvim_win_get_config(candidate).win == win
+  end, vim.api.nvim_list_wins())
+end
+local function scroll_percentage(win)
+  local footer = vim.api.nvim_win_get_config(win).footer
+  return type(footer) == "table" and footer[1] and tonumber(footer[1][1]:match("(%d+)%%")) or nil
+end
 assert(ui.documentation(long, cfg))
-assert(ui.scroll_documentation(24))
+if has_scrollbar then
+  eq(0, scroll_percentage(current.win))
+  eq(1, #anchors(current.win))
+end
+assert(ui.scroll_documentation(12))
 local win = current.win
+if has_scrollbar then
+  local percentage = scroll_percentage(win)
+  assert(percentage > 0 and percentage < 100)
+end
 local old_view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
 local old_width = vim.api.nvim_win_get_width(win)
 local old_tick = vim.api.nvim_buf_get_changedtick(current.buf)
@@ -185,6 +203,50 @@ long.documentation.value = "Updated description"
 assert(ui.documentation(long, cfg))
 eq({ "Updated description" }, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
 eq(1, vim.api.nvim_win_call(win, vim.fn.winsaveview).topline)
+assert(ui.scroll_documentation(4))
+eq(1, vim.api.nvim_win_call(win, vim.fn.winsaveview).topline)
+
+local compact = vim.deepcopy(cfg)
+compact.documentation.max_width = 20
+compact.documentation.max_height = 4
+assert(ui.documentation({ documentation = "```text\n" .. string.rep("x", 200) .. "\n```" }, compact))
+assert(ui.scroll_documentation(100))
+local bottom = vim.api.nvim_win_call(win, vim.fn.winsaveview)
+eq(2, bottom.topline)
+eq(120, bottom.skipcol)
+if has_scrollbar then
+  eq(100, scroll_percentage(win))
+end
+assert(ui.scroll_documentation(4))
+eq(bottom, vim.api.nvim_win_call(win, vim.fn.winsaveview))
+
+assert(ui.scroll_documentation(-4))
+eq(40, vim.api.nvim_win_call(win, vim.fn.winsaveview).skipcol)
+
+if has_scrollbar then
+  assert(ui.documentation(long, cfg))
+  eq(0, #anchors(win))
+  eq(nil, scroll_percentage(win))
+
+  local borderless = vim.deepcopy(cfg)
+  borderless.documentation.border = "none"
+  assert(ui.documentation({ documentation = string.rep("visible line\n", 50) }, borderless))
+  local floats = anchors(win)
+  eq(2, #floats)
+  local label = vim.iter(floats):find(function(candidate)
+    return vim.api.nvim_win_get_height(candidate) == 1
+  end)
+  assert(label)
+  local label_buf = vim.api.nvim_win_get_buf(label)
+  eq({ "0%" }, vim.api.nvim_buf_get_lines(label_buf, 0, -1, false))
+  assert(ui.scroll_documentation(100))
+  eq({ "100%" }, vim.api.nvim_buf_get_lines(label_buf, 0, -1, false))
+  eq(50 - vim.api.nvim_win_get_height(win) + 1, vim.api.nvim_win_call(win, vim.fn.winsaveview).topline)
+  vim.api.nvim_win_close(win, true)
+  for _, candidate in ipairs(floats) do
+    assert(not vim.api.nvim_win_is_valid(candidate), "orphaned scrollbar or scroll percentage")
+  end
+end
 ui.hide()
 assert(not ui.documentation(item, cfg))
 ui.dispose()
