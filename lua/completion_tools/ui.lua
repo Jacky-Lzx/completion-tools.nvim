@@ -1,6 +1,7 @@
 local M = {}
 local float = require("base_tools.float")
 local base_text = require("base_tools.text")
+local has_markdown, base_markdown = pcall(require, "base_tools.markdown")
 local has_preview, preview_window = pcall(require, "base_tools.preview")
 local document_window = has_preview and preview_window or float
 local document_scrollbar = {
@@ -507,6 +508,10 @@ function M.reposition(ctx, config)
 end
 
 local function conceal_markdown_fences(bufnr)
+  if has_markdown then
+    base_markdown.conceal_fences(bufnr, doc_ns)
+    return
+  end
   local ok, parser = pcall(vim.treesitter.get_parser, bufnr, "markdown")
   if not ok or not parser then
     return
