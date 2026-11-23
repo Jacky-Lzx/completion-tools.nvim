@@ -6,16 +6,20 @@ local function encode(value)
   if type(value) ~= "table" then
     return vim.json.encode(value)
   end
+
   local keys, parts = {}, {}
   for key in pairs(value) do
     keys[#keys + 1] = key
   end
+
   table.sort(keys, function(a, b)
     return tostring(a) < tostring(b)
   end)
+
   for _, key in ipairs(keys) do
     parts[#parts + 1] = encode(key) .. ":" .. encode(value[key])
   end
+
   return "{" .. table.concat(parts, ",") .. "}"
 end
 
@@ -37,10 +41,12 @@ function M.key(item)
       semantic[field] = item[field]
     end
   end
+
   if next(semantic) then
     semantic.client = item._client_id
     return base .. encode(semantic)
   end
+
   -- Plain words still deduplicate across sources, including buffer and LSP.
   return base
 end

@@ -13,6 +13,7 @@ local function argument_start(before)
       start = i
     end
   end
+
   return start
 end
 
@@ -23,15 +24,17 @@ local function command(before)
     if not ok then
       return
     end
+
     parsed = value
     if not value.nextcmd or value.nextcmd == "" then
       return parsed
     end
+
     before = value.nextcmd
   end
 end
 
-function M.describe(before, cmdtype)
+function M.get_completion_details(before, cmdtype)
   if cmdtype ~= ":" then
     local prefix = vim.fn.matchstr(before, [[\k*$]])
     local start = #before - #prefix
@@ -40,21 +43,26 @@ function M.describe(before, cmdtype)
     if #escaping % 2 == 1 and prefix:match("^[vVmMcC]") then
       prefix, start = prefix:sub(2), start + 1
     end
+
     return { prefix = prefix, start_col = start, completion_syntax = false }
   end
+
   local pattern, kind = vim.fn.getcmdcomplpat(), vim.fn.getcmdcompltype()
   local parsed = command(before)
   if kind == "shellcmd" or kind == "shellcmdline" then
     return
   end
+
   if kind ~= "command" then
     if before:match("^%s*[%%0-9,'<>%-]*!") then
       return
     end
+
     if parsed then
       if parsed.cmd == "!" or parsed.cmd == "terminal" then
         return
       end
+
       if parsed.cmd == "read" or parsed.cmd == "write" then
         for _, arg in ipairs(parsed.args or {}) do
           if arg:sub(1, 1) == "!" then
@@ -64,12 +72,14 @@ function M.describe(before, cmdtype)
       end
     end
   end
+
   if
     (kind == "file" or kind == "dir" or kind == "file_in_path" or kind == "dir_in_path")
     and pattern:find("`", 1, true)
   then
     return
   end
+
   if #pattern > #before or before:sub(#before - #pattern + 1) ~= pattern then
     -- The native pattern may extend beyond the cursor. Reconstruct only the
     -- current argument, keeping escaped whitespace and option assignments.
@@ -77,15 +87,19 @@ function M.describe(before, cmdtype)
     if parsed and parsed.cmd:match("^set") and (kind == "file" or kind == "dir") then
       local _, ending = before:sub(start + 1):find("^[%w_]+[+^%-]?=")
       start = ending and start + ending or start
+
       for i = start + 1, #before do
         if before:sub(i, i) == "," and before:sub(i - 1, i - 1) ~= "\\" then
           start = i
         end
       end
     end
+
     pattern = before:sub(start + 1)
   end
+
   local prefix = kind == "lua" and pattern:match("[^%.:]*$") or pattern
+
   return {
     prefix = prefix,
     start_col = #before - #prefix,

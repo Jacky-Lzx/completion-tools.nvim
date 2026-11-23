@@ -8,9 +8,11 @@ function M.can_auto_show(config, ctx)
   if type(characters) == "function" then
     characters = characters(ctx)
   end
+
   if vim.list_contains(characters, character) then
     return true, true
   end
+
   -- Keep '_' as a word character, but block other ASCII punctuation even if
   -- a filetype includes it in 'iskeyword' or a custom keyword_pattern.
   local word = character ~= ""
@@ -19,43 +21,73 @@ function M.can_auto_show(config, ctx)
   return word, false
 end
 
-function M.get(config)
-  local mode = vim.api.nvim_get_mode().mode
-  local cmdline = mode == "c"
-  if not cmdline and mode:sub(1, 1) ~= "i" then
-    return
-  end
-  local cmdtype = cmdline and vim.fn.getcmdtype() or nil
-  if cmdline and (not config.cmdline.enabled or not vim.tbl_contains(config.cmdline.types, cmdtype)) then
-    return
-  end
+local function add_buffer_context(bufnr, ctx)
+  ctx.bufnr = bufnr
+  ctx.winid = vim.api.nvim_get_current_win()
+  ctx.tick = vim.api.nvim_buf_get_changedtick(bufnr)
+  ctx.filetype = vim.bo[bufnr].filetype
+  return ctx
+end
+
+local function get_insert_context(config)
   local bufnr = vim.api.nvim_get_current_buf()
-  if not cmdline and (not vim.bo[bufnr].modifiable or vim.bo[bufnr].buftype == "prompt") then
+  if not vim.bo[bufnr].modifiable or vim.bo[bufnr].buftype == "prompt" then
     return
   end
+
   local cursor = vim.api.nvim_win_get_cursor(0)
-  local line = cmdline and vim.fn.getcmdline() or vim.api.nvim_get_current_line()
-  local col = cmdline and vim.fn.getcmdpos() - 1 or cursor[2]
+  local line = vim.api.nvim_get_current_line()
+  local col = cursor[2]
   local before = line:sub(1, col)
-  local details = cmdline and require("completion_tools.cmdline").describe(before, cmdtype)
-  if cmdline and not details then
-    return
-  end
-  local prefix = details and details.prefix or vim.fn.matchstr(before, config.keyword_pattern)
-  return vim.tbl_extend("force", {
-    bufnr = bufnr,
-    winid = vim.api.nvim_get_current_win(),
-    mode = cmdline and "cmdline" or "insert",
-    row = cmdline and 0 or cursor[1] - 1,
+  local prefix = vim.fn.matchstr(before, config.keyword_pattern)
+
+  return add_buffer_context(bufnr, {
+    mode = "insert",
+    row = cursor[1] - 1,
     col = col,
     line = line,
     before = before,
     prefix = prefix,
     start_col = col - #prefix,
-    tick = vim.api.nvim_buf_get_changedtick(bufnr),
-    filetype = vim.bo[bufnr].filetype,
+  })
+end
+
+local function get_cmdline_context(config)
+  local cmdtype = vim.fn.getcmdtype()
+  if not config.cmdline.enabled or not vim.tbl_contains(config.cmdline.types, cmdtype) then
+    return
+  end
+
+  local bufnr = vim.api.nvim_get_current_buf()
+  local line = vim.fn.getcmdline()
+  local col = vim.fn.getcmdpos() - 1
+  local before = line:sub(1, col)
+  local details = require("completion_tools.cmdline").get_completion_details(before, cmdtype)
+  if not details then
+    return
+  end
+
+  local ctx = add_buffer_context(bufnr, {
+    mode = "cmdline",
+    row = 0,
+    col = col,
+    line = line,
+    before = before,
     cmdtype = cmdtype,
-  }, details or {})
+  })
+  return vim.tbl_extend("force", ctx, details)
+end
+
+function M.get(config)
+  local mode = vim.api.nvim_get_mode().mode
+
+  if mode == "c" then
+    return get_cmdline_context(config)
+  end
+
+  if mode:sub(1, 1) == "i" then
+    return get_insert_context(config)
+  end
 end
 
 function M.same(a, b)
