@@ -51,7 +51,7 @@ test("column replacement, validation and grouping", function()
   local items = { entry({ label = "x" }) }
   local layout = render.prepare(items, cfg.menu, 80)
   local line = render.row(layout, 1, items[1], ctx, cfg.menu)
-  assert(line:find("x   LSP", 1, true))
+  assert(line:find("x   lsp", 1, true))
 end)
 test("LSP source column shows the originating client with a generic fallback", function()
   local items = {
@@ -59,6 +59,10 @@ test("LSP source column shows the originating client with a generic fallback", f
     entry({ label = "beta", _client_name = "texlab" }),
     entry({ label = "gamma" }),
   }
+  local lsp = require("completion_tools.sources.lsp").new()
+  for _, candidate in ipairs(items) do
+    candidate.source_name = lsp.display_name(candidate.item)
+  end
   local original = vim.deepcopy(items)
   local layout = render.prepare(items, opts, 100)
   for i, name in ipairs({ "lua_ls", "texlab", "LSP" }) do

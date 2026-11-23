@@ -5,6 +5,7 @@ function M.new(opts)
   local uv, cache, closed = vim.uv, {}, false
   local preview = require("completion_tools.sources.path.preview").new(opts.preview)
   local source = {
+    display_name = "Path",
     score_offset = 30,
     resolve = preview.resolve,
     resolve_on_accept = false,

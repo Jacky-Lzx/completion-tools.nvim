@@ -147,6 +147,45 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line() == 'alphabet!'")
     eq("i", lua("return vim.api.nvim_get_mode().mode"))
   end)
+  test("source column uses provider names, item callbacks and source ID fallback", function()
+    lua([[
+      local cmp=require('completion_tools')
+      cmp.setup({sources={'project','dynamic','unnamed','broken'},
+        menu={columns={{'label','source'}}}, providers={project={display_name='Workspace'}}})
+      local function register(id,label,display_name)
+        cmp.register_source(id,{display_name=display_name,complete=function(_,cb)
+          cb({items={{label=label}}})
+        end})
+      end
+      register('project','alphaProject','Project')
+      register('dynamic','alphaDynamic',function(item) return 'From '..item.label end)
+      register('unnamed','alphaUnnamed')
+      register('broken','alphaBroken',function() error('Missing display name') end)
+    ]])
+    input("ial")
+    wait("local cmp=require('completion_tools');return cmp.is_menu_visible() and #cmp.get_items()==4")
+    eq(
+      {
+        alphaProject = "Workspace",
+        alphaDynamic = "From alphaDynamic",
+        alphaUnnamed = "unnamed",
+        alphaBroken = "broken",
+      },
+      lua([[
+        local result={}
+        for _,win in ipairs(vim.api.nvim_list_wins()) do
+          local buf=vim.api.nvim_win_get_buf(win)
+          if vim.bo[buf].filetype=='completion-tools-menu' then
+            for _,line in ipairs(vim.api.nvim_buf_get_lines(buf,0,-1,false)) do
+              local label,name=line:match('^%s*(%S+)%s+(.-)%s*$')
+              result[label]=name
+            end
+          end
+        end
+        return result
+      ]])
+    )
+  end)
   test("manual completion survives text events from the same input batch", function()
     lua([[
       require('completion_tools').setup({sources={'test'},providers={test={complete=function(_,cb)

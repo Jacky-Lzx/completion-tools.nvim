@@ -5,6 +5,7 @@ local state = {
   generation = 0,
   items = {},
   providers = {},
+  builtin_display_names = {},
   cache = {},
   cancels = {},
   groups = {},
@@ -265,7 +266,16 @@ local function render(pending)
 
   state.ready = false
   for _, entry in ipairs(items) do
-    entry.stale = state.groups[entry.source_id] == nil
+    local id = entry.source_id
+    local source_group = state.groups[id]
+    entry.stale = source_group == nil
+    local displayed_group = source_group or state.retained[id]
+    local name = displayed_group and displayed_group.display_name
+    if type(name) == "function" then
+      local ok, value = pcall(name, entry.item)
+      name = ok and value or nil
+    end
+    entry.source_name = type(name) == "string" and name ~= "" and name or id
     state.ready = state.ready or not entry.stale
   end
 
@@ -457,6 +467,7 @@ local function receive_response(generation, ctx, id, priority, response)
   end
 
   local configured = state.config.providers[id] or {}
+  local provider = state.providers[id]
   local items = response.items or response
   if configured.transform_items then
     items = configured.transform_items(ctx, items)
@@ -465,10 +476,11 @@ local function receive_response(generation, ctx, id, priority, response)
   local result = {
     items = items,
     source_id = id,
+    display_name = configured.display_name or provider.display_name or state.builtin_display_names[id],
     priority = priority,
     insert_at = configured.insert_at,
     client_order = id == "lsp" and configured.client_order or nil,
-    score_offset = configured.score_offset or state.providers[id].score_offset or 0,
+    score_offset = configured.score_offset or provider.score_offset or 0,
     start_col = response.start_col or ctx.start_col,
     context = response.context or ctx,
   }
@@ -501,7 +513,7 @@ local function receive_response(generation, ctx, id, priority, response)
     context = ctx,
     reusable = response.reusable and not response.pending,
     incomplete = response.is_incomplete,
-    response = state.providers[id].reuse and (not response.pending or response.stable) and response or nil,
+    response = provider.reuse and (not response.pending or response.stable) and response or nil,
     cursor_col = ctx.col,
   }
 
@@ -816,7 +828,7 @@ function M.setup(opts)
   timer, doc_timer = vim.uv.new_timer(), vim.uv.new_timer()
 
   for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline", "dictionary", "spell", "copilot" }) do
-    state.providers[id] = require("completion_tools.sources." .. id).new(config[id] or {}, function()
+    local provider = require("completion_tools.sources." .. id).new(config[id] or {}, function()
       if state.context and state.context.bufnr == vim.api.nvim_get_current_buf() then
         local same = context.same(state.context, current())
         if same or config.auto_show then
@@ -826,6 +838,8 @@ function M.setup(opts)
         end
       end
     end)
+    state.providers[id] = provider
+    state.builtin_display_names[id] = provider.display_name
   end
 
   for id, provider in pairs(config.providers) do
@@ -1282,6 +1296,7 @@ function M.dispose()
   timer, doc_timer = nil, nil
   ui.dispose()
   state.providers, state.cache, state.source_ids = {}, {}, {}
+  state.builtin_display_names = {}
   state.accepted = nil
   state.watched = {}
 end

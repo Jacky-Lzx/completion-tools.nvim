@@ -56,7 +56,13 @@ local function normalise(result, client, filetype)
 end
 
 function M.new()
-  local source = { score_offset = 40 }
+  local source = {
+    display_name = function(item)
+      local name = item._client_name
+      return type(name) == "string" and name ~= "" and name or "LSP"
+    end,
+    score_offset = 40,
+  }
 
   --- Last successful completion state, keyed by LSP client ID.
   --- Each entry holds the request context and the response's isIncomplete flag.

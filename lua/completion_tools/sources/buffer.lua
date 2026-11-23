@@ -4,7 +4,7 @@ local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 function M.new(opts, refresh)
   local states, closed = {}, false
   local clock = 0
-  local source = {}
+  local source = { display_name = "Buffer" }
 
   local function retire(state)
     state.generation = state.generation + 1

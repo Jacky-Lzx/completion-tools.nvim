@@ -75,7 +75,7 @@ function M.new(opts)
   local function params(ctx)
     return copilot.params and copilot.params(ctx) or native.params(ctx)
   end
-  local source, active = { score_offset = 50 }, nil
+  local source, active = { display_name = "Copilot", score_offset = 50 }, nil
   local function cancel_active()
     if active then
       active.cancel()

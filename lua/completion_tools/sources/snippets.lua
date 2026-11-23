@@ -3,6 +3,7 @@ local protocol = require("vim.lsp.protocol")
 
 function M.new(opts)
   return {
+    display_name = "Snippets",
     score_offset = 30,
     complete = function(ctx, callback)
       local items = {}

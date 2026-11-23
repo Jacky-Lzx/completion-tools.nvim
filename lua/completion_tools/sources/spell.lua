@@ -5,6 +5,7 @@ function M.new(opts)
   local warn = require("completion_tools.worker").warnings("spell")
 
   return {
+    display_name = "Spell",
     score_offset = 10,
     complete = function(ctx, callback)
       if

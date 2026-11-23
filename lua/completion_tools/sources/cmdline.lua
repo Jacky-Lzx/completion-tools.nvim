@@ -27,6 +27,7 @@ local completion_kinds = {
 function M.new(opts)
   opts = opts or {}
   return {
+    display_name = "Cmdline",
     complete = function(ctx, callback)
       -- getcompletion() follows wildoptions. Enable native fuzzy matching only
       -- for this synchronous call, including when a custom completer throws.

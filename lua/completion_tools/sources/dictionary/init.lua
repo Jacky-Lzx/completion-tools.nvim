@@ -4,6 +4,7 @@ function M.new(opts)
   local documentation = require("completion_tools.sources.dictionary.documentation").new(opts.documentation)
   local warn = require("completion_tools.worker").warnings("dictionary")
   return {
+    display_name = "Dict",
     score_offset = 5,
     complete = function(ctx, callback)
       if #ctx.prefix < opts.min_keyword_length then

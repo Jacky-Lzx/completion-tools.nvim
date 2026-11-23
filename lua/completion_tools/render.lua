@@ -3,16 +3,6 @@ local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 local text = require("completion_tools.text")
 local kinds = require("completion_tools.kinds")
 local highlight = require("completion_tools.highlight")
-local source_names = {
-  lsp = "LSP",
-  buffer = "Buffer",
-  path = "Path",
-  snippets = "Snippets",
-  cmdline = "Cmdline",
-  dictionary = "Dict",
-  spell = "Spell",
-  copilot = "Copilot",
-}
 
 M.components = {
   kind_icon = true,
@@ -73,15 +63,11 @@ local function fields(entry, opts)
   end
   local code = label .. (opts.label_details and not file and detail or "")
   code = text.clean(code, opts.max_label_bytes)
-  local source = source_names[entry.source_id] or entry.source_id
-  if entry.source_id == "lsp" and type(item._client_name) == "string" and item._client_name ~= "" then
-    source = item._client_name
-  end
   return {
     kind_icon = text.clean(icon, 32),
     label = code,
     kind = name,
-    source = text.clean(source, opts.max_label_bytes),
+    source = text.clean(entry.source_name or entry.source_id, opts.max_label_bytes),
     label_detail = detail,
     detail_code = detail_code,
     label_description = metadata,

@@ -151,7 +151,7 @@ characters, and rank below literal matches. Command-line matching/order is
 unaffected.
 
                                                     *completion-tools-sources*
-The menu's source column shows the originating LSP client name (for example,
+By default the source column shows the originating LSP client name (for example,
 lua_ls or texlab), falling back to LSP when the name is unavailable.
 
 Built-ins: lsp, path, buffer, snippets; optional Ex cmdline. Opt-in sources:
@@ -376,8 +376,9 @@ and the active colorscheme. Detail and plaintext documentation remain literal.
                                                        *completion-tools-menu*
 Default columns: { {"kind_icon"}, {"label", gap=1}, {"kind"}, {"source"} }.
 Components: kind_icon, label, kind, source, label_detail, label_description.
-Source names: LSP, Buffer, Path, Snippets, Cmdline, Dict, Spell. Custom
-sources retain their IDs. menu.columns replaces the entire column list.
+Built-in source names include LSP, Buffer, Path, Snippets, Cmdline, Dict, Spell
+and Copilot. Custom sources use their registered IDs by default. menu.columns
+replaces the entire column list.
 column_gap and padding default to 1. kind_icons=false hides icons; a
 name-to-icon table overrides defaults. label_details=false separates the label
 from LSP detail/description fields. Display text never changes the accepted
@@ -1195,6 +1196,7 @@ Candidates use LSP CompletionItem fields. For example:
       sources = { "lsp", "path", "project" },
       providers = {
         project = {
+          display_name = "Project",
           score_offset = 20,
           complete = function(ctx, callback)
             local cancelled = false
@@ -1221,6 +1223,12 @@ Source functions use dot calls, without an implicit `self`:
     source.reuse(ctx, response, previous_ctx) -> response? -- Optional; validated reuse
     source.dispose()                                  -- Optional
 <
+
+`source.display_name` can be a string or a function that takes a CompletionItem
+and returns its name for the menu's source column. A `providers.<id>.display_name`
+option overrides the name supplied by the provider. Callbacks run for candidates
+chosen for the menu. An empty name or a failed callback falls back to the source
+ID.
 
 `complete` publishes `{ items = CompletionItem[], start_col?, reusable?,
 is_incomplete?, pending?, stable? }`. `start_col` is a zero-based byte column
@@ -1264,9 +1272,10 @@ acceptance edits. `retrigger_on_accept` continues completion as an explicit
 request to the same source, provided acceptance handlers have not changed the
 resulting input snapshot.
 
-Entries contain `item`, `context` (the originating context), `start_col` and
-`source_id`. Resolve callbacks return a CompletionItem; execute runs after the
-synchronous primary edit. A source expanding its own snippets may use
+Entries contain `item`, `context` (the originating context), `start_col`,
+`source_id` and `source_name` (the menu label). Resolve callbacks return a
+CompletionItem. Execute runs after the synchronous primary edit. A source
+expanding its own snippets may use
 `insertText=""` to clear the typed prefix before expanding in execute.
 Leading-underscore item fields are private provider metadata; standard
 `item.data` must be JSON serializable.
