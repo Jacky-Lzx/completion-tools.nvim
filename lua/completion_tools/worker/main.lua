@@ -1,6 +1,7 @@
 -- JSON-lines worker; never loads the user's init or the Blink ecosystem.
 local root = debug.getinfo(1, "S").source:sub(2):gsub("completion_tools/worker/main%.lua$", "")
 package.path = root .. "?.lua;" .. package.path
+local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 local matcher = require("completion_tools.matcher")
 local indexes, clock = {}, 0
 
@@ -102,7 +103,7 @@ local function dictionary(request)
           word = word:gsub("^%l", string.upper)
         end
       end
-      items[#items + 1] = { label = word, kind = 1, data = { dictionary_word = candidate.word } }
+      items[#items + 1] = { label = word, kind = CompletionItemKind.Text, data = { dictionary_word = candidate.word } }
     end
     local old = index.order[index.slot]
     if old then
@@ -160,7 +161,7 @@ local function spell(request)
       seen[word] = true
       items[#items + 1] = {
         label = word,
-        kind = 1,
+        kind = CompletionItemKind.Text,
         filterText = request.query,
         sortText = string.format("%06d", #items + 1),
         preselect = preselect,

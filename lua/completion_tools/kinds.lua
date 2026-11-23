@@ -37,7 +37,7 @@ function M.is_path(kind, source_id)
 end
 
 function M.get(kind, icons)
-  local definition = definitions[kind or 1] or unknown
+  local definition = definitions[kind or CompletionItemKind.Text] or unknown
   local name, icon = definition[1], definition[2]
   local shared = package.loaded["theme_tools.icons"]
   local group = "CompletionToolsKind" .. name

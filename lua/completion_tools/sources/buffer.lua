@@ -1,4 +1,5 @@
 local M = {}
+local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 
 function M.new(opts, refresh)
   local states, closed = {}, false
@@ -62,7 +63,7 @@ function M.new(opts, refresh)
       elseif count > 0 and (previous or state.size < opts.max_words) then
         if not previous then
           state.size = state.size + 1
-          state.items[#state.items + 1] = { label = word, kind = 1 }
+          state.items[#state.items + 1] = { label = word, kind = CompletionItemKind.Text }
           state.indices[word] = #state.items
         end
 

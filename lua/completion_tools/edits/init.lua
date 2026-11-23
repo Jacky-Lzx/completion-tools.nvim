@@ -1,4 +1,5 @@
 local M = {}
+local InsertTextFormat = require("vim.lsp.protocol").InsertTextFormat
 local ns = vim.api.nvim_create_namespace("completion-tools-accept")
 
 local function units(text, encoding)
@@ -86,7 +87,7 @@ function M.apply(entry, ctx, config, opts)
   if insert_mode == 2 then
     text = insertion.indent(text, indentation)
   end
-  local snippet = item.insertTextFormat == 2
+  local snippet = item.insertTextFormat == InsertTextFormat.Snippet
   local edits, mark = {}, nil
   for _, edit in ipairs(item.additionalTextEdits or {}) do
     edits[#edits + 1] = { newText = edit.newText, range = additional_range(entry, edit.range, ctx, encoding) }

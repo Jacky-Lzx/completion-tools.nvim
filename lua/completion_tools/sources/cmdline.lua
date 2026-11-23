@@ -1,24 +1,27 @@
 local M = {}
-local kinds = {
-  command = 3,
-  option = 10,
-  lua = 6,
-  expression = 6,
-  var = 6,
-  environment = 6,
-  file = 17,
-  file_in_path = 17,
-  buffer = 17,
-  diff_buffer = 17,
-  dir = 19,
-  dir_in_path = 19,
-  help = 18,
-  color = 16,
-  event = 23,
-  augroup = 9,
-  highlight = 7,
-  ["function"] = 3,
-  filetype = 14,
+local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
+local kinds = require("completion_tools.kinds")
+
+local completion_kinds = {
+  command = CompletionItemKind.Function,
+  option = CompletionItemKind.Property,
+  lua = CompletionItemKind.Variable,
+  expression = CompletionItemKind.Variable,
+  var = CompletionItemKind.Variable,
+  environment = CompletionItemKind.Variable,
+  file = CompletionItemKind.File,
+  file_in_path = CompletionItemKind.File,
+  buffer = CompletionItemKind.File,
+  diff_buffer = CompletionItemKind.File,
+  dir = CompletionItemKind.Folder,
+  dir_in_path = CompletionItemKind.Folder,
+  help = CompletionItemKind.Reference,
+  color = CompletionItemKind.Color,
+  event = CompletionItemKind.Event,
+  augroup = CompletionItemKind.Module,
+  highlight = CompletionItemKind.Class,
+  ["function"] = CompletionItemKind.Function,
+  filetype = CompletionItemKind.Keyword,
 }
 
 function M.new(opts)
@@ -37,18 +40,20 @@ function M.new(opts)
         vim.o.wildoptions = wildoptions
       end
       local items = {}
-      local kind = kinds[ctx.completion_type] or (ctx.command and ctx.command:match("^set") and 10) or 1
+      local kind = completion_kinds[ctx.completion_type]
+        or (ctx.command and ctx.command:match("^set") and CompletionItemKind.Property)
+        or CompletionItemKind.Text
       for index, label in ipairs(ok and matches or {}) do
         local text = label
         -- getcmdcomplpat() can include the no/inv prefix when the cursor is
         -- inside a command with a suffix. Native getcompletion() strips it.
-        if kind == 10 and ctx.command and ctx.command:match("^set") then
+        if kind == CompletionItemKind.Property and ctx.command and ctx.command:match("^set") then
           local flag = ctx.prefix:match("^inv") or ctx.prefix:match("^no")
           if flag and label:sub(1, #ctx.prefix) ~= ctx.prefix then
             text = flag .. label
           end
         end
-        if kind == 17 or kind == 19 then
+        if kinds.is_path(kind) then
           text = vim.fn.fnameescape(label)
           if ctx.command and ctx.command:match("^set") then
             text = text:gsub("\\([ \t])", function(char)
@@ -63,7 +68,7 @@ function M.new(opts)
         items[#items + 1] = {
           label = label,
           insertText = text,
-          kind = folder and 19 or kind,
+          kind = folder and CompletionItemKind.Folder or kind,
           _syntax = not folder and ctx.completion_syntax or false,
           -- Native completion already interpreted escapes, wildcards and user
           -- commands. Do not discard or reorder these results with another matcher.

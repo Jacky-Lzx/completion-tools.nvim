@@ -1,4 +1,5 @@
 local M = {}
+local kinds = require("completion_tools.kinds")
 
 -- Keep literal metadata inside code blocks when it shares a Markdown buffer.
 local function fence(lines, filetype)
@@ -35,7 +36,7 @@ function M.build(item, filetype)
   local has_body = type(body) == "string" and body ~= ""
   local preview = item._path_preview
   local markdown = has_body and not preview and (type(documentation) ~= "table" or documentation.kind ~= "plaintext")
-  local signature = #lines > 0 and item.kind ~= 17 and item.kind ~= 19 and filetype ~= "markdown" and filetype
+  local signature = #lines > 0 and not kinds.is_path(item.kind) and filetype ~= "markdown" and filetype
   local language
   if markdown then
     fence(lines, signature)

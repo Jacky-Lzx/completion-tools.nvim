@@ -1,4 +1,5 @@
 local M = {}
+local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 
 function M.new(opts)
   local uv, cache, closed = vim.uv, {}, false
@@ -86,7 +87,7 @@ function M.new(opts)
               local folder = file.type == "directory"
               items[#items + 1] = {
                 label = file.name .. (folder and "/" or ""),
-                kind = folder and 19 or 17,
+                kind = folder and CompletionItemKind.Folder or CompletionItemKind.File,
                 data = { path = expanded .. file.name, directory = folder },
               }
             end

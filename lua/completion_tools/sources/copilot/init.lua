@@ -1,5 +1,6 @@
 -- Native Copilot completion source. The language server starts on demand.
 local M = {}
+local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 
 local function normalise(raw, ctx, client)
   if type(raw.text) ~= "string" or raw.text == "" or type(raw.range) ~= "table" then
@@ -54,7 +55,7 @@ local function normalise(raw, ctx, client)
   end
   return {
     label = label,
-    kind = 1,
+    kind = CompletionItemKind.Text,
     -- Copilot already matched the context; continuations need not contain the
     -- keyword (and a replacement range can start before that keyword).
     filterText = ctx.before:sub(start_col + 1) .. label,

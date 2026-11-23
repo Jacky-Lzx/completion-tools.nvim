@@ -1,4 +1,5 @@
 local M = {}
+local protocol = require("vim.lsp.protocol")
 
 function M.new(opts)
   return {
@@ -11,8 +12,8 @@ function M.new(opts)
           items[#items + 1] = {
             label = snippet.prefix,
             insertText = type(snippet.body) == "table" and table.concat(snippet.body, "\n") or snippet.body,
-            insertTextFormat = 2,
-            kind = 15,
+            insertTextFormat = protocol.InsertTextFormat.Snippet,
+            kind = protocol.CompletionItemKind.Snippet,
             detail = snippet.description,
           }
         end
