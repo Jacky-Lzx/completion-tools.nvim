@@ -1926,13 +1926,26 @@ local ok, err = xpcall(function()
   test("LSP protocol: trigger, UTF-16 defaults, cached ranges and late imports/command", function()
     lua([[fixture_trace={}; require("completion_tools").setup({sources={"lsp"},
       providers={lsp={transform_items=function(_,items)
-        for _,item in ipairs(items) do item._syntax=false end
+        for _,item in ipairs(items) do
+          if item.label=='foobar' and item._syntax=='lua' then
+            item._syntax={label=false,detail='lua'}
+          end
+        end
         return items
       end}}});
+      vim.bo.filetype='lua'
       vim.api.nvim_buf_set_lines(0,0,-1,false,{"header","😀"}); vim.api.nvim_win_set_cursor(0,{2,0})]])
-    start_fixture()
+    start_fixture("syntaxFile")
     input("A.")
     wait("return require('completion_tools').is_menu_visible()")
+    eq(
+      { foobar = { label = false, detail = "lua" }, forest = { label = false, detail = "lua" }, syntaxFile = false },
+      lua([[
+      local hints={}
+      for _,item in ipairs(require('completion_tools').get_items()) do hints[item.label]=item._syntax end
+      return hints
+    ]])
+    )
     assert(
       lua(
         "for _,e in ipairs(fixture_trace) do if e.kind=='completion' and e.triggerKind==2 and e.triggerCharacter=='.' then return true end end; return false"
@@ -1942,7 +1955,7 @@ local ok, err = xpcall(function()
     wait(
       "local c=require('completion_tools'); return c.get_context() and c.get_context().before=='😀.fo' and c._can('accept')"
     )
-    eq(false, lua("return require('completion_tools').get_selected_item()._syntax"))
+    eq({ label = false, detail = "lua" }, lua("return require('completion_tools').get_selected_item()._syntax"))
     input("<Tab>")
     wait("return vim.api.nvim_get_current_line() == '😀.foobar'")
     wait("return vim.api.nvim_buf_get_lines(0,0,1,false)[1] == 'import fixture'")

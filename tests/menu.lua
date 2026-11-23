@@ -20,6 +20,10 @@ local function span_for(spans, group)
     return s[3] == group
   end, spans)
 end
+local function paint(entry, context, menu, width)
+  local layout = render.prepare({ entry }, menu, width or 120)
+  return render.row(layout, 1, entry, context, menu)
+end
 local opts = config.validate({ menu = { highlight = { treesitter = false } } }).menu
 package.preload["colorful-menu"] = function()
   error("colorful-menu must not be used")
@@ -287,11 +291,10 @@ test("command-line names are literal, keep matching and do not share syntax cach
   for _, label in ipairs({ "write-local-help", "<Help>", "vim.lsp.buf.signature_help.Opts" }) do
     local e = { item = { label = label, kind = 18 }, source_id = "cmdline", start_col = 5 }
     -- Prime the same text/kind in an Insert-mode context first.
-    highlight.get(label, #label, e, { mode = "insert", filetype = "lua" }, opts.highlight)
+    highlight.get(label, "lua", opts.highlight)
     local context = { mode = "cmdline", completion_syntax = false, filetype = "lua", before = "help help" }
-    eq({ { 0, #label, "CompletionToolsKindReference", 110 } }, highlight.get(label, #label, e, context, opts.highlight))
-    local layout = render.prepare({ e }, opts, 120)
-    local _, spans = render.row(layout, 1, e, context, opts)
+    local _, spans = paint(e, context, opts)
+    assert(#span_for(spans, "CompletionToolsKindReference") > 0)
     assert(#span_for(spans, "CompletionToolsMatch") > 0)
     for _, span in ipairs(spans) do
       assert(span[3]:sub(1, 1) ~= "@", "help tag was interpreted as code")
@@ -301,32 +304,106 @@ end)
 test("candidate syntax hints override defaults and keep match highlighting", function()
   local e = entry({ label = "foo-12", kind = 3 })
   local context = { filetype = "lua", before = "foo" }
-  assert(#span_for(highlight.get(e.item.label, 3, e, context, opts.highlight), "@number") > 0)
+  local _, spans = paint(e, context, opts)
+  assert(#span_for(spans, "@number") > 0)
   e.item._syntax = false
-  eq({ { 0, 6, "CompletionToolsKindFunction", 110 } }, highlight.get(e.item.label, 3, e, context, opts.highlight))
-  local layout = render.prepare({ e }, opts, 120)
-  local _, spans = render.row(layout, 1, e, context, opts)
+  _, spans = paint(e, context, opts)
+  assert(#span_for(spans, "CompletionToolsKindFunction") > 0)
   assert(#span_for(spans, "CompletionToolsMatch") > 0)
   eq(0, #span_for(spans, "@number"))
 
   e.item.kind, e.item._syntax = 1, nil
-  eq({ { 0, 6, "CompletionToolsKindText", 110 } }, highlight.get(e.item.label, 3, e, context, opts.highlight))
+  _, spans = paint(e, context, opts)
+  assert(#span_for(spans, "CompletionToolsKindText") > 0)
+  eq(0, #span_for(spans, "@number"))
   e.item._syntax = "lua"
-  assert(#span_for(highlight.get(e.item.label, 3, e, context, opts.highlight), "@number") > 0)
+  _, spans = paint(e, context, opts)
+  assert(#span_for(spans, "@number") > 0)
+end)
+test("per-field syntax keeps the label literal with inline and separate signatures", function()
+  local e = entry({
+    label = "函数-7",
+    kind = 1,
+    labelDetails = { detail = "(value: string)" },
+    _syntax = { label = false, detail = "lua" },
+  })
+  local context = { before = "函", filetype = "tex" }
+  for _, separate in ipairs({ false, true }) do
+    local menu = config.validate({
+      menu = {
+        columns = separate and { { "label", "label_detail" } } or { { "label" } },
+        label_details = not separate,
+        highlight = { treesitter = false },
+      },
+    }).menu
+    e.item._syntax = { label = false, detail = "lua" }
+    local line, spans = paint(e, context, menu)
+    local first = assert(line:find("string", 1, true)) - 1
+    eq({ { first, first + #"string", "@type.builtin", 120 } }, span_for(spans, "@type.builtin"))
+    eq(0, #span_for(spans, "@number"))
+    assert(#span_for(spans, "CompletionToolsMatch") > 0)
+
+    e.item._syntax = { label = "lua" }
+    _, spans = paint(e, context, menu)
+    eq(1, #span_for(spans, "@number"))
+    eq(0, #span_for(spans, "@type.builtin"))
+  end
+
+  e.item._syntax = { label = false, detail = "lua" }
+  local line, spans = paint(e, context, opts, 8)
+  eq(0, #span_for(spans, "@number"))
+  for _, span in ipairs(spans) do
+    assert(span[2] <= #line)
+    for column = 1, 2 do
+      local byte = line:byte(span[column] + 1)
+      assert(not byte or byte < 128 or byte >= 192, "Truncated highlight splits a UTF-8 character")
+    end
+  end
+end)
+test("inline detail syntax sees the full call and leaves custom spans scoped to the full column", function()
+  local ok, loaded = pcall(vim.treesitter.language.add, "lua")
+  if not ok or not loaded then
+    return
+  end
+  local code = 'parse("x")'
+  local calls = 0
+  local menu = config.validate({
+    menu = {
+      columns = { { "label" } },
+      highlight = {
+        custom = function(_, _, text)
+          calls = calls + 1
+          return text == code and { { 0, #"parse", "Special" } } or {}
+        end,
+      },
+    },
+  }).menu
+  local e = entry({ label = "parse", labelDetails = { detail = '("x")' }, _syntax = { label = false, detail = "lua" } })
+  vim.treesitter.query.set(
+    "lua",
+    "highlights",
+    "(function_call name: (identifier) @function (arguments (string) @string))"
+  )
+  local _, spans = paint(e, ctx, menu)
+  vim.treesitter.query.set("lua", "highlights", nil)
+  eq(0, #span_for(spans, "@function.lua"))
+  eq(1, #span_for(spans, "@string.lua"))
+  eq(1, #span_for(spans, "Special"))
+  eq(1, calls)
 end)
 test("candidate and contextual languages override the buffer filetype", function()
   local e = entry({ label = 'foo(12, "x")', kind = 3 })
   local menu = config.validate({}).menu
   if pcall(vim.treesitter.language.add, "lua") then
-    local spans = highlight.get(e.item.label, 3, e, { completion_syntax = "lua", filetype = "tex" }, menu.highlight)
+    local _, spans = paint(e, { before = "", completion_syntax = "lua", filetype = "tex" }, menu)
     assert(#span_for(spans, "@string.lua") > 0, "Lua command completion inherited the buffer language")
     e.item._syntax = "lua"
-    spans = highlight.get(e.item.label, 3, e, { completion_syntax = "vim", filetype = "tex" }, menu.highlight)
+    _, spans = paint(e, { before = "", completion_syntax = "vim", filetype = "tex" }, menu)
     assert(#span_for(spans, "@string.lua") > 0, "Source did not override the contextual language")
     e.item._syntax = nil
   end
   for _, language in ipairs({ "lua", "vim" }) do
-    local spans = highlight.get(e.item.label, 3, e, { completion_syntax = language, filetype = "tex" }, opts.highlight)
+    local _, spans = paint(e, { before = "", completion_syntax = language, filetype = "tex" }, opts)
     assert(#span_for(spans, "@string") > 0)
   end
 end)
@@ -345,9 +422,10 @@ test("custom spans are clipped and never contaminate cached built-in spans", fun
   local layout = render.prepare({ e }, menu, 30)
   local _, spans = render.row(layout, 1, e, ctx, menu)
   eq(1, #span_for(spans, "Special"))
-  eq(0, #span_for(highlight.get("中文name", 10, e, ctx, opts.highlight), "Special"))
+  _, spans = paint(e, ctx, opts)
+  eq(0, #span_for(spans, "Special"))
   local disabled = config.validate({ menu = { highlight = { enabled = false } } }).menu
-  eq({}, highlight.get("name", 4, e, ctx, disabled.highlight))
+  eq({}, highlight.get("name", "lua", disabled.highlight))
 end)
 test("native Tree-sitter is optional, bounded and cached", function()
   local original, calls = vim.treesitter.get_string_parser, 0
@@ -356,32 +434,32 @@ test("native Tree-sitter is optional, bounded and cached", function()
     return original(...)
   end
   local ok, err = xpcall(function()
-    local menu, e = config.validate({}).menu, entry({ label = "plain", kind = 3 })
-    highlight.get("plain", 5, e, { filetype = "lua" }, menu.highlight)
+    local menu = config.validate({}).menu
+    highlight.get("plain", "lua", menu.highlight)
     eq(0, calls)
     if pcall(vim.treesitter.language.add, "lua") then
       vim.treesitter.query.set("lua", "highlights", "(number) @number\n(string) @string")
       local code = 'foo(12, "中文")'
-      local spans = highlight.get(code, 3, e, { filetype = "lua" }, menu.highlight)
+      local spans = highlight.get(code, "lua", menu.highlight)
       assert(#span_for(spans, "@number.lua") > 0, "native parser captures missing")
       assert(#span_for(spans, "@string.lua") > 0)
       eq(1, calls)
-      highlight.get(code, 3, e, { filetype = "lua" }, menu.highlight)
+      highlight.get(code, "lua", menu.highlight)
       eq(1, calls)
       menu.highlight.max_bytes = 4
-      highlight.get("bar(123)", 3, e, { filetype = "lua" }, menu.highlight)
+      highlight.get("bar(123)", "lua", menu.highlight)
       eq(1, calls)
       menu.highlight.max_bytes, menu.highlight.cache_size = 1024, 1
       highlight.clear()
       for _, value in ipairs({ code, "bar(1)", code }) do
-        highlight.get(value, 3, e, { filetype = "lua" }, menu.highlight)
+        highlight.get(value, "lua", menu.highlight)
       end
       eq(4, calls)
       vim.treesitter.query.set("lua", "highlights", nil)
     else
       print("menu: optional Lua parser unavailable; lexical fallback covered")
     end
-    assert(#span_for(highlight.get("missing(x: string)", 7, e, ctx, menu.highlight), "@type.builtin") > 0)
+    assert(#span_for(highlight.get("missing(x: string)", ctx.filetype, menu.highlight), "@type.builtin") > 0)
   end, debug.traceback)
   vim.treesitter.get_string_parser = original
   assert(ok, err)

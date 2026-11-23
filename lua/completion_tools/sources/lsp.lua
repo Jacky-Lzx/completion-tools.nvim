@@ -1,5 +1,7 @@
 local M = {}
+local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 local context = require("completion_tools.context")
+local kinds = require("completion_tools.kinds")
 local function last_character(text)
   return text:match("[%z\1-\127\194-\244][\128-\191]*$") or ""
 end
@@ -8,12 +10,14 @@ end
 ---@field _client_id integer ID of the client that returned the item.
 ---@field _client_name string Name of the client that returned the item.
 ---@field _encoding lsp.PositionEncodingKind Encoding used for edit positions.
+---@field _syntax? string|false|{ label?: string|false, detail?: string|false } Syntax hints for the completion menu.
 
 --- Apply supported list defaults and attach client metadata to completion items.
 ---@param result lsp.CompletionList|lsp.CompletionItem[]|nil|vim.NIL Raw completion response from the server.
 ---@param client vim.lsp.Client Client that returned the response.
+---@param filetype string Filetype of the completion request.
 ---@return completion_tools.LspCompletionItem[] items Normalized items, or an empty array for a null response.
-local function normalise(result, client)
+local function normalise(result, client, filetype)
   if not result or result == vim.NIL then
     return {}
   end
@@ -36,6 +40,15 @@ local function normalise(result, client)
       end
       item._client_id, item._encoding = client.id, client.offset_encoding
       item._client_name = client.name
+      if kinds.is_path(item.kind) then
+        item._syntax = false
+      elseif filetype ~= "" then
+        if item.kind == nil or item.kind == CompletionItemKind.Text then
+          item._syntax = { label = false, detail = filetype }
+        else
+          item._syntax = filetype
+        end
+      end
       items[#items + 1] = item
     end
   end
@@ -110,7 +123,7 @@ function M.new()
         end
         pending = pending - 1
         if not err then
-          results[client.id] = normalise(result, client)
+          results[client.id] = normalise(result, client, ctx.filetype)
           incomplete[client.id] = result and result ~= vim.NIL and result.isIncomplete or false
           history[client.id] = { context = ctx, incomplete = incomplete[client.id] }
         end

@@ -32,9 +32,8 @@ local definitions = {
 
 local unknown = { "Unknown", "?", "Special" }
 
-function M.is_path(entry)
-  local kind = entry.item.kind
-  return kind == CompletionItemKind.File or kind == CompletionItemKind.Folder or entry.source_id == "path"
+function M.is_path(kind, source_id)
+  return kind == CompletionItemKind.File or kind == CompletionItemKind.Folder or source_id == "path"
 end
 
 function M.get(kind, icons)

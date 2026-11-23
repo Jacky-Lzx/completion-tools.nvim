@@ -1,4 +1,5 @@
 local M = {}
+local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 local text = require("completion_tools.text")
 local kinds = require("completion_tools.kinds")
 local highlight = require("completion_tools.highlight")
@@ -50,7 +51,7 @@ local function fields(entry, opts)
     detail = ""
   end
   local description = text.clean(details.description, opts.max_label_bytes)
-  local file = kinds.is_path(entry)
+  local file = kinds.is_path(item.kind, entry.source_id)
   if file then
     -- File metadata is a location, not a signature in the buffer's language.
     detail = vim.trim(detail)
@@ -221,11 +222,84 @@ local function priority(value)
   return math.floor(math.max(0, math.min(65535, value)))
 end
 
+local function language(value)
+  return type(value) == "string" and value ~= "" and value or nil
+end
+
+local function syntax_languages(item, ctx, file)
+  local syntax = item._syntax
+  if type(syntax) == "table" then
+    return language(syntax.label), language(syntax.detail)
+  end
+  local explicit = language(syntax)
+  if explicit then
+    return explicit, explicit
+  end
+  if syntax == false or ctx.completion_syntax == false or file then
+    return nil, nil
+  end
+  local filetype = ctx.completion_syntax or ctx.filetype or ""
+  if item.kind == nil or item.kind == CompletionItemKind.Text then
+    return nil, filetype
+  end
+  return filetype, filetype
+end
+
 function M.row(layout, index, entry, ctx, opts)
   local row, line, spans = layout.rows[index], string.rep(" ", layout.padding), {}
   local function add(first, last, group, priority)
     if last > first then
       spans[#spans + 1] = { first, last, group, priority or 110 }
+    end
+  end
+  local function add_spans(marks, code, start, first, last)
+    for _, span in ipairs(marks) do
+      if
+        type(span) == "table"
+        and type(span[1]) == "number"
+        and type(span[2]) == "number"
+        and type(span[3]) == "string"
+        and span[3] ~= ""
+      then
+        local left, right = math.max(first, span[1]), math.min(last, span[2])
+        if left % 1 == 0 and right % 1 == 0 and boundary(code, left) and boundary(code, right) then
+          add(start + left, start + right, span[3], priority(span[4]))
+        end
+      end
+    end
+  end
+  local function add_syntax(code, filetype, start, first, last)
+    if filetype and last > first then
+      add_spans(highlight.get(code, filetype, opts.highlight), code, start, first, last)
+    end
+  end
+
+  local label_language, detail_language = syntax_languages(entry.item, ctx, row.file)
+  local kind_group = row.kind_group
+  if opts.highlight.enabled and opts.kind_icons == false then
+    local _, _, group = kinds.get(entry.item.kind)
+    kind_group = group
+  end
+  local function add_code(code, start, retained, label_bytes, label_ft)
+    local last = math.min(retained, #code)
+    local label_end = math.min(label_bytes, last)
+    add(start, start + (detail_language and label_end or last), kind_group)
+
+    if label_ft == detail_language or last <= label_end then
+      add_syntax(code, label_ft, start, 0, last)
+    elseif label_ft and detail_language then
+      add_syntax(code:sub(1, label_end), label_ft, start, 0, label_end)
+      add_syntax(code:sub(label_end + 1), detail_language, start + label_end, 0, last - label_end)
+    else
+      -- Keep the full signature as parser context and clip colors to the enabled field.
+      add_syntax(code, label_ft, start, 0, label_end)
+      add_syntax(code, detail_language, start, label_end, last)
+    end
+    if opts.highlight.custom then
+      local ok, extra = pcall(opts.highlight.custom, entry, ctx, code)
+      if ok and type(extra) == "table" then
+        add_spans(extra, code, start, 0, retained)
+      end
     end
   end
 
@@ -254,20 +328,11 @@ function M.row(layout, index, entry, ctx, opts)
         code = code:sub(1, row.label_bytes)
       end
 
-      for _, span in
-        ipairs(highlight.get(code, column.name == "label" and row.label_bytes or 0, entry, ctx, opts.highlight))
-      do
-        if
-          type(span) == "table"
-          and type(span[1]) == "number"
-          and type(span[2]) == "number"
-          and type(span[3]) == "string"
-          and span[3] ~= ""
-        then
-          local first, last = math.max(0, span[1]), math.min(retained, span[2])
-          if first % 1 == 0 and last % 1 == 0 and boundary(code, first) and boundary(code, last) then
-            add(start + first, start + last, span[3], priority(span[4]))
-          end
+      if opts.highlight.enabled then
+        if column.name == "label" then
+          add_code(code, start, retained, row.label_bytes, label_language)
+        else
+          add_code(code, start, retained, 0, detail_language)
         end
       end
 

@@ -1,6 +1,4 @@
 local M = {}
-local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
-local kinds = require("completion_tools.kinds")
 local cache, order, next_slot = {}, {}, 1
 local keywords, types = {}, {}
 for word in
@@ -112,36 +110,24 @@ function M.clear()
 end
 
 -- Spans are zero-based, exclusive byte ranges. No trees or parser objects are cached.
-function M.get(text, label_bytes, entry, ctx, opts)
-  if not opts.enabled then
+function M.get(text, filetype, opts)
+  if not opts.enabled or not filetype then
     return {}
   end
-  local kind = entry.item.kind
-  local syntax = entry.item._syntax
-  local has_language = type(syntax) == "string" and syntax ~= ""
-  local plain_text = label_bytes > 0 and (kind == nil or kind == CompletionItemKind.Text)
-  local literal = syntax == false
-    or (not has_language and (ctx.completion_syntax == false or plain_text or kinds.is_path(entry)))
-  local ft = literal and "" or (has_language and syntax or ctx.completion_syntax or ctx.filetype or "")
+
   local key = table.concat({
-    ft,
-    tostring(literal),
-    tostring(kind),
-    tostring(label_bytes),
+    filetype,
     tostring(opts.treesitter),
     tostring(opts.max_bytes),
     text,
   }, "\0")
+
   local spans = cache[key]
   if not spans then
     spans = {}
-    local _, _, group = kinds.get(kind)
-    add(spans, 0, literal and #text or math.min(label_bytes, #text), group, 110)
-    if not literal then
-      lexical(text, spans)
-      if opts.treesitter and #text <= opts.max_bytes then
-        treesitter(text, ft, spans)
-      end
+    lexical(text, spans)
+    if opts.treesitter and #text <= opts.max_bytes then
+      treesitter(text, filetype, spans)
     end
     if opts.cache_size > 0 then
       local old = order[next_slot]
@@ -152,12 +138,7 @@ function M.get(text, label_bytes, entry, ctx, opts)
       next_slot = next_slot % opts.cache_size + 1
     end
   end
-  if opts.custom then
-    local ok, extra = pcall(opts.custom, entry, ctx, text)
-    if ok and type(extra) == "table" then
-      spans = vim.list_extend(vim.deepcopy(spans), extra)
-    end
-  end
+
   return spans
 end
 

@@ -1228,10 +1228,18 @@ in the current line, defaulting to the keyword start. TextEdit ranges take
 precedence. Custom edits default to UTF-8; items may override `_encoding`.
 
 An item can set `_syntax = false` to display its text literally, or set
-`_syntax` to a filetype such as `"lua"` for syntax highlighting. Omitting
-`_syntax` uses the candidate kind and completion context to choose a default.
-This hint affects syntax coloring. The menu still uses its configured kind
-colors, match highlighting and `menu.highlight` settings.
+`_syntax` to a filetype such as `"lua"` for syntax highlighting. To color the
+label and signature independently, use a table such as
+`_syntax = { label = false, detail = "lua" }`. In a table, an omitted field
+or `false` displays that field literally. `detail` applies to code signatures
+whether they appear beside the label or in the `label_detail` column. Prose
+and path metadata keep their usual styling.
+
+Omitting `_syntax` entirely uses the candidate kind and completion context to
+choose a default. The LSP source sets hints using the request filetype and
+candidate kind. `providers.lsp.transform_items` can override those hints.
+The menu still uses its configured kind colors, match highlighting and
+`menu.highlight` settings.
 
 Callbacks may publish incremental results multiple times, including from libuv
 callbacks. Set `pending=true` while more results are expected; omit/clear it

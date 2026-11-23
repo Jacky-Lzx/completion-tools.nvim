@@ -74,6 +74,9 @@ def handle(message):
         labels = ["foobar", "forest", extra_label] if not prefix.startswith("inc") else ["incompleteValue"]
         items = [{"label": label, "kind": 6, "textEditText": label,
                   "data": {"row": row, "uri": params["textDocument"]["uri"]}} for label in labels if label]
+        if "syntaxFile" in labels:
+            items[1].pop("kind")
+            items[2]["kind"] = 17
         trace("completion", prefix=prefix, **params.get("context", {}))
         respond(request_id, {"isIncomplete": prefix.startswith("inc"), "itemDefaults": {
             "editRange": {"insert": {"start": start, "end": end},
