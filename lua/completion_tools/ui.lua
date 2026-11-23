@@ -636,8 +636,8 @@ function M.documentation(item, config, document)
     doc_lines, doc_language = lines, language
   end
   if not media then
-    if doc_border_labels then
-      wc.height = doc:fit_height({ max_height = max_height })
+    if doc.content_height then
+      wc.height = doc:content_height({ max_height = max_height })
     else
       wc.height = math.min(max_height, math.max(1, vim.api.nvim_win_text_height(doc_win, {}).all))
     end
