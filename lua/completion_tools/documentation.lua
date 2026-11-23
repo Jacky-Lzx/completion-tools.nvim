@@ -39,6 +39,38 @@ local function has_function_signature(body, label)
   return member ~= nil and label_name ~= nil and member == label_name:match("[^.:]+$")
 end
 
+local function collect_metadata(item, markdown_body)
+  local signature, description, seen = {}, {}, {}
+
+  local function metadata(target, value)
+    if type(value) == "string" and value ~= "" and not seen[value] then
+      seen[value] = true
+      vim.list_extend(target, vim.split(value, "\n", { plain = true }))
+    end
+  end
+
+  local details = item.labelDetails or {}
+  local redundant_detail = markdown_body
+    and item.kind == CompletionItemKind.Function
+    and item.detail == "function"
+    and type(item.label) == "string"
+    and has_function_signature(markdown_body, item.label)
+  if not redundant_detail then
+    metadata(signature, item.detail)
+  end
+
+  metadata(signature, details.detail)
+  metadata(description, details.description)
+  return signature, description
+end
+
+local function append_section(lines, section)
+  if #lines > 0 then
+    lines[#lines + 1] = ""
+  end
+  vim.list_extend(lines, section)
+end
+
 ---@param item completion_tools.DocumentationItem
 ---@param filetype? string
 ---@return string[] lines
@@ -46,68 +78,56 @@ end
 function M.build(item, filetype)
   local documentation = item.documentation
   local body = type(documentation) == "table" and documentation.value or documentation
-  local has_body = type(body) == "string" and body ~= ""
+  if type(body) ~= "string" or body == "" then
+    body = nil
+  end
+
   local preview = item._path_preview
-  local markdown = has_body
-    and not preview
-    and not item._documentation_filetype
-    and (type(documentation) ~= "table" or documentation.kind ~= "plaintext")
-
-  local lines, description, seen = {}, {}, {}
-  local function metadata(target, value)
-    if type(value) == "string" and value ~= "" and not seen[value] then
-      seen[value] = true
-      vim.list_extend(target, vim.split(value, "\n", { plain = true }))
-    end
+  local text_preview = preview and preview.kind == "text" and preview or nil
+  local plaintext = type(documentation) == "table" and documentation.kind == "plaintext"
+  local markdown_body = body
+  if preview or item._documentation_filetype or plaintext then
+    markdown_body = nil
   end
-  local details = item.labelDetails or {}
-  local redundant_detail = markdown
-    and item.kind == CompletionItemKind.Function
-    and item.detail == "function"
-    and type(item.label) == "string"
-    and has_function_signature(body, item.label)
-  if not redundant_detail then
-    metadata(lines, item.detail)
-  end
-  metadata(lines, details.detail)
-  metadata(description, details.description)
 
-  local signature
+  local lines, description = collect_metadata(item, markdown_body)
+  local signature_language
   if #lines > 0 and not kinds.is_path(item.kind) and filetype ~= "markdown" then
-    signature = filetype
+    signature_language = filetype
   end
+
   local language
-  if markdown then
-    fence(lines, signature)
+  if markdown_body then
+    fence(lines, signature_language)
     fence(description)
     language = "markdown"
-  elseif preview and preview.kind == "text" then
-    language = preview.filetype
-  elseif has_body and not preview then
-    language = item._documentation_filetype
-  elseif not has_body and not preview and #description == 0 then
-    language = signature
+  elseif text_preview then
+    language = text_preview.filetype
+  elseif not preview then
+    if body then
+      language = item._documentation_filetype
+    elseif #description == 0 then
+      language = signature_language
+    end
   end
 
   vim.list_extend(lines, description)
-  if has_body then
-    if #lines > 0 then
-      lines[#lines + 1] = ""
-    end
-    vim.list_extend(lines, vim.split(body, "\n", { plain = true }))
+
+  if body then
+    append_section(lines, vim.split(body, "\n", { plain = true }))
   end
-  if preview and preview.kind == "text" then
-    if #lines > 0 then
-      lines[#lines + 1] = ""
-    end
-    vim.list_extend(lines, preview.lines)
-    if preview.truncated then
+
+  if text_preview then
+    append_section(lines, text_preview.lines)
+    if text_preview.truncated then
       lines[#lines + 1] = "… preview truncated"
     end
   end
+
   while lines[#lines] == "" do
     lines[#lines] = nil
   end
+
   return lines, language and language ~= "" and language or nil
 end
 
