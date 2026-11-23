@@ -25,12 +25,14 @@ local function stop_timer(id)
     id:stop()
   end
 end
+
 local function close_timer(id)
   if id and not id:is_closing() then
     id:stop()
     id:close()
   end
 end
+
 local function cancel_requests(keep)
   for _, cancel in ipairs(state.cancels) do
     pcall(cancel, keep)

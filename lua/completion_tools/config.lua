@@ -1,5 +1,33 @@
 local M = {}
 
+---@class completion_tools.MenuColumn
+---@field [integer] string Component name in display order.
+---@field gap? integer Spacing between components in this column group.
+
+---@class completion_tools.MenuHighlightOptions
+---@field enabled boolean Enable highlighting in the menu.
+---@field treesitter boolean Use Tree-sitter highlight queries when available.
+---@field max_bytes integer Byte limit for Tree-sitter parsing.
+---@field cache_size integer Maximum number of cached highlight results.
+---@field custom? fun(entry: completion_tools.Entry, ctx: table, text: string): table[]|nil Optional extra highlight spans.
+
+--- Completion menu options with defaults applied.
+---@class completion_tools.MenuOptions
+---@field max_height integer Maximum height in rows.
+---@field inverse boolean|"auto" Candidate order when positioning the menu.
+---@field shrink_delay_ms integer Delay before reducing the menu height.
+---@field update_interval_ms integer Minimum interval between menu paints.
+---@field min_width integer Preferred minimum width in display cells.
+---@field max_width integer Maximum width in display cells.
+---@field border string|table Neovim floating-window border style or specification.
+---@field columns completion_tools.MenuColumn[] Ordered groups of menu components.
+---@field column_gap integer Spacing between column groups.
+---@field padding integer Left and right padding in display cells.
+---@field kind_icons boolean|table<string, string> Enable default icons or override icons by kind name.
+---@field label_details boolean Include supplemental label details in the default layout.
+---@field max_label_bytes integer Byte limit applied when preparing display text.
+---@field highlight completion_tools.MenuHighlightOptions Highlight settings.
+
 M.defaults = {
   enabled = true,
   auto_show = true,

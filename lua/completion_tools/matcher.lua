@@ -2,6 +2,19 @@ local M = {}
 local identity = require("completion_tools.identity")
 local byte, find, lower = string.byte, string.find, string.lower
 
+--- A matched candidate together with its source and request metadata.
+---@class completion_tools.Entry
+---@field item lsp.CompletionItem Candidate supplied by the source.
+---@field key string Identity used for deduplication and selection.
+---@field source_id string Registered source ID.
+---@field source_name? string Source name displayed in the menu.
+---@field context table Request context used to apply or resolve the candidate.
+---@field start_col integer Zero-based byte column where the candidate starts.
+---@field priority integer Source order used to break ranking ties.
+---@field score_offset number Score adjustment configured for the source.
+---@field stale? boolean Whether the entry belongs to a retained request.
+---@field resolved? lsp.CompletionItem Candidate returned by the source's resolve callback.
+
 -- One ASCII typo in a prefix (including a transposition). Restrict the work to
 -- short queries and run only after literal subsequence matching has failed.
 local function typo_score(text, query)
@@ -105,6 +118,7 @@ function M.has_match(group, ctx, opts)
 end
 
 -- Keep only the best K in a min-heap, instead of sorting every match.
+---@return completion_tools.Entry[]
 function M.filter(groups, ctx, limit, opts)
   local heap, keys, index = {}, {}, 0
   local function swap(a, b)

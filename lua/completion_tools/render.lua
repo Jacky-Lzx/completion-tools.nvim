@@ -15,9 +15,12 @@ M.components = {
   label_description = true,
 }
 
+--- Prepare the fields displayed in a completion menu row.
+---@param entry completion_tools.Entry Candidate and its source metadata.
+---@param opts completion_tools.MenuOptions Menu options after defaults are applied.
 local function fields(entry, opts)
   local item = entry.item
-  local name, icon, group = kinds.get(item.kind, opts.kind_icons)
+  local name, icon, kind_group = kinds.get(item.kind, opts.kind_icons)
   local label = text.clean(item.label, opts.max_label_bytes)
   local details = item.labelDetails or {}
   local detail = details.detail
@@ -25,8 +28,9 @@ local function fields(entry, opts)
 
   -- Keep display text separate from the CompletionItem used for acceptance.
   -- Older servers put a one-line signature in detail instead of labelDetails.
-  if not detail and type(item.detail) == "string" and not item.detail:find("[\r\n]") then
-    detail = item.detail
+  local item_detail = item.detail
+  if not detail and type(item_detail) == "string" and not item_detail:find("[\r\n]") then
+    detail = item_detail
     -- Kind describes the candidate, not its detail: even functions can carry
     -- prose here. Require signature syntax rather than a callable kind.
     detail_code = detail:find("^%s*[%(:<{%[]") ~= nil
@@ -50,6 +54,7 @@ local function fields(entry, opts)
   if file then
     -- File metadata is a location, not a signature in the buffer's language.
     detail = vim.trim(detail)
+
     local function path(value)
       if value:sub(1, 1) == "/" or value:match("^~[/\\]") then
         return vim.fn.fnamemodify(value, ":~:.")
@@ -85,12 +90,23 @@ local function fields(entry, opts)
     file = file,
     code = code,
     label_bytes = #label,
-    kind_group = group,
+    kind_group = kind_group,
   }
 end
 
--- Measure all retained candidates once so columns stay aligned while scrolling.
--- Highlighting/parsing is deferred until a row actually becomes visible.
+---@class completion_tools.MenuLayout
+---@field rows table[] Prepared display fields in candidate order.
+---@field columns { name: string, width: integer, gap: integer }[] Ordered columns with widths and preceding gaps in display cells.
+---@field width integer Total menu width in display cells, including padding.
+---@field padding integer Padding on each side in display cells.
+
+--- Measure all retained candidates once so columns stay aligned while scrolling.
+--- Highlighting is deferred until a row becomes visible.
+---@param items completion_tools.Entry[] Candidates in menu order.
+---@param opts completion_tools.MenuOptions Menu options after defaults are applied.
+---@param available integer Available width in display cells.
+---@param previous? completion_tools.MenuLayout Previous layout used to keep column widths stable during the same menu session.
+---@return completion_tools.MenuLayout layout The prepared rows, column widths and total menu width.
 function M.prepare(items, opts, available, previous)
   local rows, columns, seen = {}, {}, {}
   local retained = {}
@@ -130,6 +146,7 @@ function M.prepare(items, opts, available, previous)
         for _, row in ipairs(rows) do
           width = math.max(width, vim.fn.strdisplaywidth(row[name]))
         end
+
         if width > 0 or not group.automatic or retained[name] then
           columns[#columns + 1] = {
             name = name,
@@ -145,9 +162,8 @@ function M.prepare(items, opts, available, previous)
   local limit = math.min(available, opts.max_width)
   local padding = math.min(opts.padding, math.floor(limit / 2))
   if previous then
-    -- Existing columns own their space for the lifetime of the menu. Grow into
-    -- spare cells instead of moving every following column when results change.
-    -- A smaller editor is allowed to reclaim space using the clipping below.
+    -- Existing columns own their space for the lifetime of the menu. Grow into spare cells instead of moving every
+    -- following column when results change. A smaller editor is allowed to reclaim space using the clipping below.
     local reserved = padding * 2
     for _, column in ipairs(columns) do
       local old = retained[column.name]
@@ -211,7 +227,8 @@ local function boundary(value, at)
   local byte = value:byte(at + 1)
   return not byte or byte < 128 or byte >= 192
 end
-local function priority(value)
+
+local function normalize_priority(value)
   value = tonumber(value)
   if not value or value ~= value then
     return 190
@@ -228,27 +245,33 @@ local function syntax_languages(item, ctx, file)
   if type(syntax) == "table" then
     return language(syntax.label), language(syntax.detail)
   end
+
   local explicit = language(syntax)
   if explicit then
     return explicit, explicit
   end
+
   if syntax == false or ctx.completion_syntax == false or file then
     return nil, nil
   end
+
   local filetype = ctx.completion_syntax or ctx.filetype or ""
   if item.kind == nil or item.kind == CompletionItemKind.Text then
     return nil, filetype
   end
+
   return filetype, filetype
 end
 
 function M.row(layout, index, entry, ctx, opts)
   local row, line, spans = layout.rows[index], string.rep(" ", layout.padding), {}
+
   local function add(first, last, group, priority)
     if last > first then
       spans[#spans + 1] = { first, last, group, priority or 110 }
     end
   end
+
   local function add_spans(marks, code, start, first, last)
     for _, span in ipairs(marks) do
       if
@@ -260,11 +283,12 @@ function M.row(layout, index, entry, ctx, opts)
       then
         local left, right = math.max(first, span[1]), math.min(last, span[2])
         if left % 1 == 0 and right % 1 == 0 and boundary(code, left) and boundary(code, right) then
-          add(start + left, start + right, span[3], priority(span[4]))
+          add(start + left, start + right, span[3], normalize_priority(span[4]))
         end
       end
     end
   end
+
   local function add_syntax(code, filetype, start, first, last)
     if filetype and last > first then
       add_spans(highlight.get(code, filetype, opts.highlight), code, start, first, last)
@@ -277,6 +301,7 @@ function M.row(layout, index, entry, ctx, opts)
     local _, _, group = kinds.get(entry.item.kind)
     kind_group = group
   end
+
   local function add_code(code, start, retained, label_bytes, label_ft)
     local last = math.min(retained, #code)
     local label_end = math.min(label_bytes, last)
@@ -292,6 +317,7 @@ function M.row(layout, index, entry, ctx, opts)
       add_syntax(code, label_ft, start, 0, label_end)
       add_syntax(code, detail_language, start, label_end, last)
     end
+
     if opts.highlight.custom then
       local ok, extra = pcall(opts.highlight.custom, entry, ctx, code)
       if ok and type(extra) == "table" then
