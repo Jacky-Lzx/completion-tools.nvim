@@ -152,7 +152,7 @@ local start = vim.treesitter.start
 vim.treesitter.start = function()
   error("Parser unavailable")
 end
-assert(ui.documentation({ documentation = "**raw**" }, cfg))
+assert(ui.documentation({}, cfg, doc.code("**raw**", "lua")))
 vim.treesitter.start = start
 eq({ "**raw**" }, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
 assert(not vim.treesitter.highlighter.active[current.buf])
@@ -168,7 +168,14 @@ local function anchors(win)
 end
 local function scroll_percentage(win)
   local footer = vim.api.nvim_win_get_config(win).footer
-  return type(footer) == "table" and footer[1] and tonumber(footer[1][1]:match("(%d+)%%")) or nil
+  if type(footer) == "table" then
+    for _, part in ipairs(footer) do
+      local percentage = tonumber(part[1]:match("(%d+)%%"))
+      if percentage then
+        return percentage
+      end
+    end
+  end
 end
 assert(ui.documentation(long, cfg))
 if has_scrollbar then
@@ -195,9 +202,17 @@ assert(vim.api.nvim_win_get_width(win) < old_width)
 eq(old_tick, vim.api.nvim_buf_get_changedtick(current.buf))
 eq(old_view.topline, vim.api.nvim_win_call(win, vim.fn.winsaveview).topline)
 
-assert(ui.documentation(vim.deepcopy(long), cfg))
+local refreshed = vim.deepcopy(long)
+assert(ui.documentation(refreshed, cfg))
 eq(old_tick, vim.api.nvim_buf_get_changedtick(current.buf))
 eq(old_view.topline, vim.api.nvim_win_call(win, vim.fn.winsaveview).topline)
+
+local has_label, label = pcall(require, "base_tools.label")
+if has_scrollbar and has_label and label.scroll_percent({ fallback = "below" }).fallback == "below" then
+  refreshed.documentation.value = refreshed.documentation.value .. "More documentation"
+  assert(ui.documentation(refreshed, cfg))
+  eq(old_view.topline, vim.api.nvim_win_call(win, vim.fn.winsaveview).topline)
+end
 
 long.documentation.value = "Updated description"
 assert(ui.documentation(long, cfg))

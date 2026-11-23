@@ -8,6 +8,16 @@ local document_scrollbar = {
   thumb_highlight = "CompletionToolsDocScrollThumb",
 }
 
+-- Older base-tools checkouts have the preview and scrollbar without the shared footer indicator.
+local doc_border_labels
+if has_preview then
+  local ok, label = pcall(require, "base_tools.label")
+  local percent = ok and label.scroll_percent({ fallback = "below", highlight = "CompletionToolsDocBorder" })
+  if percent and percent.fallback == "below" then
+    doc_border_labels = { bottom = { right = percent } }
+  end
+end
+
 --- Status displayed in the completion menu footer.
 ---@class completion_tools.MenuStatus
 ---@field text string Text or icon displayed in the footer.
@@ -553,7 +563,9 @@ function M.documentation(item, config, document)
   doc_buf = scratch(doc_buf, "completion-tools-documentation")
   if replace then
     close_doc_view()
-    vim.treesitter.stop(doc_buf)
+    if not doc_border_labels then
+      vim.treesitter.stop(doc_buf)
+    end
     vim.api.nvim_buf_clear_namespace(doc_buf, doc_ns, 0, -1)
     vim.bo[doc_buf].syntax = ""
   end
@@ -570,6 +582,7 @@ function M.documentation(item, config, document)
     focusable = false,
     zindex = 101,
   }
+  local keep_scroll = not media and not doc_media and item == doc_item and valid(doc)
   if valid(doc) then
     if vim.api.nvim_win_get_width(doc.win) ~= width then
       vim.api.nvim_win_set_width(doc.win, width)
@@ -579,13 +592,14 @@ function M.documentation(item, config, document)
       buf = doc_buf,
       config = wc,
       scrollbar = not media and document_scrollbar or nil,
+      border_labels = not media and doc_border_labels or nil,
       win_options = {
         winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsDocBorder"
           .. ",Search:None,IncSearch:None,CurSearch:None",
       },
     })
     doc_media = media
-    if has_preview then
+    if has_preview and not doc_border_labels then
       local owner = doc
       vim.api.nvim_create_autocmd("WinClosed", {
         pattern = tostring(owner.win),
@@ -604,13 +618,17 @@ function M.documentation(item, config, document)
   vim.wo[doc_win].conceallevel = markdown and 2 or 0
   vim.wo[doc_win].concealcursor = "nvic"
   if replace then
-    if has_preview then
-      doc:set_lines(lines)
+    if doc_border_labels then
+      doc:set_content({ lines = lines, language = language or false, scroll = keep_scroll and "keep" or "top" })
     else
-      vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
-    end
-    if language then
-      pcall(vim.treesitter.start, doc_buf, vim.treesitter.language.get_lang(language) or language)
+      if has_preview then
+        doc:set_lines(lines)
+      else
+        vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
+      end
+      if language then
+        pcall(vim.treesitter.start, doc_buf, vim.treesitter.language.get_lang(language) or language)
+      end
     end
     if language == "markdown" then
       conceal_markdown_fences(doc_buf)
@@ -618,15 +636,22 @@ function M.documentation(item, config, document)
     doc_lines, doc_language = lines, language
   end
   if not media then
-    wc.height = math.min(max_height, math.max(1, vim.api.nvim_win_text_height(doc_win, {}).all))
+    if doc_border_labels then
+      wc.height = doc:fit_height({ max_height = max_height })
+    else
+      wc.height = math.min(max_height, math.max(1, vim.api.nvim_win_text_height(doc_win, {}).all))
+    end
     wc.row = math.max(top, math.min(geometry.row, bottom - wc.height - 1))
   end
   doc:update(wc)
-  if replace then
+  if replace and not doc_border_labels then
     vim.api.nvim_win_set_cursor(doc_win, { 1, 0 })
   end
   if has_preview and doc_media ~= media then
     doc:set_scrollbar(not media and document_scrollbar or false)
+    if doc_border_labels then
+      doc:set_border_labels(media and { bottom = false } or doc_border_labels)
+    end
     doc_media = media
   end
   if opts.on_render then
@@ -637,7 +662,9 @@ function M.documentation(item, config, document)
   end
   doc_item, doc_content = item, document
   if media then
-    update_doc_position(nil)
+    if not doc_border_labels then
+      update_doc_position(nil)
+    end
     if reuse_media then
       if doc_view then
         doc_view:resize()
@@ -652,7 +679,10 @@ function M.documentation(item, config, document)
       end)
     end
   elseif has_preview then
-    update_doc_position(doc:refresh())
+    local position = doc:refresh()
+    if not doc_border_labels then
+      update_doc_position(position)
+    end
   end
   return true
 end
@@ -663,7 +693,7 @@ function M.scroll_documentation(delta)
   end
   if has_preview then
     local scrolled, position = doc:scroll(delta)
-    if not doc_media then
+    if not doc_border_labels and not doc_media then
       update_doc_position(position)
     end
     return scrolled
