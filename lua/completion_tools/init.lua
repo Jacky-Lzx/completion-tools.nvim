@@ -156,12 +156,22 @@ local function documentation(force)
   end
   local generation = state.generation
   local may_draw = force
+  local provider = state.providers[entry.source_id]
   local function draw()
     if generation == state.generation and selected_entry() == entry and M.is_menu_visible() then
-      state.doc_entry = ui.documentation(entry.resolved or entry.item, state.config) and entry or nil
+      local item = entry.resolved or entry.item
+      local document
+      if provider and type(provider.documentation) == "function" then
+        local ok, result = pcall(provider.documentation, item, entry.context)
+        if ok then
+          document = type(result) == "table" and result or nil
+        else
+          report(result)
+        end
+      end
+      state.doc_entry = ui.documentation(item, state.config, document) and entry or nil
     end
   end
-  local provider = state.providers[entry.source_id]
   if provider and provider.resolve and not entry.resolved then
     local ok, cancel = pcall(provider.resolve, entry, function(item)
       vim.schedule(function()

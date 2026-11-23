@@ -1,10 +1,35 @@
 local M = {}
-local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 local kinds = require("completion_tools.kinds")
+
+---@class completion_tools.Documentation
+---@field kind "text"|"markdown"|"code"
+---@field value string
+---@field filetype? string
+---@field detail? string
+---@field labelDetails? lsp.CompletionItemLabelDetails
 
 ---@class completion_tools.DocumentationItem: lsp.CompletionItem
 ---@field _path_preview? {kind: "text", lines: string[], filetype: string, truncated: boolean}|{kind: "media", path: string}
 ---@field _documentation_filetype? string Filetype for highlighting literal documentation text.
+
+---@param value string
+---@return completion_tools.Documentation
+function M.text(value)
+  return { kind = "text", value = value }
+end
+
+---@param value string
+---@return completion_tools.Documentation
+function M.markdown(value)
+  return { kind = "markdown", value = value }
+end
+
+---@param value string
+---@param filetype? string
+---@return completion_tools.Documentation
+function M.code(value, filetype)
+  return { kind = "code", value = value, filetype = filetype }
+end
 
 -- Keep literal metadata inside code blocks when it shares a Markdown buffer.
 ---@param lines string[]
@@ -27,19 +52,7 @@ local function fence(lines, filetype)
   lines[#lines + 1] = marker
 end
 
-local function has_function_signature(body, label)
-  local marker, name = body:match("^%s*([`~]+)[^\n]*\n%s*function%s+([%a_][%w_.:]*)%s*%b()")
-  if not marker or #marker < 3 or not (marker:match("^`+$") or marker:match("^~+$")) then
-    return false
-  end
-
-  local label_name = label:match("^%s*([%a_][%w_.:]*)")
-  local member = name:match("[^.:]+$")
-
-  return member ~= nil and label_name ~= nil and member == label_name:match("[^.:]+$")
-end
-
-local function collect_metadata(item, markdown_body)
+local function collect_metadata(item)
   local signature, description, seen = {}, {}, {}
 
   local function metadata(target, value)
@@ -50,15 +63,7 @@ local function collect_metadata(item, markdown_body)
   end
 
   local details = item.labelDetails or {}
-  local redundant_detail = markdown_body
-    and item.kind == CompletionItemKind.Function
-    and item.detail == "function"
-    and type(item.label) == "string"
-    and has_function_signature(markdown_body, item.label)
-  if not redundant_detail then
-    metadata(signature, item.detail)
-  end
-
+  metadata(signature, item.detail)
   metadata(signature, details.detail)
   metadata(description, details.description)
   return signature, description
@@ -73,42 +78,46 @@ end
 
 ---@param item completion_tools.DocumentationItem
 ---@param filetype? string
+---@param document? completion_tools.Documentation
 ---@return string[] lines
 ---@return string? language
-function M.build(item, filetype)
-  local documentation = item.documentation
-  local body = type(documentation) == "table" and documentation.value or documentation
+---@return boolean markdown Whether to conceal Markdown markup in the float.
+function M.build(item, filetype, document)
+  local preview = not document and item._path_preview or nil
+  local body, markdown, language
+
+  if document then
+    body = document.value
+    markdown = document.kind == "markdown"
+    language = document.kind == "code" and document.filetype or nil
+  else
+    local documentation = item.documentation
+    body = type(documentation) == "table" and documentation.value or documentation
+    local plaintext = type(documentation) == "table" and documentation.kind == "plaintext"
+    markdown = not (preview or item._documentation_filetype or plaintext)
+    language = not preview and type(body) == "string" and body ~= "" and item._documentation_filetype or nil
+  end
+
   if type(body) ~= "string" or body == "" then
     body = nil
+    markdown = false
   end
 
-  local preview = item._path_preview
   local text_preview = preview and preview.kind == "text" and preview or nil
-  local plaintext = type(documentation) == "table" and documentation.kind == "plaintext"
-  local markdown_body = body
-  if preview or item._documentation_filetype or plaintext then
-    markdown_body = nil
-  end
-
-  local lines, description = collect_metadata(item, markdown_body)
+  local lines, description = collect_metadata(document or item)
   local signature_language
   if #lines > 0 and not kinds.is_path(item.kind) and filetype ~= "markdown" then
     signature_language = filetype
   end
 
-  local language
-  if markdown_body then
+  if markdown then
     fence(lines, signature_language)
     fence(description)
     language = "markdown"
   elseif text_preview then
     language = text_preview.filetype
-  elseif not preview then
-    if body then
-      language = item._documentation_filetype
-    elseif #description == 0 then
-      language = signature_language
-    end
+  elseif not document and not preview and not body and #description == 0 then
+    language = signature_language
   end
 
   vim.list_extend(lines, description)
@@ -128,7 +137,7 @@ function M.build(item, filetype)
     lines[#lines] = nil
   end
 
-  return lines, language and language ~= "" and language or nil
+  return lines, language and language ~= "" and language or nil, markdown
 end
 
 return M

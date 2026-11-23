@@ -33,18 +33,23 @@ local signature = {
   label = "build(item, filetype)",
   kind = CompletionItemKind.Function,
   detail = "function",
+  _client_name = "lua_ls",
   documentation = {
     kind = "markdown",
     value = "```lua\nfunction M.build(item, filetype)\n  -> string[]\n  2. string?\n```",
   },
 }
 local signature_lines = vim.split(signature.documentation.value, "\n", { plain = true })
-eq(signature_lines, doc.build(signature, "lua"))
+local lsp = require("completion_tools.sources.lsp").new()
+local signature_document = assert(lsp.documentation(signature))
+eq(signature_lines, doc.build(signature, "lua", signature_document))
+eq("function", doc.build(signature, "lua")[2])
+eq("function", signature.detail)
 eq({ "function" }, doc.build({ kind = signature.kind, detail = signature.detail, label = signature.label }, "lua"))
 local other_label = vim.tbl_extend("force", signature, { label = "other()" })
-eq("function", doc.build(other_label, "lua")[2])
+eq(nil, lsp.documentation(other_label))
 local other_detail = vim.tbl_extend("force", signature, { detail = "completion_tools.documentation" })
-eq("completion_tools.documentation", doc.build(other_detail, "lua")[2])
+eq(nil, lsp.documentation(other_detail))
 
 local markdown = 'Use `name` and **bold**.\n\n```lua\nlocal value = map["key"]\n```'
 local item = {
@@ -125,7 +130,7 @@ eq({ 0, 2, 3, 7, 11, 13 }, concealed_rows())
 
 -- Older highlight queries can highlight the block without hiding its fences.
 vim.treesitter.query.set("markdown", "highlights", "(fenced_code_block) @markup.raw.block")
-assert(ui.documentation(signature, cfg))
+assert(ui.documentation(signature, cfg, signature_document))
 eq(signature_lines, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
 eq({ 0, 4 }, concealed_rows())
 eq(3, vim.api.nvim_win_get_height(current.win))
@@ -137,10 +142,7 @@ eq({}, concealed_rows())
 assert(not vim.treesitter.highlighter.active[current.buf], "Plain text should clear the Markdown highlighter")
 
 local markdown_code = { "```lua", "return true", "```" }
-assert(ui.documentation({
-  documentation = { kind = "plaintext", value = table.concat(markdown_code, "\n") },
-  _documentation_filetype = "markdown",
-}, cfg))
+assert(ui.documentation({}, cfg, doc.code(table.concat(markdown_code, "\n"), "markdown")))
 eq(markdown_code, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
 assert(vim.treesitter.highlighter.active[current.buf], "Literal Markdown can still use a Markdown parser")
 eq(0, vim.wo[current.win].conceallevel)

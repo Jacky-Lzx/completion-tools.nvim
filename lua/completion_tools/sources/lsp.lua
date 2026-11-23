@@ -6,6 +6,18 @@ local function last_character(text)
   return text:match("[%z\1-\127\194-\244][\128-\191]*$") or ""
 end
 
+local function has_function_signature(body, label)
+  local marker, name = body:match("^%s*([`~]+)[^\n]*\n%s*function%s+([%a_][%w_.:]*)%s*%b()")
+  if not marker or #marker < 3 or not (marker:match("^`+$") or marker:match("^~+$")) then
+    return false
+  end
+
+  local label_name = label:match("^%s*([%a_][%w_.:]*)")
+  local member = name:match("[^.:]+$")
+
+  return member ~= nil and label_name ~= nil and member == label_name:match("[^.:]+$")
+end
+
 ---@class completion_tools.LspCompletionItem: lsp.CompletionItem
 ---@field _client_id integer ID of the client that returned the item.
 ---@field _client_name string Name of the client that returned the item.
@@ -170,6 +182,23 @@ function M.new()
       end
     end
     return false
+  end
+
+  function source.documentation(item)
+    if item.detail ~= "function" or item.kind ~= CompletionItemKind.Function or type(item.label) ~= "string" then
+      return
+    end
+    local documentation = item.documentation
+    local plaintext = type(documentation) == "table" and documentation.kind == "plaintext"
+    if plaintext or item._path_preview or item._documentation_filetype then
+      return
+    end
+    local body = type(documentation) == "table" and documentation.value or documentation
+    if type(body) == "string" and has_function_signature(body, item.label) then
+      local document = require("completion_tools.documentation").markdown(body)
+      document.labelDetails = item.labelDetails
+      return document
+    end
   end
 
   function source.resolve(entry, callback)

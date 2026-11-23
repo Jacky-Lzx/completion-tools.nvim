@@ -1714,6 +1714,42 @@ local ok, err = xpcall(function()
     )
     assert(lua("return calls") > calls)
   end)
+  test("a source controls the documentation float before and after resolve", function()
+    lua([[
+      local docs = require('completion_tools.documentation')
+      local cmp = require('completion_tools')
+      cmp.setup({sources={'test'}, documentation={auto_show=false}, providers={test={
+        complete = function(_, cb)
+          cb({items={{label='alpha', detail='menu detail', documentation='**initial**'}}})
+        end,
+        resolve = function(entry, cb)
+          resolve_documentation_fixture = function()
+            cb(vim.tbl_extend('force', {}, entry.item, {documentation='**resolved**'}))
+          end
+        end,
+        documentation = function(item, ctx)
+          assert(ctx.filetype == 'lua')
+          return docs.text(item.documentation)
+        end,
+      }}})
+      function documentation_fixture_text()
+        for _, win in ipairs(vim.api.nvim_list_wins()) do
+          local buf = vim.api.nvim_win_get_buf(win)
+          if vim.bo[buf].filetype == 'completion-tools-documentation' then
+            assert(vim.wo[win].conceallevel == 0)
+            return table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), '\n')
+          end
+        end
+      end
+    ]])
+    input("ial")
+    wait("return require('completion_tools')._can('accept')")
+    lua("assert(require('completion_tools').show_documentation())")
+    eq("**initial**", lua("return documentation_fixture_text()"))
+    lua("resolve_documentation_fixture()")
+    wait("return documentation_fixture_text() == '**resolved**'")
+    eq("menu detail", lua("return require('completion_tools').get_selected_item().detail"))
+  end)
   test("documentation rendering, navigation and close", function()
     lua(
       [[require('completion_tools').setup({ sources={'test'}, documentation={delay_ms=10}, providers={test={complete=function(ctx,cb) cb({items={{label='alpha',detail='function alpha()\n  return 1\nend',documentation={kind='markdown',value='Some **documentation**'}},{label='alpine'}}}) end}}})]]

@@ -13,7 +13,7 @@ local ns = vim.api.nvim_create_namespace("completion-tools-menu")
 local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local menu, doc, buf, doc_buf
 local viewport = 1
-local geometry, doc_item
+local geometry, doc_item, doc_content
 ---@type completion_tools.MenuStatus|nil
 local menu_status
 local doc_view, doc_token
@@ -129,7 +129,7 @@ function M.hide_documentation()
   if doc then
     doc:close()
   end
-  doc, doc_item = nil, nil
+  doc, doc_item, doc_content = nil, nil, nil
   doc_lines, doc_language = nil, nil
 end
 
@@ -336,7 +336,7 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
   frame_layout, frame_lines, frame_spans, frame_config = layout, lines, spans, window_config
   sync_status_animation()
   if moved and valid(doc) and doc_item then
-    M.documentation(doc_item, config)
+    M.documentation(doc_item, config, doc_content)
   end
   if ctx.mode == "cmdline" then
     -- Native command-line input can defer float painting until another key.
@@ -419,7 +419,7 @@ function M.reposition(ctx, config)
     frame_config = wc
     geometry = next_geometry
     if valid(doc) and doc_item then
-      M.documentation(doc_item, config)
+      M.documentation(doc_item, config, doc_content)
     end
   end
   return true
@@ -440,7 +440,7 @@ local function conceal_markdown_fences(bufnr)
   end
 end
 
-function M.documentation(item, config)
+function M.documentation(item, config, document)
   if not M.visible() or not geometry then
     return false
   end
@@ -460,12 +460,12 @@ function M.documentation(item, config)
     return false
   end
 
-  local lines, language = require("completion_tools.documentation").build(item, geometry.filetype)
+  local lines, language, markdown = require("completion_tools.documentation").build(item, geometry.filetype, document)
   if #lines == 0 then
     M.hide_documentation()
     return false
   end
-  local preview = item._path_preview
+  local preview = not document and item._path_preview or nil
   local media = preview and preview.kind == "media"
   local width = opts.max_width
   if not media then
@@ -523,7 +523,6 @@ function M.documentation(item, config)
   end
   local doc_win = doc.win
   vim.wo[doc_win].wrap = not media
-  local markdown = language == "markdown" and not preview and not item._documentation_filetype
   vim.wo[doc_win].conceallevel = markdown and 2 or 0
   vim.wo[doc_win].concealcursor = "nvic"
   if not media then
@@ -540,7 +539,7 @@ function M.documentation(item, config)
       vim.notify("completion-tools documentation.on_render: " .. tostring(err), vim.log.levels.ERROR)
     end
   end
-  doc_item = item
+  doc_item, doc_content = item, document
   if media then
     if reuse_media then
       if doc_view then

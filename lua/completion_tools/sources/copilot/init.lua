@@ -61,7 +61,6 @@ local function normalise(raw, ctx, client)
     filterText = ctx.before:sub(start_col + 1) .. label,
     textEdit = { range = range, newText = text },
     documentation = { kind = "plaintext", value = text },
-    _documentation_filetype = ctx.filetype,
     _encoding = "utf-16",
     _copilot_client = client,
     _copilot_uuid = raw.uuid,
@@ -77,6 +76,13 @@ function M.new(opts)
     return copilot.params and copilot.params(ctx) or native.params(ctx)
   end
   local source, active = { display_name = "Copilot", score_offset = 50 }, nil
+  function source.documentation(item, ctx)
+    local documentation = item.documentation
+    if type(documentation) == "table" and documentation.kind == "plaintext" then
+      return require("completion_tools.documentation").code(documentation.value, ctx.filetype)
+    end
+  end
+
   local function cancel_active()
     if active then
       active.cancel()

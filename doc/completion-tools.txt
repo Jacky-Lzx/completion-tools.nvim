@@ -1217,6 +1217,7 @@ Source functions use dot calls, without an implicit `self`:
 >lua
     source.complete(ctx, callback) -> cancel_function?
     source.resolve(entry, callback) -> cancel_function? -- Optional
+    source.documentation(item, ctx) -> document?        -- Optional; synchronous
     source.execute(entry, ctx)                         -- Optional; after the primary edit
     source.retrigger_on_accept(entry, ctx) -> boolean   -- Optional; request this source after acceptance
     source.trigger(ctx) -> boolean                    -- Optional
@@ -1248,6 +1249,28 @@ choose a default. The LSP source sets hints using the request filetype and
 candidate kind. `providers.lsp.transform_items` can override those hints.
 The menu still uses its configured kind colors, match highlighting and
 `menu.highlight` settings.
+
+`source.documentation(item, ctx)` can supply the selected candidate's document.
+It receives the resolved item when available and can run again after `resolve`
+publishes more details. Use `resolve` for asynchronous work. Return `nil` to
+use the standard `CompletionItem.documentation`, `detail`, and `labelDetails`.
+
+>lua
+    local docs = require("completion_tools.documentation")
+
+    function source.documentation(item, ctx)
+      local edit = item.textEdit
+      if edit then
+        return docs.code(edit.newText, ctx.filetype)
+      end
+    end
+<
+
+Use `docs.text(value)` for literal text, `docs.markdown(value)` for rendered
+Markdown, or `docs.code(value, filetype)` for literal code highlighted by
+Tree-sitter. The returned document supplies the float's content. Set optional
+`detail` or `labelDetails` fields on it to include metadata above the body.
+The engine manages positioning, highlighting, scrolling and stale results.
 
 Callbacks may publish incremental results multiple times, including from libuv
 callbacks. Set `pending=true` while more results are expected; omit/clear it
