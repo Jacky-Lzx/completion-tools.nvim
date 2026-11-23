@@ -18,7 +18,8 @@ M.components = {
 --- Prepare the fields displayed in a completion menu row.
 ---@param entry completion_tools.Entry Candidate and its source metadata.
 ---@param opts completion_tools.MenuOptions Menu options after defaults are applied.
-local function fields(entry, opts)
+---@param separate_detail boolean Whether the layout has an explicit detail column.
+local function fields(entry, opts, separate_detail)
   local item = entry.item
   local name, icon, kind_group = kinds.get(item.kind, opts.kind_icons)
   local label = text.clean(item.label, opts.max_label_bytes)
@@ -67,31 +68,71 @@ local function fields(entry, opts)
   end
 
   local metadata = description
-  local separate_detail = false
-  for _, group in ipairs(opts.columns) do
-    separate_detail = separate_detail or vim.tbl_contains(group, "label_detail")
-  end
-
   if file and opts.label_details and not separate_detail and detail ~= "" and detail ~= description then
     metadata = detail .. (description ~= "" and "  " .. description or "")
   end
 
-  local code = label .. (opts.label_details and not file and detail or "")
-  code = text.clean(code, opts.max_label_bytes)
-
   return {
     kind_icon = text.clean(icon, 32),
-    label = code,
+    label = text.clean(label .. (opts.label_details and not file and detail or ""), opts.max_label_bytes),
     kind = name,
     source = text.clean(entry.source_name or entry.source_id, opts.max_label_bytes),
     label_detail = detail,
     detail_code = detail_code,
     label_description = metadata,
     file = file,
-    code = code,
     label_bytes = #label,
     kind_group = kind_group,
   }
+end
+
+-- Reserve the existing widths and gaps before allocating extra space.
+local function retain_column_widths(columns, retained, available)
+  local reserved = 0
+  for _, column in ipairs(columns) do
+    local old = retained[column.name]
+    reserved = reserved + (old and old.width + old.gap or 0)
+  end
+
+  local spare = math.max(0, available - reserved)
+  for _, column in ipairs(columns) do
+    local old = retained[column.name]
+    local width, gap = old and old.width or 0, old and old.gap or 0
+    local grow_gap = math.min(spare, math.max(0, column.gap - gap))
+    spare, column.gap = spare - grow_gap, gap + grow_gap
+    local grow_width = math.min(spare, math.max(0, column.width - width))
+    spare, column.width = spare - grow_width, width + grow_width
+  end
+end
+
+local function shrink_columns(columns, columns_by_name, excess)
+  -- Reclaim space from metadata first, keeping a location hint when possible.
+  local description = columns_by_name.label_description
+  if description then
+    local take = math.min(excess, math.max(0, description.width - 12))
+    description.width, excess = description.width - take, excess - take
+  end
+
+  local label = columns_by_name.label
+  if label and excess > 0 then
+    local take = math.min(excess, math.max(0, label.width - 8))
+    label.width, excess = label.width - take, excess - take
+  end
+
+  for _, name in ipairs({ "label_description", "label_detail", "source", "kind", "kind_icon", "label" }) do
+    local column = columns_by_name[name]
+    if column and excess > 0 then
+      local take = math.min(excess, column.width)
+      column.width, excess = column.width - take, excess - take
+    end
+  end
+
+  for i = #columns, 1, -1 do
+    if excess > 0 then
+      local take = math.min(excess, columns[i].gap)
+      columns[i].gap, excess = columns[i].gap - take, excess - take
+    end
+  end
 end
 
 ---@class completion_tools.MenuLayout
@@ -108,19 +149,20 @@ end
 ---@param previous? completion_tools.MenuLayout Previous layout used to keep column widths stable during the same menu session.
 ---@return completion_tools.MenuLayout layout The prepared rows, column widths and total menu width.
 function M.prepare(items, opts, available, previous)
-  local rows, columns, seen = {}, {}, {}
+  local rows, columns, columns_by_name = {}, {}, {}
   local retained = {}
   for _, column in ipairs(previous and previous.columns or {}) do
     retained[column.name] = column
   end
 
-  for i, entry in ipairs(items) do
-    rows[i] = fields(entry, opts)
-  end
-
-  local groups, explicit_description = {}, false
+  local groups, explicit_description, separate_detail = {}, false, false
   for _, group in ipairs(opts.columns) do
     explicit_description = explicit_description or vim.tbl_contains(group, "label_description")
+    separate_detail = separate_detail or vim.tbl_contains(group, "label_detail")
+  end
+
+  for i, entry in ipairs(items) do
+    rows[i] = fields(entry, opts, separate_detail)
   end
 
   for _, group in ipairs(opts.columns) do
@@ -153,7 +195,7 @@ function M.prepare(items, opts, available, previous)
             width = width,
             gap = #columns == 0 and 0 or (group.automatic and 2 or j == 1 and opts.column_gap or group.gap or 1),
           }
-          seen[name] = columns[#columns]
+          columns_by_name[name] = columns[#columns]
         end
       end
     end
@@ -162,23 +204,7 @@ function M.prepare(items, opts, available, previous)
   local limit = math.min(available, opts.max_width)
   local padding = math.min(opts.padding, math.floor(limit / 2))
   if previous then
-    -- Existing columns own their space for the lifetime of the menu. Grow into spare cells instead of moving every
-    -- following column when results change. A smaller editor is allowed to reclaim space using the clipping below.
-    local reserved = padding * 2
-    for _, column in ipairs(columns) do
-      local old = retained[column.name]
-      reserved = reserved + (old and old.width + old.gap or 0)
-    end
-
-    local spare = math.max(0, limit - reserved)
-    for _, column in ipairs(columns) do
-      local old = retained[column.name]
-      local width, gap = old and old.width or 0, old and old.gap or 0
-      local grow_gap = math.min(spare, math.max(0, column.gap - gap))
-      spare, column.gap = spare - grow_gap, gap + grow_gap
-      local grow_width = math.min(spare, math.max(0, column.width - width))
-      spare, column.width = spare - grow_width, width + grow_width
-    end
+    retain_column_widths(columns, retained, limit - padding * 2)
   end
 
   local natural = padding * 2
@@ -187,37 +213,11 @@ function M.prepare(items, opts, available, previous)
   end
 
   local width = math.min(limit, math.max(opts.min_width, natural))
-  local excess = natural - width
-  -- Spend excess metadata width before truncating the candidate itself, while
-  -- retaining a small location hint whenever the terminal has room for both.
-  if seen.label_description and excess > 0 then
-    local take = math.min(excess, math.max(0, seen.label_description.width - 12))
-    seen.label_description.width, excess = seen.label_description.width - take, excess - take
-  end
-
-  if seen.label and excess > 0 then
-    local take = math.min(excess, math.max(0, seen.label.width - 8))
-    seen.label.width, excess = seen.label.width - take, excess - take
-  end
-
-  for _, name in ipairs({ "label_description", "label_detail", "source", "kind", "kind_icon", "label" }) do
-    local column = seen[name]
-    if column and excess > 0 then
-      local take = math.min(excess, column.width)
-      column.width, excess = column.width - take, excess - take
-    end
-  end
-
-  for i = #columns, 1, -1 do
-    if excess > 0 then
-      local take = math.min(excess, columns[i].gap)
-      columns[i].gap, excess = columns[i].gap - take, excess - take
-    end
-  end
-
-  -- Give spare space to the label, keeping auxiliary columns aligned at the right.
-  if natural < width and seen.label then
-    seen.label.width = seen.label.width + width - natural
+  if natural > width then
+    shrink_columns(columns, columns_by_name, natural - width)
+  elseif natural < width and columns_by_name.label then
+    -- Give spare space to the label, keeping auxiliary columns aligned at the right.
+    columns_by_name.label.width = columns_by_name.label.width + width - natural
   end
 
   return { rows = rows, columns = columns, width = width, padding = padding }
@@ -302,27 +302,19 @@ function M.row(layout, index, entry, ctx, opts)
     kind_group = group
   end
 
-  local function add_code(code, start, retained, label_bytes, label_ft)
-    local last = math.min(retained, #code)
+  local function add_label_highlights(code, start, last, label_bytes, label_ft, detail_ft)
     local label_end = math.min(label_bytes, last)
-    add(start, start + (detail_language and label_end or last), kind_group)
+    add(start, start + (detail_ft and label_end or last), kind_group)
 
-    if label_ft == detail_language or last <= label_end then
+    if label_ft == detail_ft or last == label_end then
       add_syntax(code, label_ft, start, 0, last)
-    elseif label_ft and detail_language then
+    elseif label_ft and detail_ft then
       add_syntax(code:sub(1, label_end), label_ft, start, 0, label_end)
-      add_syntax(code:sub(label_end + 1), detail_language, start + label_end, 0, last - label_end)
+      add_syntax(code:sub(label_end + 1), detail_ft, start + label_end, 0, last - label_end)
     else
       -- Keep the full signature as parser context and clip colors to the enabled field.
       add_syntax(code, label_ft, start, 0, label_end)
-      add_syntax(code, detail_language, start, label_end, last)
-    end
-
-    if opts.highlight.custom then
-      local ok, extra = pcall(opts.highlight.custom, entry, ctx, code)
-      if ok and type(extra) == "table" then
-        add_spans(extra, code, start, 0, retained)
-      end
+      add_syntax(code, detail_ft, start, label_end, last)
     end
   end
 
@@ -342,25 +334,37 @@ function M.row(layout, index, entry, ctx, opts)
     then
       add(start, start + #value, "CompletionToolsSource")
     elseif column.name == "label" or column.name == "label_detail" then
-      local code = column.name == "label" and row.code or row.label_detail
+      local code = row[column.name]
       if column.name == "label" and not row.detail_code then
         add(start + row.label_bytes, start + #value, "CompletionToolsSource")
         code = code:sub(1, row.label_bytes)
       end
 
       if opts.highlight.enabled then
+        local last = math.min(retained, #code)
         if column.name == "label" then
-          add_code(code, start, retained, row.label_bytes, label_language)
+          add_label_highlights(code, start, last, row.label_bytes, label_language, detail_language)
+        elseif detail_language then
+          add_syntax(code, detail_language, start, 0, last)
         else
-          add_code(code, start, retained, 0, detail_language)
+          add(start, start + last, kind_group)
+        end
+
+        if opts.highlight.custom then
+          local ok, extra = pcall(opts.highlight.custom, entry, ctx, code)
+          if ok and type(extra) == "table" then
+            add_spans(extra, code, start, 0, last)
+          end
         end
       end
 
       if column.name == "label" then
         local query, pos = (ctx.before or ""):sub((entry.start_col or 0) + 1), 1
+        local label_end = math.min(retained, row.label_bytes)
+        local visible_label = row.label:sub(1, label_end):lower()
         -- Match whole UTF-8 characters, with byte positions for extmarks.
         for char in query:gmatch(text.characters) do
-          local at = row.label:sub(1, math.min(retained, row.label_bytes)):lower():find(char:lower(), pos, true)
+          local at = visible_label:find(char:lower(), pos, true)
           if not at then
             break
           end
@@ -370,7 +374,7 @@ function M.row(layout, index, entry, ctx, opts)
         end
 
         if entry.item.deprecated or vim.tbl_contains(entry.item.tags or {}, 1) then
-          add(start, start + math.min(retained, row.label_bytes), "CompletionToolsDeprecated", 210)
+          add(start, start + label_end, "CompletionToolsDeprecated", 210)
         end
       end
     end

@@ -433,6 +433,26 @@ test("custom spans are clipped and never contaminate cached built-in spans", fun
   local disabled = config.validate({ menu = { highlight = { enabled = false } } }).menu
   eq({}, highlight.get("name", "lua", disabled.highlight))
 end)
+test("custom highlight ranges stay within the text passed to the callback", function()
+  local label = "width"
+  local description = "Requested image width"
+  local callback_text
+  local menu = config.validate({
+    menu = {
+      columns = { { "label" } },
+      highlight = {
+        custom = function(_, _, code)
+          callback_text = code
+          return { { 0, 1000, "Special" } }
+        end,
+      },
+    },
+  }).menu
+  local line, spans = paint(entry({ label = label, kind = 3, detail = description }), ctx, menu)
+  local label_start = assert(line:find(label .. "  " .. description, 1, true)) - 1
+  eq(label, callback_text)
+  eq({ { label_start, label_start + #label, "Special", 190 } }, span_for(spans, "Special"))
+end)
 test("native Tree-sitter is optional, bounded and cached", function()
   local original, calls = vim.treesitter.get_string_parser, 0
   vim.treesitter.get_string_parser = function(...)
