@@ -437,14 +437,14 @@ local ok, err = xpcall(function()
       "local c=require('completion_tools');return c.get_context() and c.get_context().prefix=='alpha' and c._can('accept')"
     )
     wait(
-      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false"
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-documentation' then return true end end;return false"
     )
     lua([[vim.cmd.redraw()
       local ctx=require('completion_tools').get_context()
       local cursor=vim.fn.screenpos(ctx.winid,ctx.row+1,ctx.col+1)
       for _,win in ipairs(vim.api.nvim_list_wins()) do
         local ft=vim.bo[vim.api.nvim_win_get_buf(win)].filetype
-        if ft=='completion-tools-menu' or ft=='markdown' then
+        if ft=='completion-tools-menu' or ft=='completion-tools-documentation' then
           local wc=vim.api.nvim_win_get_config(win)
           assert(wc.row+wc.height+1<cursor.row-1,ft..' overlaps the input row: '..vim.inspect({window=wc,cursor=cursor}))
         end
@@ -716,7 +716,7 @@ local ok, err = xpcall(function()
     input("<C-n>")
     wait("return require('completion_tools').get_selected_item().label=='alphaZ'")
     wait([[for _,w in ipairs(vim.api.nvim_list_wins()) do
-      if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then
+      if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-documentation' then
         return table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w),0,-1,false),'\n'):find('selected',1,true)~=nil
       end end;return false]])
     lua("stream_reply({items={{label='alpha'},{label='alphaNew'}}})")
@@ -724,7 +724,7 @@ local ok, err = xpcall(function()
     lua([[local c=require('completion_tools')
       assert(c.is_menu_visible() and c.get_selected_item()==nil and not c._can('accept') and not c.accept())
       for _,w in ipairs(vim.api.nvim_list_wins()) do
-        assert(vim.bo[vim.api.nvim_win_get_buf(w)].filetype~='markdown','cleared selection kept documentation')
+        assert(vim.bo[vim.api.nvim_win_get_buf(w)].filetype~='completion-tools-documentation','cleared selection kept documentation')
       end
       stream_reply({items={{label='alpha'},{label='alphaZ'},{label='alphaOther'}}})
     ]])
@@ -1343,11 +1343,11 @@ local ok, err = xpcall(function()
     }})]])
     input("ial")
     wait(
-      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false"
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-documentation' then return true end end;return false"
     )
     local ids = lua([[local ids={};for _,w in ipairs(vim.api.nvim_list_wins()) do
       local ft=vim.bo[vim.api.nvim_win_get_buf(w)].filetype
-      if ft=='markdown' or ft=='completion-tools-menu' then ids[#ids+1]=w end
+      if ft=='completion-tools-documentation' or ft=='completion-tools-menu' then ids[#ids+1]=w end
     end;return ids]])
     for _, key in ipairs({ "p", "<BS>" }) do
       input(key)
@@ -1365,7 +1365,7 @@ local ok, err = xpcall(function()
         for _,w in ipairs(vim.api.nvim_list_wins()) do
           local ft=vim.bo[vim.api.nvim_win_get_buf(w)].filetype
           if ft=='completion-tools-menu' then menu=vim.api.nvim_win_get_config(w)
-          elseif ft=='markdown' then doc=vim.api.nvim_win_get_config(w) end
+          elseif ft=='completion-tools-documentation' then doc=vim.api.nvim_win_get_config(w) end
         end
         assert(doc.col>=menu.col+menu.width+2 or doc.col+doc.width+2<=menu.col,
           'retained documentation overlaps the resized menu')
@@ -1681,7 +1681,7 @@ local ok, err = xpcall(function()
     )
     input("ial")
     wait(
-      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype == 'markdown' then return true end end; return false"
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype == 'completion-tools-documentation' then return true end end; return false"
     )
     assert(lua("return require('completion_tools').scroll_documentation_down()"))
     input("<C-n>")
@@ -1763,7 +1763,7 @@ local ok, err = xpcall(function()
       function preview_doc()
         for _,w in ipairs(vim.api.nvim_list_wins()) do
           local b=vim.api.nvim_win_get_buf(w)
-          if vim.bo[b].filetype=='markdown' then return vim.api.nvim_buf_get_lines(b,0,-1,false) end
+          if vim.bo[b].filetype=='completion-tools-documentation' then return vim.api.nvim_buf_get_lines(b,0,-1,false) end
         end
         return {}
       end
@@ -1789,50 +1789,49 @@ local ok, err = xpcall(function()
     eq(2, lua("return preview_closed"))
     lua("assert(not preview_requests[2].is_valid());package.loaded.image_tools=nil;vim.fn.delete(preview_root,'rf')")
   end)
-  test("snippet colors and code previews hide Markdown markers and refresh highlights", function()
+  test("native code previews keep code punctuation and clear Markdown on plain text", function()
     lua([[
       vim.bo.filetype='tex'
       require('completion_tools').setup({sources={'test'},documentation={delay_ms=5},
         providers={test={complete=function(_,cb) cb({items={
           {label='ignore',kind=15,detail='\\ignore{value}',documentation={kind='markdown',
-            value='```latex\n\\input{中文}\n```\n\nUse `path`.'}},
+            value='```latex\n\\input[draft]{中文}\n```\n\nUse `path`.'}},
           {label='ignoreb',kind=15,documentation={kind='plaintext',value='Plain preview'}}
         }}) end}}})
     ]])
     input("iign")
     wait(
-      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false"
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-documentation' then return true end end;return false"
     )
     lua([[
       assert(vim.api.nvim_get_hl(0,{name='CompletionToolsKindSnippet',link=false}).fg,'Snippet has no foreground')
-      local doc
+      vim.cmd.redraw()
+      local doc, win
       for _,w in ipairs(vim.api.nvim_list_wins()) do
         local b=vim.api.nvim_win_get_buf(w)
-        if vim.bo[b].filetype=='markdown' then doc=b end
+        if vim.bo[b].filetype=='completion-tools-documentation' then doc,win=b,w end
       end
       local lines=vim.api.nvim_buf_get_lines(doc,0,-1,false)
-      assert(vim.deep_equal(lines,{'\\ignore{value}','','\\input{中文}','','Use path.'}),vim.inspect(lines))
-      local ns=vim.api.nvim_create_namespace('completion-tools-documentation')
-      local marks=vim.api.nvim_buf_get_extmarks(doc,ns,0,-1,{details=true})
-      assert(#marks>0,'Code highlighting missing')
-      local seen={}
-      for _,m in ipairs(marks) do seen[m[4].hl_group]=true end
-      assert(seen['CompletionToolsDocCode'] and seen['@function'])
+      assert(vim.tbl_contains(lines,'```latex') and vim.tbl_contains(lines,'Use `path`.'),vim.inspect(lines))
+      local at=vim.fn.screenpos(win,5,1)
+      local shown=''
+      for col=at.col,at.col+vim.api.nvim_win_get_width(win)-1 do shown=shown..vim.fn.screenstring(at.row,col) end
+      assert(shown:find('\\input[draft]{中文}',1,true),shown)
     ]])
     input("<C-n>")
     wait(
-      "for _,w in ipairs(vim.api.nvim_list_wins()) do local b=vim.api.nvim_win_get_buf(w);if vim.bo[b].filetype=='markdown' then return vim.api.nvim_buf_get_lines(b,0,1,false)[1]=='Plain preview' end end;return false"
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do local b=vim.api.nvim_win_get_buf(w);if vim.bo[b].filetype=='completion-tools-documentation' then return vim.api.nvim_buf_get_lines(b,0,1,false)[1]=='Plain preview' end end;return false"
     )
     lua([[
       for _,w in ipairs(vim.api.nvim_list_wins()) do
         local b=vim.api.nvim_win_get_buf(w)
-        if vim.bo[b].filetype=='markdown' then
-          assert(#vim.api.nvim_buf_get_extmarks(b,vim.api.nvim_create_namespace('completion-tools-documentation'),0,-1,{})==0)
+        if vim.bo[b].filetype=='completion-tools-documentation' then
+          assert(vim.wo[w].conceallevel==0 and not vim.treesitter.highlighter.active[b])
         end
       end
     ]])
   end)
-  test("Markdown documentation conceals delimiters and renders rules and nested emphasis", function()
+  test("native Markdown displays inline code, thematic rules and nested emphasis", function()
     lua([[
       require('completion_tools').setup({sources={'test'},documentation={delay_ms=5,max_width=40},
         providers={test={complete=function(_,cb) cb({items={{label='alpha',documentation={kind='markdown',
@@ -1840,25 +1839,23 @@ local ok, err = xpcall(function()
     ]])
     input("ial")
     wait(
-      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false"
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-documentation' then return true end end;return false"
     )
     lua([[
       vim.cmd.redraw()
       local win
       for _,w in ipairs(vim.api.nvim_list_wins()) do
-        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then win=w end
+        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-documentation' then win=w end
       end
       assert(vim.wo[win].conceallevel==2 and vim.wo[win].concealcursor=='nvic')
-      assert(vim.api.nvim_win_get_height(win)==6,'Unexpected document height')
       local width=vim.api.nvim_win_get_width(win)
-      assert(width==vim.fn.strdisplaywidth('@*param* url — **Target** file.'),'Concealed prose may wrap early')
       local at=vim.fn.screenpos(win,1,1)
       local function screen(row)
         local text=''
         for col=at.col,at.col+width-1 do text=text..vim.fn.screenstring(at.row+row,col) end
         return text:gsub('%s+$','')
       end
-      assert(screen(2)==string.rep('─',width),screen(2))
+      assert(screen(2)=='---',screen(2))
       assert(screen(4)=='@param url — Target file.',screen(4))
       assert(screen(5)=='outer inner text',screen(5))
       assert(vim.fn.screenattr(at.row+4,at.col)~=vim.fn.screenattr(at.row+4,at.col+1),'Italic style missing')
@@ -1875,15 +1872,14 @@ local ok, err = xpcall(function()
     ]])
     input("ial")
     wait(
-      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false"
+      "for _,w in ipairs(vim.api.nvim_list_wins()) do if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-documentation' then return true end end;return false"
     )
     lua([[
       vim.cmd.redraw()
       for _,win in ipairs(vim.api.nvim_list_wins()) do
-        if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='markdown' then
+        if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='completion-tools-documentation' then
           local at=vim.fn.screenpos(win,1,1)
           local height=vim.api.nvim_win_get_height(win)
-          assert(height==5,'Conceal wrap rows were undercounted')
           local screen=''
           for row=at.row,at.row+height-1 do
             for col=at.col,at.col+11 do screen=screen..vim.fn.screenstring(row,col) end
@@ -2051,7 +2047,7 @@ local ok, err = xpcall(function()
     wait([[local item=require('completion_tools').get_selected_item()
       return item and item.documentation and item.documentation.value:find('Meaning of apple.',1,true)~=nil]])
     wait([[for _,w in ipairs(vim.api.nvim_list_wins()) do
-      if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then
+      if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-documentation' then
         return table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(w),0,-1,false),'\n'):find('Meaning of apple.',1,true)~=nil
       end end;return false]])
     input("<C-n>")
@@ -2063,7 +2059,7 @@ local ok, err = xpcall(function()
     eq(2, lua("return #vim.fn.readfile(dictionary_trace)"))
     lua([[assert(not require('completion_tools').is_menu_visible())
       for _,w in ipairs(vim.api.nvim_list_wins()) do
-        assert(vim.bo[vim.api.nvim_win_get_buf(w)].filetype~='markdown','stale definition reopened documentation')
+        assert(vim.bo[vim.api.nvim_win_get_buf(w)].filetype~='completion-tools-documentation','stale definition reopened documentation')
       end
       vim.env.COMPLETION_DICTIONARY_TRACE=previous_dictionary_trace
       vim.fn.delete(dictionary_fixture);vim.fn.delete(dictionary_trace)
@@ -2080,8 +2076,10 @@ local ok, err = xpcall(function()
       wait([[local item=require('completion_tools').get_selected_item()
         return item and item.label=='APPLE' and item.documentation
           and item.documentation.value:find('Overview of noun apple',1,true)~=nil]])
-      wait([[for _,w in ipairs(vim.api.nvim_list_wins()) do
-        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='markdown' then return true end end;return false]])
+      wait(
+        [[for _,w in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-documentation' then return true end end;return false]]
+      )
       input("<Tab>!")
       wait("return vim.api.nvim_get_current_line()=='APPLE!'")
       lua("vim.fn.delete(dictionary_fixture)")

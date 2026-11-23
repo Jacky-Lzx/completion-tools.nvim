@@ -45,11 +45,11 @@ local original = vim.deepcopy(items["source.lua"])
 local text = resolve(items["source.lua"])
 assert(vim.deep_equal(original, items["source.lua"]), "Resolve mutated a cached candidate")
 assert(text._path_preview.filetype == "lua" and text._path_preview.truncated)
-local lines, ranges = doc.build(text, "tex")
+local lines, language = doc.build(text, "tex")
 assert(
   vim.deep_equal(lines, { text.detail, "", "-- **literal** `code`", "\treturn '中文'", "… preview truncated" })
 )
-assert(ranges[1].filetype == "lua" and ranges[1].row == 2, "Preview must use the file's syntax")
+assert(language == "lua", "Preview must use the file's syntax")
 assert(resolve(items["binary.bin"]).documentation.value:find("Binary file", 1, true))
 assert(resolve(items["folder/"])._path_preview == nil)
 assert(resolve(items["empty.txt"])._path_preview.kind == "text")
@@ -148,7 +148,7 @@ ui.documentation(png, cfg)
 local fallback
 for _, win in ipairs(vim.api.nvim_list_wins()) do
   local buf = vim.api.nvim_win_get_buf(win)
-  if vim.bo[buf].filetype == "markdown" then
+  if vim.bo[buf].filetype == "completion-tools-documentation" then
     fallback = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
   end
 end

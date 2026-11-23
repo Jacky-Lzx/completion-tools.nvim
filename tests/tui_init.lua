@@ -450,7 +450,7 @@ function _G.completion_tui_snippet()
     },
   })
   vim.api.nvim_set_hl(0, "Special", { fg = "#c678dd" })
-  vim.api.nvim_set_hl(0, "@function", { fg = "#56b6c2" })
+  vim.api.nvim_set_hl(0, "@markup.italic", { fg = "#56b6c2", italic = true })
 end
 function _G.completion_tui_directories()
   local root = vim.env.COMPLETION_TUI_STATE .. ".directories"
@@ -876,7 +876,7 @@ timer:start(
               data.menu_attrs[word] = vim.fn.screenattr(at.row, at.col + cell)
             end
           end
-        elseif vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "markdown" then
+        elseif vim.bo[vim.api.nvim_win_get_buf(win)].filetype == "completion-tools-documentation" then
           data.doc_win = win
           data.doc_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win), 0, -1, false)
           local geometry = vim.api.nvim_win_get_config(win)

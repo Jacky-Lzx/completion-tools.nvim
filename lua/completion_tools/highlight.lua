@@ -106,43 +106,6 @@ local function treesitter(text, filetype, spans)
   end
 end
 
--- Documentation code blocks need the complete syntax context, including newlines.
--- Return native row/column ranges; menu highlighting stays single-line.
-function M.block(text, filetype, opts)
-  local spans, parser = {}, nil
-  if not opts.enabled or not opts.treesitter or #text > opts.max_bytes or filetype == "" then
-    return spans
-  end
-  pcall(function()
-    local lang = vim.treesitter.language.get_lang(filetype) or filetype
-    local query = vim.treesitter.query.get(lang, "highlights")
-    if not query then
-      return
-    end
-    parser = vim.treesitter.get_string_parser(text, lang, { injections = { [lang] = "" } })
-    local tree = parser:parse()[1]
-    for id, node, metadata in query:iter_captures(tree:root(), text) do
-      local capture = query.captures[id]
-      if capture:sub(1, 1) ~= "_" and capture ~= "spell" and capture ~= "nospell" then
-        local range = vim.treesitter.get_range(node, text, metadata[id])
-        local priority = tonumber((metadata[id] or {}).priority or metadata.priority) or 100
-        spans[#spans + 1] = {
-          row = range[1],
-          first = range[2],
-          end_row = range[4],
-          last = range[5],
-          group = "@" .. capture .. "." .. lang,
-          priority = 130 + math.min(50, math.max(0, priority - 100)),
-        }
-      end
-    end
-  end)
-  if parser then
-    parser:destroy()
-  end
-  return spans
-end
-
 function M.clear()
   cache, order, next_slot = {}, {}, 1
 end
@@ -182,7 +145,6 @@ function M.get(text, label_bytes, entry, ctx, opts)
     add(spans, 0, (plain_text or literal) and #text or math.min(label_bytes, #text), group, 110)
     if not plain_text and not literal then
       -- Text candidates stay uniformly muted, even when words resemble code.
-      -- Documentation passes label_bytes=0 and keeps its syntax highlighting.
       lexical(text, spans)
       if opts.treesitter and #text <= opts.max_bytes then
         treesitter(text, ft, spans)

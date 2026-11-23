@@ -1,164 +1,69 @@
--- Optional real-parser regression for configurations that start Tree-sitter on FileType.
-local native_started = 0
 if vim.env.COMPLETION_DOC_PARSER_RTP then
   vim.opt.rtp:append(vim.env.COMPLETION_DOC_PARSER_RTP)
-  vim.api.nvim_create_autocmd("FileType", {
-    pattern = "markdown",
-    callback = function(ev)
-      vim.treesitter.start(ev.buf)
-      native_started = native_started + 1
-    end,
-  })
 end
+
 local doc = require("completion_tools.documentation")
+local config = require("completion_tools.config")
+local ui = require("completion_tools.ui")
+
 local function eq(expected, actual)
   assert(vim.deep_equal(expected, actual), vim.inspect({ expected = expected, actual = actual }))
 end
-local markdown = {
-  kind = "markdown",
-  value = '```latex\n\\input{中文}\n```\n\nUse `name` and `` `tick` ``.\n~~~lua\n  return "value"\n~~~',
-}
-local lines, ranges = doc.build({ detail = "\\input", documentation = markdown }, "tex")
-eq({ "\\input", "", "\\input{中文}", "", "Use name and `tick`.", '  return "value"' }, lines)
-eq(5, #ranges)
-eq("latex", ranges[2].filetype)
-eq("lua", ranges[5].filetype)
-local literal = "```\n  keep `ticks`\n```"
-eq(vim.split(literal, "\n"), doc.build({ documentation = { kind = "plaintext", value = literal } }, "tex"))
-eq(vim.split(literal, "\n"), doc.build({ detail = literal }, "markdown"))
-eq({ "literal", "text `unmatched" }, doc.build({ documentation = "```literal```\ntext `unmatched" }, "lua"))
-eq({ "```", "text", "~~~", "value" }, doc.build({ documentation = "~~~~lua\n```\ntext\n~~~\nvalue\n~~~~" }, "lua"))
-eq({ "unclosed code" }, doc.build({ documentation = "```lua\nunclosed code" }, "lua"))
-eq({}, doc.build({ documentation = "```lua\n```" }, "lua"))
-local path = "/Users/test/Research/Very_Long_Project/TeX/4_Experimental_Results.tex"
-local file_lines, file_ranges = doc.build({ kind = 17, detail = path }, "tex")
-eq({ path }, file_lines)
-eq({}, file_ranges)
-file_lines, file_ranges = doc.build({ kind = 17, labelDetails = { description = path } }, "tex")
-eq({ path }, file_lines)
-eq({}, file_ranges)
-eq({ path }, doc.build({ kind = 17, detail = path, labelDetails = { detail = path, description = path } }, "tex"))
-eq(
-  { "(value: string)", "module", "", "Help." },
-  doc.build({
-    labelDetails = { detail = "(value: string)", description = "module" },
-    documentation = "Help.",
-  }, "lua")
-)
-eq({ "\\`literal\\`" }, doc.build({ documentation = "\\`literal\\`" }, "lua"))
-local function visible(value)
-  local _, _, display = doc.build({ documentation = { kind = "markdown", value = value } }, "lua")
-  return display
-end
-eq({ "@param url: bold and both." }, visible("@*param* `url`: **bold** and ***both***."))
-eq({ "italic and bold", "snake_case and a__b__c" }, visible("_italic_ and __bold__\nsnake_case and a__b__c"))
-eq({ "outer inner text", "outer inner text" }, visible("**outer *inner* text**\n*outer **inner** text*"))
-eq({ "outer _unmatched text" }, visible("*outer _unmatched text*"))
-eq({ "中文 斜体 粗体" }, visible("中文 *斜体* **粗体**"))
-eq({ "*literal* and __literal__", "---" }, visible("`*literal*` and `__literal__`\n```lua\n---\n```"))
-eq({ "    *literal*", "\t---" }, visible("    *literal*\n\t---"))
-eq({ "\\*literal\\* and *unclosed and a * b" }, visible("\\*literal\\* and *unclosed and a * b"))
-eq({ "", "", "", "    ---", "a --- b" }, visible("---\n * * *\n___\n    ---\na --- b"))
-local prose = "---\n*italic* and **bold**"
-eq(vim.split(prose, "\n"), doc.build({ detail = prose }, "lua"))
-local _, literal_ranges, literal_visible =
-  doc.build({ documentation = { kind = "plaintext", value = prose } }, "markdown")
-eq({}, literal_ranges)
-eq(vim.split(prose, "\n"), literal_visible)
-local buf = vim.api.nvim_create_buf(false, true)
-local ns = vim.api.nvim_create_namespace("completion-doc-test")
-vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
-local opts = require("completion_tools.config").validate({}).menu.highlight
-opts.custom = function()
-  error("menu callback must not run for documentation")
-end
-doc.highlight(buf, ns, lines, ranges, opts)
-local groups = {}
-for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
-  groups[mark[4].hl_group] = true
-end
-assert(groups.CompletionToolsDocCode and groups["@function"] and groups["@string"])
-local styled, decorations = doc.build({ documentation = "---\n@*param* `url`: **bold** and ***both***" }, "lua")
-vim.api.nvim_buf_set_lines(buf, 0, -1, false, styled)
-vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-doc.highlight(buf, ns, styled, decorations, opts, 28)
-local styles, concealed, separator = {}, 0, nil
-for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
-  local info = mark[4]
-  if info.conceal == "" then
-    concealed = concealed + 1
-  end
-  if info.virt_text then
-    separator = info.virt_text[1][1]
-  elseif info.hl_group then
-    styles[info.hl_group] = styled[mark[2] + 1]:sub(mark[3] + 1, info.end_col)
-  end
-end
-eq(7, concealed) -- A rule plus opening/closing delimiters for three emphasis spans.
-eq(string.rep("─", 28), separator)
-eq("param", styles.CompletionToolsDocItalic)
-eq("bold", styles.CompletionToolsDocBold)
-eq("both", styles.CompletionToolsDocBoldItalic)
-require("completion_tools.ui").highlights()
-eq("Special", vim.api.nvim_get_hl(0, { name = "CompletionToolsKindSnippet" }).link)
-assert(vim.api.nvim_get_hl(0, { name = "CompletionToolsDocItalic" }).italic)
-assert(vim.api.nvim_get_hl(0, { name = "CompletionToolsDocBold" }).bold)
-local line = string.rep("中", 2000)
-vim.api.nvim_buf_set_lines(buf, 0, -1, false, { line })
-opts.max_bytes = 7
-doc.highlight(buf, ns, { line }, { { row = 0, first = 0, last = #line, filetype = "unknown" } }, opts)
--- Parse whole blocks, preserving blank rows and keeping adjacent fences separate.
-local block_lines, block_ranges = doc.build({
-  documentation = "```bibtex\n@article{中,\n\n  title = {First\nsecond},\n}\n```\n```bibtex\n@book{other}\n```",
-}, "tex")
-local first = block_ranges[1].block
-eq({ "@article{中,", "", "  title = {First", "second},", "}" }, first.lines)
-assert(block_ranges[#block_ranges].block ~= first)
-local highlight = require("completion_tools.highlight")
-local original_block = highlight.block
-local seen = {}
-highlight.block = function(text, ft)
-  eq("bibtex", ft)
-  seen[#seen + 1] = text
-  if text:find("First", 1, true) then
-    return { { row = 2, first = 11, end_row = 3, last = 6, group = "@string.bibtex", priority = 130 } }
-  end
-  return {}
-end
-vim.api.nvim_buf_set_lines(buf, 0, -1, false, block_lines)
-vim.api.nvim_buf_clear_namespace(buf, ns, 0, -1)
-opts.max_bytes = 4096
-doc.highlight(buf, ns, block_lines, block_ranges, opts)
-highlight.block = original_block
-eq(2, #seen)
-local multiline = false
-for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(buf, ns, 0, -1, { details = true })) do
-  if mark[4].hl_group == "@string.bibtex" then
-    eq(2, mark[2])
-    eq(11, mark[3])
-    eq(3, mark[4].end_row)
-    eq(6, mark[4].end_col)
-    multiline = true
-  end
-end
-assert(multiline)
-vim.api.nvim_buf_delete(buf, { force = true })
-print("documentation: code, Markdown conceal/styles/rules, literal text and UTF-8 bounds passed")
 
-local config = require("completion_tools.config")
+local path = "/Users/test/Research/[project]/TeX/4_Experimental_Results.tex"
+local lines, language = doc.build({
+  kind = 17,
+  detail = path,
+  labelDetails = { detail = path, description = path },
+}, "tex")
+eq({ path }, lines)
+eq(nil, language)
+local literal = "~~~\n  keep **bold** and `ticks`\n~~~"
+local plain_item = { detail = literal, documentation = { kind = "plaintext", value = "**plain** [text]" } }
+lines, language = doc.build(plain_item, "markdown")
+eq({ "~~~", "  keep **bold** and `ticks`", "~~~", "", "**plain** [text]" }, lines)
+eq(nil, language)
+lines, language = doc.build({ detail = "return 42" }, "lua")
+eq({ "return 42" }, lines)
+eq("lua", language)
+eq({}, doc.build({}))
+
+local markdown = 'Use `name` and **bold**.\n\n```lua\nlocal value = map["key"]\n```'
+local item = {
+  detail = "local map = {}",
+  labelDetails = { detail = "local map = {}", description = literal },
+  documentation = { kind = "markdown", value = markdown },
+}
+lines, language = doc.build(item, "lua")
+eq({
+  "~~~lua",
+  "local map = {}",
+  "~~~",
+  "~~~~",
+  "~~~",
+  "  keep **bold** and `ticks`",
+  "~~~",
+  "~~~~",
+  "",
+  "Use `name` and **bold**.",
+  "",
+  "```lua",
+  'local value = map["key"]',
+  "```",
+}, lines)
+eq("markdown", language)
+
 assert(not pcall(config.validate, { documentation = { on_render = true } }))
-local calls = 0
+local renders, current = 0, nil
 local cfg = config.validate({
   documentation = {
     on_render = function(ctx)
-      assert(vim.api.nvim_win_get_buf(ctx.win) == ctx.buf and ctx.item.documentation == "first")
-      assert(not vim.treesitter.highlighter.active[ctx.buf], "native Markdown parser must not conceal rendered code")
-      calls = calls + 1
+      assert(vim.api.nvim_win_get_buf(ctx.win) == ctx.buf)
+      renders, current = renders + 1, ctx
     end,
   },
 })
-local ui = require("completion_tools.ui")
-ui.render({ { item = { label = "fixture" }, source_id = "lsp", start_col = 0 } }, 1, {
+local ctx = {
   winid = vim.api.nvim_get_current_win(),
   bufnr = 0,
   row = 0,
@@ -168,15 +73,74 @@ ui.render({ { item = { label = "fixture" }, source_id = "lsp", start_col = 0 } }
   before = "",
   line = "",
   filetype = "lua",
-}, cfg)
-assert(ui.documentation({ documentation = "first" }, cfg) and calls == 1)
-assert(ui.documentation({ documentation = "first" }, cfg) and calls == 2)
-ui.hide()
-assert(not ui.documentation({ documentation = "first" }, cfg) and calls == 2)
-ui.dispose()
-if vim.env.COMPLETION_DOC_PARSER_RTP then
-  assert(native_started > 0, "real Markdown highlighter was not exercised")
+}
+local function menu(label)
+  ui.render({ { item = { label = label }, source_id = "lsp", start_col = 0 } }, 1, ctx, cfg)
 end
-print("documentation render hook: current window, re-render, hidden state and validation passed")
 
-vim.cmd("qa!")
+menu("fixture")
+assert(ui.documentation(item, cfg))
+eq(1, renders)
+eq(item, current.item)
+eq(lines, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
+assert(vim.treesitter.highlighter.active[current.buf], "Markdown rendering should start native Tree-sitter")
+local parser = vim.treesitter.get_parser(current.buf, "markdown")
+parser:parse(true)
+local captures = vim.treesitter.get_captures_at_pos(current.buf, 12, 19)
+assert(
+  vim.tbl_contains(
+    vim.tbl_map(function(capture)
+      return capture.lang
+    end, captures),
+    "lua"
+  ),
+  "The fenced code should use the Lua parser"
+)
+eq(2, vim.wo[current.win].conceallevel)
+
+assert(ui.documentation(plain_item, cfg))
+eq(0, vim.wo[current.win].conceallevel)
+assert(not vim.treesitter.highlighter.active[current.buf], "Plain text should clear the Markdown highlighter")
+
+local start = vim.treesitter.start
+vim.treesitter.start = function()
+  error("Parser unavailable")
+end
+assert(ui.documentation({ documentation = "**raw**" }, cfg))
+vim.treesitter.start = start
+eq({ "**raw**" }, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
+assert(not vim.treesitter.highlighter.active[current.buf])
+
+local long = {
+  documentation = { kind = "plaintext", value = string.rep(string.rep("word ", 12) .. "\n", 40) },
+}
+assert(ui.documentation(long, cfg))
+assert(ui.scroll_documentation(24))
+local win = current.win
+local old_view = vim.api.nvim_win_call(win, vim.fn.winsaveview)
+local old_width = vim.api.nvim_win_get_width(win)
+local old_tick = vim.api.nvim_buf_get_changedtick(current.buf)
+assert(old_view.topline > 1)
+local before_move = renders
+
+-- Move and narrow the document while keeping the same candidate content.
+menu("fixture-" .. string.rep("w", 64))
+eq(before_move + 1, renders)
+eq(win, current.win)
+assert(vim.api.nvim_win_get_width(win) < old_width)
+eq(old_tick, vim.api.nvim_buf_get_changedtick(current.buf))
+eq(old_view.topline, vim.api.nvim_win_call(win, vim.fn.winsaveview).topline)
+
+assert(ui.documentation(vim.deepcopy(long), cfg))
+eq(old_tick, vim.api.nvim_buf_get_changedtick(current.buf))
+eq(old_view.topline, vim.api.nvim_win_call(win, vim.fn.winsaveview).topline)
+
+long.documentation.value = "Updated description"
+assert(ui.documentation(long, cfg))
+eq({ "Updated description" }, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
+eq(1, vim.api.nvim_win_call(win, vim.fn.winsaveview).topline)
+ui.hide()
+assert(not ui.documentation(item, cfg))
+ui.dispose()
+
+print("documentation: native Markdown and injected code, literal fallback, render hooks and scroll reuse passed")

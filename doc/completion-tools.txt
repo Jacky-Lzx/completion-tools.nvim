@@ -367,20 +367,11 @@ not changed since primary insertion.
 CompletionToolsMenu       CompletionToolsBorder     CompletionToolsSelected
 CompletionToolsMatch      CompletionToolsSource     CompletionToolsDoc
 CompletionToolsDeprecated CompletionToolsKind{LSP kind name}
-CompletionToolsDocCode
-CompletionToolsDocItalic   CompletionToolsDocBold
-CompletionToolsDocBoldItalic CompletionToolsDocSeparator
+CompletionToolsDocBorder
 
 Snippet icons/labels/kind names use CompletionToolsKindSnippet, linked to
-Special by default. Documentation hides Markdown code fences and inline-code
-backticks, preserving code text, indentation and syntax highlighting. Detail
-and plaintext documentation remain literal. Inline code uses
-CompletionToolsDocCode (String). Prose emphasis uses local conceal for italic,
-bold and combined styles, with the corresponding
-DocItalic/DocBold/DocBoldItalic groups. Thematic rules (three or more dashes,
-asterisks or underscores) use full-width DocSeparator lines. Code spans/blocks
-remain literal. Sizing accounts for raw-column conceal wrapping. Documentation
-reuses lexical/Tree-sitter options, without menu custom callbacks.
+Special by default. Markdown documentation uses Neovim's Tree-sitter queries
+and the active colorscheme. Detail and plaintext documentation remain literal.
 
                                                        *completion-tools-menu*
 Default columns: { {"kind_icon"}, {"label", gap=1}, {"kind"}, {"source"} }.
@@ -783,7 +774,8 @@ display.
 Selecting a path candidate previews the file in the documentation window. Text
 reads are asynchronous and bounded by `path.preview.max_bytes` (64 KiB) and
 `max_lines` (100), with at most 2000 bytes per line. File contents remain
-literal, including Markdown markers, and use the file's detected syntax.
+literal, including Markdown markers. When a parser is available, the preview
+uses native Tree-sitter highlighting for the detected file type.
 Directories show their path; binary files and read errors show a short
 message. Set `path.preview.enabled=false` to show only the path.
 
@@ -1151,27 +1143,19 @@ Defaults require a Nerd Font.
 
 Text icons, labels and kind names use `CompletionToolsKindText` (linked to
 `Comment`), without lexical recoloring. Snippets use
-`CompletionToolsKindSnippet` (`Special`). Documentation hides Markdown code
-fences and inline backticks while preserving code text, indentation and
-highlighting. Detail/plaintext remain literal. Prose emphasis (`*italic*`,
-`bold`, `*both*` and underscore forms) conceals its delimiters and applies
-italic/bold styles. Thematic rules (`---`, `*`, `___`) become full-width
-separators. Code spans and blocks preserve their symbols. Conceal settings are
-local to the preview. Sizing accounts for Neovim's raw-column wrapping so
-hidden delimiters do not cause clipped text in narrow windows. Style groups
-are `CompletionToolsDocItalic`, `CompletionToolsDocBold`,
-`CompletionToolsDocBoldItalic` and `CompletionToolsDocSeparator`. Code blocks
-reuse menu lexical/Tree-sitter settings; inline code uses
-`CompletionToolsDocCode` (`String`). Menu custom callbacks apply only to
-candidates.
+`CompletionToolsKindSnippet` (`Special`). Markdown documentation uses Neovim's
+native Tree-sitter queries for emphasis, code fences, inline code and language
+injections. If a parser is unavailable, the preview displays the buffer text.
+Plaintext documentation and paths display literally. The documentation buffer
+uses the `completion-tools-documentation` filetype. Menu highlighting options
+and custom callbacks apply to candidates.
 
 Highlighting has no Blink/colorful-menu dependency. Kind colors provide the
 base; lexical rules distinguish types, parameters, keywords, strings, numbers
 and punctuation. Where available, public Tree-sitter APIs use the current
 language's highlights query. Missing parsers/queries or incomplete signatures
-retain lexical fallback. The plugin installs no parsers and enables no
-injected languages. These are syntax highlights, not LSP semantic tokens or
-server-specific signature rewrites.
+retain lexical fallback. The plugin uses available parsers and highlights the
+completion text supplied by the source.
 
 Only visible rows are highlighted; plain identifiers do not create parsers.
 `max_label_bytes` bounds each field. `highlight.max_bytes` bounds Tree-sitter
@@ -1186,10 +1170,10 @@ All 25 LSP kind groups are available as `CompletionToolsKindFunction`,
 `@type` and related groups. Unknown kinds use `CompletionToolsKindUnknown`.
 Other groups: `CompletionToolsMatch`, `CompletionToolsDeprecated`,
 `CompletionToolsSource`, `CompletionToolsMenu`, `CompletionToolsSelected`,
-`CompletionToolsBorder`, `CompletionToolsDoc`, `CompletionToolsDocBorder` and
-`CompletionToolsDocCode`. Menu borders match the menu background;
-documentation borders match the float background. Defaults are recreated after
-ColorScheme events while preserving explicit overrides.
+`CompletionToolsBorder`, `CompletionToolsDoc` and `CompletionToolsDocBorder`.
+Menu and documentation borders match their respective window backgrounds.
+Defaults are recreated after ColorScheme events while preserving explicit
+overrides.
 
 `menu.highlight.custom(entry, ctx, text)` can return additional spans:
 
@@ -1396,7 +1380,8 @@ caches and restores mappings.
 
 documentation.on_render(ctx) optionally decorates a ready LSP/provider document.
 ctx contains buf, win, item and optional preview metadata; the callback runs
-synchronously after built-in highlighting on each render, including reused panes.
+synchronously after the buffer and window have been configured on each render,
+including reused panes.
 The callback should decorate the supplied buffer/window, without replacing their
 contents or scheduling work after the callback returns. Errors are reported.
 

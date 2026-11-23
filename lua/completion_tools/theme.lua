@@ -26,7 +26,6 @@ local function apply()
     Border = { fg = border_fg, bg = menu_bg },
     Doc = { fg = c and c.float_fg or float.fg, bg = float_bg },
     DocBorder = { fg = border_fg, bg = float_bg },
-    DocSeparator = { fg = border_fg, bg = float_bg },
   }
   for name, value in pairs(groups) do
     local public, private = "CompletionTools" .. name, "CompletionToolsDefault" .. name

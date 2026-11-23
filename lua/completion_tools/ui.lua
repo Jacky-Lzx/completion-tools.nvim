@@ -8,12 +8,12 @@ local M = {}
 ---@field label? string Human-readable status for diagnostics.
 
 local ns = vim.api.nvim_create_namespace("completion-tools-menu")
-local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
 local geometry, doc_item
 ---@type completion_tools.MenuStatus|nil
 local menu_status
 local doc_view, doc_token
+local doc_lines, doc_language
 local frame_items, frame_selected
 local frame_layout, frame_lines, frame_spans, frame_config
 local shrink_timer, shrink_token
@@ -112,7 +112,6 @@ function M.highlights()
   for name, target in pairs({
     CompletionToolsSelected = "PmenuSel",
     CompletionToolsSource = "Comment",
-    CompletionToolsDocCode = "String",
   }) do
     vim.api.nvim_set_hl(0, name, { default = true, link = target })
   end
@@ -120,9 +119,6 @@ function M.highlights()
   require("completion_tools.theme").highlights()
   vim.api.nvim_set_hl(0, "CompletionToolsMatch", { default = true, bold = true, underline = true })
   vim.api.nvim_set_hl(0, "CompletionToolsDeprecated", { default = true, strikethrough = true })
-  vim.api.nvim_set_hl(0, "CompletionToolsDocItalic", { default = true, italic = true })
-  vim.api.nvim_set_hl(0, "CompletionToolsDocBold", { default = true, bold = true })
-  vim.api.nvim_set_hl(0, "CompletionToolsDocBoldItalic", { default = true, bold = true, italic = true })
   require("completion_tools.kinds").highlights()
 end
 
@@ -137,6 +133,7 @@ function M.hide_documentation()
   close_doc_view()
   close(doc_win)
   doc_win, doc_item = nil, nil
+  doc_lines, doc_language = nil, nil
 end
 
 --- Update the footer status and synchronize its animation timer.
@@ -437,37 +434,8 @@ function M.documentation(item, config)
   if not M.visible() or not geometry then
     return false
   end
-  local documentation = require("completion_tools.documentation")
-  local lines, ranges, visible = documentation.build(item, geometry.filetype)
-  if #lines == 0 then
-    M.hide_documentation()
-    return false
-  end
-
-  local opts = config.documentation
-  local preview = item._path_preview
-  local media = preview and preview.kind == "media"
-  local width = 12
-  -- Conceal does not reflow wrapped buffer text. Reserve raw columns for prose;
-  -- virtual separators occupy exactly one row regardless of their Markdown length.
-  for row, line in ipairs(lines) do
-    width = math.max(width, visible[row] == "" and 0 or vim.fn.strdisplaywidth(line))
-  end
   local right, left = vim.o.columns - geometry.col - geometry.width - 4, geometry.col - 2
   local available = math.max(right, left)
-  if available < 12 then
-    M.hide_documentation()
-    return false
-  end
-  width = math.min(width, opts.max_width, available)
-  if media then
-    width = math.min(opts.max_width, available)
-  end
-  local height = 0
-  for row, line in ipairs(lines) do
-    local cells = visible[row] == "" and 0 or vim.fn.strdisplaywidth(line)
-    height = height + math.max(1, math.ceil(cells / width))
-  end
   local top, bottom = 0, vim.o.lines - math.max(vim.o.cmdheight, 1) - 1
   if geometry.upwards then
     bottom = math.min(bottom, geometry.input_top - 1)
@@ -475,34 +443,48 @@ function M.documentation(item, config)
     top = geometry.input_bottom + 1
   end
   -- A tall document must remain on the same side of the input as the menu.
-  if media then
-    height = opts.max_height
-  end
-  height = math.min(height, opts.max_height, bottom - top - 1)
-  if height < 1 then
+  local opts = config.documentation
+  local max_height = math.min(opts.max_height, bottom - top - 1)
+  if available < 12 or max_height < 1 then
     M.hide_documentation()
     return false
   end
-  local col = right >= width and geometry.col + geometry.width + 2 or geometry.col - width - 2
-  local row = math.max(top, math.min(geometry.row, bottom - height - 1))
-  local reuse = media and doc_token and doc_item == item and valid(doc_win)
-  if not reuse then
-    close_doc_view()
+
+  local lines, language = require("completion_tools.documentation").build(item, geometry.filetype)
+  if #lines == 0 then
+    M.hide_documentation()
+    return false
   end
-  doc_buf = scratch(doc_buf, "markdown")
-  -- FileType hooks may start a native Markdown highlighter. Our rendered buffer
-  -- has no code fences, so it would conceal source brackets as shortcut links.
-  -- Documentation owns both code highlighting and prose decorations below.
-  vim.treesitter.stop(doc_buf)
-  if not reuse then
+  local preview = item._path_preview
+  local media = preview and preview.kind == "media"
+  local width = opts.max_width
+  if not media then
+    width = 12
+    for _, line in ipairs(lines) do
+      width = math.max(width, vim.fn.strdisplaywidth(line))
+    end
+  end
+  width = math.min(width, opts.max_width, available)
+  local col = right >= width and geometry.col + geometry.width + 2 or geometry.col - width - 2
+  local reuse_media = media and doc_token and doc_item == item and valid(doc_win)
+  local replace = not reuse_media
+    and (media or doc_token or not valid(doc_win) or language ~= doc_language or not vim.deep_equal(lines, doc_lines))
+  doc_buf = scratch(doc_buf, "completion-tools-documentation")
+  if replace then
+    close_doc_view()
+    vim.treesitter.stop(doc_buf)
     vim.bo[doc_buf].syntax = ""
     vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
-    vim.api.nvim_buf_clear_namespace(doc_buf, doc_ns, 0, -1)
-    documentation.highlight(doc_buf, doc_ns, lines, ranges, config.menu.highlight, width)
+    if language then
+      pcall(vim.treesitter.start, doc_buf, vim.treesitter.language.get_lang(language) or language)
+    end
+    doc_lines, doc_language = lines, language
   end
+
+  local height = media and max_height or 1
   local wc = {
     relative = "editor",
-    row = math.max(0, row),
+    row = math.max(top, math.min(geometry.row, bottom - height - 1)),
     col = col,
     width = width,
     height = height,
@@ -512,19 +494,23 @@ function M.documentation(item, config)
     zindex = 101,
   }
   if valid(doc_win) then
-    vim.api.nvim_win_set_config(doc_win, wc)
+    if vim.api.nvim_win_get_width(doc_win) ~= width then
+      vim.api.nvim_win_set_width(doc_win, width)
+    end
   else
     doc_win = vim.api.nvim_open_win(doc_buf, false, wc)
     vim.wo[doc_win].winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsDocBorder"
       .. ",Search:None,IncSearch:None,CurSearch:None"
-    vim.wo[doc_win].wrap = true
   end
   vim.wo[doc_win].wrap = not media
-  -- File contents are literal even when the reused Markdown pane has syntax
-  -- conceal rules from an earlier LSP document.
-  vim.wo[doc_win].conceallevel = preview and 0 or 2
+  vim.wo[doc_win].conceallevel = language == "markdown" and not preview and 2 or 0
   vim.wo[doc_win].concealcursor = "nvic"
-  if not reuse then
+  if not media then
+    wc.height = math.min(max_height, math.max(1, vim.api.nvim_win_text_height(doc_win, {}).all))
+    wc.row = math.max(top, math.min(geometry.row, bottom - wc.height - 1))
+  end
+  vim.api.nvim_win_set_config(doc_win, wc)
+  if replace then
     vim.api.nvim_win_set_cursor(doc_win, { 1, 0 })
   end
   if opts.on_render then
@@ -535,7 +521,7 @@ function M.documentation(item, config)
   end
   doc_item = item
   if media then
-    if reuse then
+    if reuse_media then
       if doc_view then
         doc_view:resize()
       end

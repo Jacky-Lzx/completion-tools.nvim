@@ -358,7 +358,7 @@ local ok, err = xpcall(function()
         for _,win in ipairs(vim.api.nvim_list_wins()) do
           local buf=vim.api.nvim_win_get_buf(win)
           local ft=vim.bo[buf].filetype
-          if ft=='completion-tools-menu' or ft=='markdown' then
+          if ft=='completion-tools-menu' or ft=='completion-tools-documentation' then
             local colors={}
             for row,line in ipairs(vim.api.nvim_buf_get_lines(buf,0,-1,false)) do
               local start=line:find('FixtureNorm',1,true)
@@ -378,9 +378,9 @@ local ok, err = xpcall(function()
     input(":FixtureNorm")
     wait("return require('completion_tools').is_menu_visible()")
     lua("assert(require('completion_tools').show_documentation())")
-    wait("return fixture_colors().markdown~=nil")
+    wait("return fixture_colors()['completion-tools-documentation']~=nil")
     local before = lua("return fixture_colors()")
-    assert(before["completion-tools-menu"] and before.markdown)
+    assert(before["completion-tools-menu"] and before["completion-tools-documentation"])
     local source = lua("local p=vim.fn.screenpos(0,1,1);return vim.fn.screenattr(p.row,p.col)")
     lua("vim.fn.setreg('/','FixtureNorm');vim.v.hlsearch=1")
     eq(before, lua("return fixture_colors()"))
