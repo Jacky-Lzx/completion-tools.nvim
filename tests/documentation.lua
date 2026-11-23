@@ -136,6 +136,16 @@ eq(0, vim.wo[current.win].conceallevel)
 eq({}, concealed_rows())
 assert(not vim.treesitter.highlighter.active[current.buf], "Plain text should clear the Markdown highlighter")
 
+local markdown_code = { "```lua", "return true", "```" }
+assert(ui.documentation({
+  documentation = { kind = "plaintext", value = table.concat(markdown_code, "\n") },
+  _documentation_filetype = "markdown",
+}, cfg))
+eq(markdown_code, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
+assert(vim.treesitter.highlighter.active[current.buf], "Literal Markdown can still use a Markdown parser")
+eq(0, vim.wo[current.win].conceallevel)
+eq(3, vim.api.nvim_win_get_height(current.win))
+
 local start = vim.treesitter.start
 vim.treesitter.start = function()
   error("Parser unavailable")

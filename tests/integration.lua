@@ -2357,6 +2357,21 @@ local ok, err = xpcall(function()
     wait("return #require('completion_tools').get_items()==3", "native Copilot menu", 3000)
     eq("print(1)", lua("return require('completion_tools').get_selected_item().label"))
     assert(lua("return not package.loaded['copilot.client'] and not package.loaded['copilot.api']"))
+    lua([[
+      assert(require('completion_tools').show_documentation())
+      local doc
+      for _, win in ipairs(vim.api.nvim_list_wins()) do
+        local buf = vim.api.nvim_win_get_buf(win)
+        if vim.bo[buf].filetype == 'completion-tools-documentation' then doc = buf end
+      end
+      assert(doc and vim.treesitter.highlighter.active[doc], 'Copilot documentation needs a highlighter')
+      assert(vim.deep_equal(vim.api.nvim_buf_get_lines(doc, 0, -1, false), {'print(1)', 'print("done")'}))
+      vim.treesitter.get_parser(doc, 'lua'):parse(true)
+      local captures = vim.treesitter.get_captures_at_pos(doc, 1, 7)
+      assert(vim.iter(captures):any(function(capture)
+        return capture.lang == 'lua' and capture.capture == 'string'
+      end), vim.inspect(captures))
+    ]])
     input("int(")
     wait(
       [[return require('completion_tools')._can('accept') and require('completion_tools').get_selected_item().label=='1)']]

@@ -523,7 +523,8 @@ function M.documentation(item, config)
   end
   local doc_win = doc.win
   vim.wo[doc_win].wrap = not media
-  vim.wo[doc_win].conceallevel = language == "markdown" and not preview and 2 or 0
+  local markdown = language == "markdown" and not preview and not item._documentation_filetype
+  vim.wo[doc_win].conceallevel = markdown and 2 or 0
   vim.wo[doc_win].concealcursor = "nvic"
   if not media then
     wc.height = math.min(max_height, math.max(1, vim.api.nvim_win_text_height(doc_win, {}).all))

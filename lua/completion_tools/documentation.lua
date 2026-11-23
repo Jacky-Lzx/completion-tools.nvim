@@ -4,6 +4,7 @@ local kinds = require("completion_tools.kinds")
 
 ---@class completion_tools.DocumentationItem: lsp.CompletionItem
 ---@field _path_preview? {kind: "text", lines: string[], filetype: string, truncated: boolean}|{kind: "media", path: string}
+---@field _documentation_filetype? string Filetype for highlighting literal documentation text.
 
 -- Keep literal metadata inside code blocks when it shares a Markdown buffer.
 ---@param lines string[]
@@ -12,12 +13,14 @@ local function fence(lines, filetype)
   if #lines == 0 then
     return
   end
+
   local length = 3
   for _, line in ipairs(lines) do
     for run in line:gmatch("~+") do
       length = math.max(length, #run + 1)
     end
   end
+
   local marker = string.rep("~", length)
   local language = filetype and filetype:match("^[%w_.+-]+$") or ""
   table.insert(lines, 1, marker .. language)
@@ -29,8 +32,10 @@ local function has_function_signature(body, label)
   if not marker or #marker < 3 or not (marker:match("^`+$") or marker:match("^~+$")) then
     return false
   end
+
   local label_name = label:match("^%s*([%a_][%w_.:]*)")
   local member = name:match("[^.:]+$")
+
   return member ~= nil and label_name ~= nil and member == label_name:match("[^.:]+$")
 end
 
@@ -43,7 +48,10 @@ function M.build(item, filetype)
   local body = type(documentation) == "table" and documentation.value or documentation
   local has_body = type(body) == "string" and body ~= ""
   local preview = item._path_preview
-  local markdown = has_body and not preview and (type(documentation) ~= "table" or documentation.kind ~= "plaintext")
+  local markdown = has_body
+    and not preview
+    and not item._documentation_filetype
+    and (type(documentation) ~= "table" or documentation.kind ~= "plaintext")
 
   local lines, description, seen = {}, {}, {}
   local function metadata(target, value)
@@ -75,6 +83,8 @@ function M.build(item, filetype)
     language = "markdown"
   elseif preview and preview.kind == "text" then
     language = preview.filetype
+  elseif has_body and not preview then
+    language = item._documentation_filetype
   elseif not has_body and not preview and #description == 0 then
     language = signature
   end

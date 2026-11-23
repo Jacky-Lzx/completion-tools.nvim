@@ -61,6 +61,7 @@ local function normalise(raw, ctx, client)
     filterText = ctx.before:sub(start_col + 1) .. label,
     textEdit = { range = range, newText = text },
     documentation = { kind = "plaintext", value = text },
+    _documentation_filetype = ctx.filetype,
     _encoding = "utf-16",
     _copilot_client = client,
     _copilot_uuid = raw.uuid,
