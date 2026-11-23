@@ -5,6 +5,7 @@ end
 local doc = require("completion_tools.documentation")
 local config = require("completion_tools.config")
 local ui = require("completion_tools.ui")
+local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 
 local function eq(expected, actual)
   assert(vim.deep_equal(expected, actual), vim.inspect({ expected = expected, actual = actual }))
@@ -27,6 +28,23 @@ lines, language = doc.build({ detail = "return 42" }, "lua")
 eq({ "return 42" }, lines)
 eq("lua", language)
 eq({}, doc.build({}))
+
+local signature = {
+  label = "build(item, filetype)",
+  kind = CompletionItemKind.Function,
+  detail = "function",
+  documentation = {
+    kind = "markdown",
+    value = "```lua\nfunction M.build(item, filetype)\n  -> string[]\n  2. string?\n```",
+  },
+}
+local signature_lines = vim.split(signature.documentation.value, "\n", { plain = true })
+eq(signature_lines, doc.build(signature, "lua"))
+eq({ "function" }, doc.build({ kind = signature.kind, detail = signature.detail, label = signature.label }, "lua"))
+local other_label = vim.tbl_extend("force", signature, { label = "other()" })
+eq("function", doc.build(other_label, "lua")[2])
+local other_detail = vim.tbl_extend("force", signature, { detail = "completion_tools.documentation" })
+eq("completion_tools.documentation", doc.build(other_detail, "lua")[2])
 
 local markdown = 'Use `name` and **bold**.\n\n```lua\nlocal value = map["key"]\n```'
 local item = {
@@ -97,9 +115,25 @@ assert(
   "The fenced code should use the Lua parser"
 )
 eq(2, vim.wo[current.win].conceallevel)
+local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
+local function concealed_rows()
+  return vim.tbl_map(function(mark)
+    return mark[2]
+  end, vim.api.nvim_buf_get_extmarks(current.buf, doc_ns, 0, -1, {}))
+end
+eq({ 0, 2, 3, 7, 11, 13 }, concealed_rows())
+
+-- Older highlight queries can highlight the block without hiding its fences.
+vim.treesitter.query.set("markdown", "highlights", "(fenced_code_block) @markup.raw.block")
+assert(ui.documentation(signature, cfg))
+eq(signature_lines, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
+eq({ 0, 4 }, concealed_rows())
+eq(3, vim.api.nvim_win_get_height(current.win))
+vim.treesitter.query.set("markdown", "highlights", nil)
 
 assert(ui.documentation(plain_item, cfg))
 eq(0, vim.wo[current.win].conceallevel)
+eq({}, concealed_rows())
 assert(not vim.treesitter.highlighter.active[current.buf], "Plain text should clear the Markdown highlighter")
 
 local start = vim.treesitter.start

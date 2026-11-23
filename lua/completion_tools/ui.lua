@@ -10,6 +10,7 @@ local base_text = require("base_tools.text")
 ---@field label? string Human-readable status for diagnostics.
 
 local ns = vim.api.nvim_create_namespace("completion-tools-menu")
+local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local menu, doc, buf, doc_buf
 local viewport = 1
 local geometry, doc_item
@@ -424,6 +425,21 @@ function M.reposition(ctx, config)
   return true
 end
 
+local function conceal_markdown_fences(bufnr)
+  local ok, parser = pcall(vim.treesitter.get_parser, bufnr, "markdown")
+  if not ok or not parser then
+    return
+  end
+
+  -- Keep fence text available for language injections even with older highlight queries.
+  local query = vim.treesitter.query.parse("markdown", "(fenced_code_block_delimiter) @fence")
+  for _, tree in ipairs(parser:parse()) do
+    for _, node in query:iter_captures(tree:root(), bufnr) do
+      vim.api.nvim_buf_set_extmark(bufnr, doc_ns, node:start(), 0, { conceal_lines = "" })
+    end
+  end
+end
+
 function M.documentation(item, config)
   if not M.visible() or not geometry then
     return false
@@ -467,10 +483,14 @@ function M.documentation(item, config)
   if replace then
     close_doc_view()
     vim.treesitter.stop(doc_buf)
+    vim.api.nvim_buf_clear_namespace(doc_buf, doc_ns, 0, -1)
     vim.bo[doc_buf].syntax = ""
     vim.api.nvim_buf_set_lines(doc_buf, 0, -1, false, lines)
     if language then
       pcall(vim.treesitter.start, doc_buf, vim.treesitter.language.get_lang(language) or language)
+    end
+    if language == "markdown" then
+      conceal_markdown_fences(doc_buf)
     end
     doc_lines, doc_language = lines, language
   end
