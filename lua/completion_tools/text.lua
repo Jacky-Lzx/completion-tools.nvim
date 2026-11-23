@@ -1,4 +1,3 @@
-local base_text = require("base_tools.text")
 local M = {}
 M.characters = "[%z\1-\127\194-\244][\128-\191]*"
 
@@ -15,18 +14,6 @@ function M.clean(text, max_bytes)
     ending = ending - 1
   end
   return (text:sub(1, ending):gsub("[%c]", " ")) .. "…"
-end
-
--- Return the number of retained original bytes as well as the display text.
-function M.truncate(text, width)
-  local clipped, _, last = base_text.clip(text, width)
-  return clipped, last
-end
-
--- Paths are distinguished by their last components, not their shared prefix.
-function M.truncate_path(value, width)
-  local clipped, first, last = base_text.clip(value, width, { side = "start" })
-  return clipped, first == 0 and last or 0
 end
 
 return M

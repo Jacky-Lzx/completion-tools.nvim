@@ -1,5 +1,6 @@
 local M = {}
 local float = require("base_tools.float")
+local base_text = require("base_tools.text")
 
 --- Status displayed in the completion menu footer.
 ---@class completion_tools.MenuStatus
@@ -56,7 +57,7 @@ local function status_footer(width)
   if not menu_status then
     return ""
   end
-  local label = require("completion_tools.text").truncate(status_text(), width - 2)
+  local label = base_text.clip(status_text(), width - 2)
   return { { " " .. label .. " ", menu_status.highlight } }
 end
 
@@ -337,14 +338,8 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
     M.documentation(doc_item, config)
   end
   if ctx.mode == "cmdline" then
-    if ctx.cmdtype == "/" or ctx.cmdtype == "?" then
-      -- Ask the native input loop to repaint the unchanged search and floats
-      -- together. A direct screen flush drops incsearch's current-match color.
-      vim.fn.setcmdline(vim.fn.getcmdline(), vim.fn.getcmdpos())
-    else
-      -- Native command-line input can defer float painting until another key.
-      vim.cmd.redraw()
-    end
+    -- Native command-line input can defer float painting until another key.
+    vim.cmd.redraw()
   end
 end
 

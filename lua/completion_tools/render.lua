@@ -1,8 +1,10 @@
 local M = {}
 local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
+local base_text = require("base_tools.text")
 local text = require("completion_tools.text")
 local kinds = require("completion_tools.kinds")
 local highlight = require("completion_tools.highlight")
+local keep_path_suffix = { side = "start" }
 
 M.components = {
   kind_icon = true,
@@ -20,6 +22,7 @@ local function fields(entry, opts)
   local details = item.labelDetails or {}
   local detail = details.detail
   local detail_code = detail ~= nil
+
   -- Keep display text separate from the CompletionItem used for acceptance.
   -- Older servers put a one-line signature in detail instead of labelDetails.
   if not detail and type(item.detail) == "string" and not item.detail:find("[\r\n]") then
@@ -36,10 +39,12 @@ local function fields(entry, opts)
       detail = "  " .. detail
     end
   end
+
   detail = text.clean(detail, opts.max_label_bytes)
   if detail ~= "" and label:sub(-#detail) == detail then
     detail = ""
   end
+
   local description = text.clean(details.description, opts.max_label_bytes)
   local file = kinds.is_path(item.kind, entry.source_id)
   if file then
@@ -49,20 +54,26 @@ local function fields(entry, opts)
       if value:sub(1, 1) == "/" or value:match("^~[/\\]") then
         return vim.fn.fnamemodify(value, ":~:.")
       end
+
       return value
     end
+
     detail, description = path(detail), path(description)
   end
+
   local metadata = description
   local separate_detail = false
   for _, group in ipairs(opts.columns) do
     separate_detail = separate_detail or vim.tbl_contains(group, "label_detail")
   end
+
   if file and opts.label_details and not separate_detail and detail ~= "" and detail ~= description then
     metadata = detail .. (description ~= "" and "  " .. description or "")
   end
+
   local code = label .. (opts.label_details and not file and detail or "")
   code = text.clean(code, opts.max_label_bytes)
+
   return {
     kind_icon = text.clean(icon, 32),
     label = code,
@@ -292,11 +303,8 @@ function M.row(layout, index, entry, ctx, opts)
   for _, column in ipairs(layout.columns) do
     line = line .. string.rep(" ", column.gap)
     local start = #line
-    local truncate = row.file
-        and (column.name == "label_detail" or column.name == "label_description")
-        and text.truncate_path
-      or text.truncate
-    local value, retained = truncate(row[column.name], column.width)
+    local path_metadata = row.file and (column.name == "label_detail" or column.name == "label_description")
+    local value, _, retained = base_text.clip(row[column.name], column.width, path_metadata and keep_path_suffix or nil)
     line = line .. value .. string.rep(" ", math.max(0, column.width - vim.fn.strdisplaywidth(value)))
 
     if column.name == "kind" or column.name == "kind_icon" then

@@ -233,15 +233,17 @@ test("file metadata aligns, preserves names and path tails, and never becomes co
   eq(original, items)
 end)
 test("path truncation keeps UTF-8 suffixes within display cells", function()
-  local text = require("completion_tools.text")
-  local value = "/目录/论文/章节😀.tex"
-  eq(value, text.truncate_path(value, 80))
+  local value = "目录/论文/章节😀.tex"
+  local item = entry({ label = "章节😀.tex", kind = 17, labelDetails = { description = value } })
+  local menu = config.validate({ menu = { columns = { { "label_description" } }, padding = 0, min_width = 1 } }).menu
+  local full = paint(item, ctx, menu, 80)
+  eq(value, full)
   for width = 1, 30 do
-    local suffix = text.truncate_path(value, width)
+    local suffix = paint(item, ctx, menu, width)
     assert(vim.fn.strdisplaywidth(suffix) <= width)
     assert(vim.str_utfindex(suffix) > 0)
     if width >= 8 then
-      assert(suffix:sub(-4) == ".tex")
+      assert(vim.trim(suffix):sub(-4) == ".tex")
     end
   end
 end)
