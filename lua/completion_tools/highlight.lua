@@ -1,6 +1,7 @@
 local M = {}
 local cache, order, next_slot = {}, {}, 1
 local keywords, types = {}, {}
+
 for word in
   ("async await const def enum export fn func function impl import let local mut new pub return self static struct type var void"):gmatch(
     "%S+"
@@ -8,6 +9,7 @@ for word in
 do
   keywords[word] = true
 end
+
 for word in
   ("any bool boolean byte char double error float float32 float64 i8 i16 i32 i64 int integer never nil number object str string u8 u16 u32 u64 unknown usize"):gmatch(
     "%S+"
@@ -27,6 +29,7 @@ local function lexical(text, spans)
   while pos <= #text do
     local rest, char = text:sub(pos), text:sub(pos, pos)
     local token, group
+
     if char == '"' or char == "'" or char == "`" then
       local ending, escaped = pos + 1, false
       while ending <= #text do
@@ -35,9 +38,11 @@ local function lexical(text, spans)
           ending = ending + 1
           break
         end
+
         escaped = c == "\\" and not escaped
         ending = ending + 1
       end
+
       token, group = text:sub(pos, ending - 1), "@string"
     elseif char == "\\" then
       token, group = rest:match("^\\[%a@]+"), "@function"
@@ -45,6 +50,7 @@ local function lexical(text, spans)
       token, group = rest:match("^%d[%w_.]*"), "@number"
     elseif char:match("[%a_]") then
       token = rest:match("^[%a_][%w_]*")
+
       local after = rest:sub(#token + 1)
       if keywords[token] then
         group = "@keyword"
@@ -64,10 +70,12 @@ local function lexical(text, spans)
     elseif char:match("[:<>=+*/&|!?~%%%-]") then
       token, group = char, "@operator"
     end
+
     if token then
       if group then
         add(spans, pos - 1, pos + #token - 1, group)
       end
+
       pos = pos + #token
     else
       pos = pos + 1
@@ -80,6 +88,7 @@ local function treesitter(text, filetype, spans)
   if not text:find("[%(%):<{}]") or filetype == "" then
     return
   end
+
   local parser
   pcall(function()
     local lang = vim.treesitter.language.get_lang(filetype) or filetype
@@ -87,8 +96,10 @@ local function treesitter(text, filetype, spans)
     if not query then
       return
     end
+
     parser = vim.treesitter.get_string_parser(text, lang, { injections = { [lang] = "" } })
     local tree = parser:parse()[1]
+
     for id, node, metadata in query:iter_captures(tree:root(), text, 0, 1) do
       local capture = query.captures[id]
       if capture:sub(1, 1) ~= "_" and capture ~= "spell" and capture ~= "nospell" then
@@ -100,6 +111,7 @@ local function treesitter(text, filetype, spans)
       end
     end
   end)
+
   if parser then
     parser:destroy()
   end
@@ -126,14 +138,17 @@ function M.get(text, filetype, opts)
   if not spans then
     spans = {}
     lexical(text, spans)
+
     if opts.treesitter and #text <= opts.max_bytes then
       treesitter(text, filetype, spans)
     end
+
     if opts.cache_size > 0 then
       local old = order[next_slot]
       if old then
         cache[old] = nil
       end
+
       order[next_slot], cache[key] = key, spans
       next_slot = next_slot % opts.cache_size + 1
     end
