@@ -107,5 +107,4 @@ protocol tests and real PTY tests on Neovim 0.11.5 and 0.12.6, plus local
 lua-language-server and LuaSnip checks. Coverage includes stale responses,
 continuous typing, index starvation, cache invalidation, selection preservation,
 keymap fallback, UTF-16 replacement, additional imports, resolve, snippet jumping
-and command-line acceptance. CI targets both Neovim versions on Linux; remote CI
-was not run for the recorded measurements.
+and command-line acceptance. Current CI targets Neovim 0.12 on Linux.

@@ -1,4 +1,5 @@
 local M = {}
+local float = require("base_tools.float")
 
 --- Status displayed in the completion menu footer.
 ---@class completion_tools.MenuStatus
@@ -8,7 +9,8 @@ local M = {}
 ---@field label? string Human-readable status for diagnostics.
 
 local ns = vim.api.nvim_create_namespace("completion-tools-menu")
-local win, buf, doc_win, doc_buf, viewport = nil, nil, nil, nil, 1
+local menu, doc, buf, doc_buf
+local viewport = 1
 local geometry, doc_item
 ---@type completion_tools.MenuStatus|nil
 local menu_status
@@ -29,8 +31,8 @@ local function cancel_shrink()
   shrink_timer = nil
 end
 
-local function valid(id)
-  return id and vim.api.nvim_win_is_valid(id)
+local function valid(view)
+  return view ~= nil and view:valid()
 end
 
 local function stop_status_animation()
@@ -59,7 +61,7 @@ local function status_footer(width)
 end
 
 local function sync_status_animation()
-  if not valid(win) or not menu_status or not menu_status.frames then
+  if not valid(menu) or not menu_status or not menu_status.frames then
     stop_status_animation()
     return
   end
@@ -77,24 +79,18 @@ local function sync_status_animation()
       if status_token ~= token then
         return
       end
-      if not valid(win) or not menu_status or not menu_status.frames then
+      if not valid(menu) or not menu_status or not menu_status.frames then
         stop_status_animation()
         return
       end
 
       status_frame = status_frame % #menu_status.frames + 1
-      local footer = status_footer(vim.api.nvim_win_get_width(win))
+      local footer = status_footer(vim.api.nvim_win_get_width(menu.win))
       -- Animation changes only the border, leaving text, selection and geometry intact.
-      vim.api.nvim_win_set_config(win, { footer = footer, footer_pos = "right" })
+      menu:update({ footer = footer, footer_pos = "right" })
       frame_config.footer = footer
     end)
   )
-end
-
-local function close(id)
-  if valid(id) then
-    vim.api.nvim_win_close(id, true)
-  end
 end
 
 local function scratch(id, filetype)
@@ -102,10 +98,7 @@ local function scratch(id, filetype)
     return id
   end
 
-  id = vim.api.nvim_create_buf(false, true)
-  vim.bo[id].bufhidden, vim.bo[id].filetype = "hide", filetype
-
-  return id
+  return float.scratch({ filetype = filetype })
 end
 
 function M.highlights()
@@ -131,8 +124,10 @@ local function close_doc_view()
 end
 function M.hide_documentation()
   close_doc_view()
-  close(doc_win)
-  doc_win, doc_item = nil, nil
+  if doc then
+    doc:close()
+  end
+  doc, doc_item = nil, nil
   doc_lines, doc_language = nil, nil
 end
 
@@ -147,15 +142,17 @@ function M.hide()
   stop_status_animation()
   menu_status = nil
   cancel_shrink()
-  close(win)
-  win, viewport, geometry = nil, 1, nil
+  if menu then
+    menu:close()
+  end
+  menu, viewport, geometry = nil, 1, nil
   frame_items, frame_selected = nil, nil
   frame_layout, frame_lines, frame_spans, frame_config = nil, nil, nil, nil
   M.hide_documentation()
 end
 
 function M.visible()
-  return valid(win) or false
+  return valid(menu)
 end
 
 function M.is_inverse()
@@ -308,16 +305,23 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
       end
     end
   end
-  if valid(win) then
+  if valid(menu) then
     if not vim.deep_equal(frame_config, window_config) then
-      vim.api.nvim_win_set_config(win, window_config)
+      menu:update(window_config)
     end
   else
-    win = vim.api.nvim_open_win(buf, false, window_config)
-    vim.wo[win].winhighlight = "Normal:CompletionToolsMenu,FloatBorder:CompletionToolsBorder,CursorLine:CompletionToolsSelected"
-      .. ",Search:None,IncSearch:None,CurSearch:None"
-    vim.wo[win].wrap, vim.wo[win].scrolloff = false, 0
+    menu = float.open({
+      buf = buf,
+      config = window_config,
+      win_options = {
+        winhighlight = "Normal:CompletionToolsMenu,FloatBorder:CompletionToolsBorder,CursorLine:CompletionToolsSelected"
+          .. ",Search:None,IncSearch:None,CurSearch:None",
+        wrap = false,
+        scrolloff = 0,
+      },
+    })
   end
+  local win = menu.win
   vim.wo[win].cursorline = selected ~= nil
   local selected_row = target - viewport + 1
   if next_geometry.inverse then
@@ -329,7 +333,7 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
   frame_items, frame_selected = items, selected
   frame_layout, frame_lines, frame_spans, frame_config = layout, lines, spans, window_config
   sync_status_animation()
-  if moved and valid(doc_win) and doc_item then
+  if moved and valid(doc) and doc_item then
     M.documentation(doc_item, config)
   end
   if ctx.mode == "cmdline" then
@@ -337,11 +341,6 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
       -- Ask the native input loop to repaint the unchanged search and floats
       -- together. A direct screen flush drops incsearch's current-match color.
       vim.fn.setcmdline(vim.fn.getcmdline(), vim.fn.getcmdpos())
-      if vim.fn.has("nvim-0.12") == 0 then
-        -- 0.11 does not process setcmdline() as a native input change. Its
-        -- redraw path restores incsearch highlighting after flushing floats.
-        vim.cmd.redraw()
-      end
     else
       -- Native command-line input can defer float painting until another key.
       vim.cmd.redraw()
@@ -366,7 +365,7 @@ local function draw(items, selected, ctx, config, settled)
 
   if
     not settled
-    and valid(win)
+    and valid(menu)
     and geometry
     and window_config.height < geometry.height
     and opts.shrink_delay_ms > 0
@@ -383,7 +382,7 @@ local function draw(items, selected, ctx, config, settled)
 
         shrink_timer, shrink_token = nil, nil
         local context = require("completion_tools.context")
-        if valid(win) and context.same(ctx, context.get(config)) then
+        if valid(menu) and context.same(ctx, context.get(config)) then
           draw(items, selected, ctx, config, true)
         end
       end, opts.shrink_delay_ms)
@@ -406,7 +405,7 @@ end
 function M.reposition(ctx, config)
   -- New input invalidates a shrink even before its providers return a result.
   cancel_shrink()
-  if not valid(win) or not geometry then
+  if not valid(menu) or not geometry then
     return false
   end
   local wc, next_geometry = placement(vim.api.nvim_buf_line_count(buf), geometry.width, ctx, config)
@@ -420,10 +419,10 @@ function M.reposition(ctx, config)
     return true
   end
   if not vim.deep_equal(frame_config, wc) then
-    vim.api.nvim_win_set_config(win, wc)
+    menu:update(wc)
     frame_config = wc
     geometry = next_geometry
-    if valid(doc_win) and doc_item then
+    if valid(doc) and doc_item then
       M.documentation(doc_item, config)
     end
   end
@@ -466,9 +465,9 @@ function M.documentation(item, config)
   end
   width = math.min(width, opts.max_width, available)
   local col = right >= width and geometry.col + geometry.width + 2 or geometry.col - width - 2
-  local reuse_media = media and doc_token and doc_item == item and valid(doc_win)
+  local reuse_media = media and doc_token and doc_item == item and valid(doc)
   local replace = not reuse_media
-    and (media or doc_token or not valid(doc_win) or language ~= doc_language or not vim.deep_equal(lines, doc_lines))
+    and (media or doc_token or not valid(doc) or language ~= doc_language or not vim.deep_equal(lines, doc_lines))
   doc_buf = scratch(doc_buf, "completion-tools-documentation")
   if replace then
     close_doc_view()
@@ -493,15 +492,21 @@ function M.documentation(item, config)
     focusable = false,
     zindex = 101,
   }
-  if valid(doc_win) then
-    if vim.api.nvim_win_get_width(doc_win) ~= width then
-      vim.api.nvim_win_set_width(doc_win, width)
+  if valid(doc) then
+    if vim.api.nvim_win_get_width(doc.win) ~= width then
+      vim.api.nvim_win_set_width(doc.win, width)
     end
   else
-    doc_win = vim.api.nvim_open_win(doc_buf, false, wc)
-    vim.wo[doc_win].winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsDocBorder"
-      .. ",Search:None,IncSearch:None,CurSearch:None"
+    doc = float.open({
+      buf = doc_buf,
+      config = wc,
+      win_options = {
+        winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsDocBorder"
+          .. ",Search:None,IncSearch:None,CurSearch:None",
+      },
+    })
   end
+  local doc_win = doc.win
   vim.wo[doc_win].wrap = not media
   vim.wo[doc_win].conceallevel = language == "markdown" and not preview and 2 or 0
   vim.wo[doc_win].concealcursor = "nvic"
@@ -509,7 +514,7 @@ function M.documentation(item, config)
     wc.height = math.min(max_height, math.max(1, vim.api.nvim_win_text_height(doc_win, {}).all))
     wc.row = math.max(top, math.min(geometry.row, bottom - wc.height - 1))
   end
-  vim.api.nvim_win_set_config(doc_win, wc)
+  doc:update(wc)
   if replace then
     vim.api.nvim_win_set_cursor(doc_win, { 1, 0 })
   end
@@ -529,7 +534,9 @@ function M.documentation(item, config)
       local token, target_buf, target_win = {}, doc_buf, doc_win
       doc_token = token
       doc_view = require("completion_tools.sources.path.preview").render(preview, target_buf, target_win, function()
-        return doc_token == token and valid(target_win) and vim.api.nvim_win_get_buf(target_win) == target_buf
+        return doc_token == token
+          and vim.api.nvim_win_is_valid(target_win)
+          and vim.api.nvim_win_get_buf(target_win) == target_buf
       end)
     end
   end
@@ -537,10 +544,10 @@ function M.documentation(item, config)
 end
 
 function M.scroll_documentation(delta)
-  if not valid(doc_win) or doc_view then
+  if not valid(doc) or doc_view then
     return false
   end
-  vim.api.nvim_win_call(doc_win, function()
+  vim.api.nvim_win_call(doc.win, function()
     vim.cmd("normal! " .. math.abs(delta) .. (delta > 0 and "\5" or "\25"))
   end)
   return true

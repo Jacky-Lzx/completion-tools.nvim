@@ -255,6 +255,8 @@ client.
     ui = UI(temporary)
     try:
         ui.rpc("nvim_ui_attach", COLS, ROWS, {"rgb": True, "ext_linegrid": True})
+        base_tools = os.environ.get("BASE_TOOLS_PATH", str(ROOT.parent / "base-tools.nvim"))
+        ui.lua(f"vim.opt.runtimepath:prepend({json.dumps(base_tools)})")
         ui.lua(f"vim.opt.runtimepath:prepend({json.dumps(str(ROOT))}); dofile({json.dumps(str(OUT / 'theme.lua'))})")
         ui.rpc("nvim_command", "edit " + str(demo / "demo.lua"))
         ui.lua('''vim.bo.filetype = "lua"

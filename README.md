@@ -12,7 +12,8 @@ Pure Lua completion with readable menus and documentation.
 
 ## Requirements
 
-Neovim **0.11+**. No required plugin dependencies. Install language servers separately. A Nerd Font is optional.
+Neovim **0.12+** and `Jacky-Lzx/base-tools.nvim` are required. Install language
+servers separately. A Nerd Font is optional.
 
 ## Installation
 
@@ -21,12 +22,13 @@ With lazy.nvim:
 ```lua
 {
   "Jacky-Lzx/completion-tools.nvim",
+  dependencies = { "Jacky-Lzx/base-tools.nvim" },
   main = "completion-tools",
   opts = { cmdline = { enabled = true } },
 }
 ```
 
-Or put this repository and its required dependencies on `runtimepath`, then call:
+Or put this repository and `base-tools.nvim` on `runtimepath`, then call:
 
 ```lua
 require("completion-tools").setup({ cmdline = { enabled = true } })

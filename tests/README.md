@@ -1,8 +1,11 @@
 # Testing
 
 Run from any directory with `sh /path/to/checkout/tests/run.sh`. Python 3.9+
-and Neovim are required; `NVIM_BIN` selects the executable (`NVIM` is an RPC
+and Neovim 0.12+ are required. `NVIM_BIN` selects the executable (`NVIM` is an RPC
 address inside Neovim jobs and is not an executable override).
+
+Tests load `base-tools.nvim` from a sibling checkout. Set `BASE_TOOLS_PATH` to
+use a checkout in another location.
 
 ```sh
 sh tests/run.sh                     # Default offline suites
@@ -45,7 +48,7 @@ remain owned by this repository. After editing a runner, run its regression
 checks and the affected real suites. Avoid bulk changes to behavior assertions
 merely to make a runner migration pass.
 
-Cross-plugin revisions are recorded under `fixtures` in `cases.json`. Inspect
+Dependency revisions are recorded under `fixtures` in `cases.json`. Inspect
 those pins before explicitly installing them into absent sibling directories:
 
 ```sh

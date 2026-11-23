@@ -4,7 +4,16 @@
     "unit",
     "ui"
   ],
-  "defaults": {},
+  "defaults": {
+    "BASE_TOOLS_PATH": "{root}/../base-tools.nvim"
+  },
+  "fixtures": {
+    "base-tools.nvim": {
+      "repository": "Jacky-Lzx/base-tools.nvim",
+      "revision": "f90d8e3a808bc99269e0f6714a3e702fb2630ee2",
+      "path": "$BASE_TOOLS_PATH"
+    }
+  },
   "cases": [
     {
       "name": "docs",

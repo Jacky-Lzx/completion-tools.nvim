@@ -13,7 +13,7 @@ CONTENTS                                                    *completion-tools*
 ==============================================================================
 QUICK START                                      *completion-tools-quickstart*
 
-Requires Neovim 0.11+. No required plugin dependencies. Install language
+Requires Neovim 0.12+ and base-tools.nvim on 'runtimepath'. Install language
 servers separately. A Nerd Font is optional.
 
 >lua

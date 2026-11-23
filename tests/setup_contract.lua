@@ -3,14 +3,14 @@ local plugin = require("completion_tools")
 
 local has = vim.fn.has
 vim.fn.has = function(feature)
-  if feature == "nvim-0.11" then
+  if feature == "nvim-0.12" then
     return 0
   end
   return has(feature)
 end
 for _, opts in ipairs({ false, { max_items = -1 } }) do
   local ok, err = pcall(plugin.setup, opts)
-  assert(not ok and err:find("completion-tools requires Neovim 0.11+", 1, true), tostring(err))
+  assert(not ok and err:find("completion-tools requires Neovim 0.12+", 1, true), tostring(err))
 end
 vim.fn.has = has
 

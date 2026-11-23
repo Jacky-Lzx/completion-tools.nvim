@@ -151,8 +151,9 @@ def main():
     fixtures = []
     manifest = ROOT / "tests/cases.json"
     if manifest.exists():
-        for value in json.loads(manifest.read_text()).get("defaults", {}).values():
-            path = Path(os.path.expandvars(value.replace("{root}", str(ROOT)))).expanduser()
+        for key, value in json.loads(manifest.read_text()).get("defaults", {}).items():
+            value = os.environ.get(key, value).replace("{root}", str(ROOT))
+            path = Path(os.path.expandvars(value)).expanduser()
             if (path / "lua").is_dir():
                 fixtures.append(str(path.resolve()))
     with tempfile.TemporaryDirectory(prefix="nvim-docs-") as temp:

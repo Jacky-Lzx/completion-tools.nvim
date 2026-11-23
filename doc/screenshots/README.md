@@ -14,7 +14,9 @@ No user configuration is loaded or modified. Temporary files and processes are c
 
 ## Reproduce
 
-Requires Python 3, Neovim 0.11+, lua-language-server and `rsvg-convert` on PATH.
+Requires Python 3, Neovim 0.12+, lua-language-server and `rsvg-convert` on PATH.
+The script loads a sibling `base-tools.nvim` checkout or the directory in
+`BASE_TOOLS_PATH`.
 The checked-in images were captured with Neovim 0.12.6 on macOS, using Menlo.
 For the same typography, install Menlo or adjust the font in `capture.py`.
 

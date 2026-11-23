@@ -2,8 +2,12 @@ local M = {}
 
 function M.check()
   vim.health.start("completion-tools.nvim")
-  if vim.fn.has("nvim-0.11") == 0 then
-    vim.health.error("Neovim 0.11+ is required", { "Upgrade Neovim" })
+  if vim.fn.has("nvim-0.12") == 0 then
+    vim.health.error("Neovim 0.12+ is required", { "Upgrade Neovim" })
+    return
+  end
+  if #vim.api.nvim_get_runtime_file("lua/base_tools/init.lua", false) == 0 then
+    vim.health.error("base-tools.nvim is required", { "Add base-tools.nvim to runtimepath" })
     return
   end
   local issues = {}

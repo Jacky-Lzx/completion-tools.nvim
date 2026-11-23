@@ -809,8 +809,8 @@ local function register_autocmds(config, warmup)
 end
 
 function M.setup(opts)
-  if vim.fn.has("nvim-0.11") ~= 1 then
-    error("completion-tools requires Neovim 0.11+")
+  if vim.fn.has("nvim-0.12") ~= 1 then
+    error("completion-tools requires Neovim 0.12+")
   end
 
   assert(opts == nil or type(opts) == "table", "completion-tools.nvim: setup expects a table")
