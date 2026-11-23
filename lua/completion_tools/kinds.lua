@@ -1,4 +1,5 @@
 local M = {}
+local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 
 -- LSP CompletionItemKind values. Icons are measured in display cells by the layout.
 local definitions = {
@@ -30,6 +31,11 @@ local definitions = {
 }
 
 local unknown = { "Unknown", "?", "Special" }
+
+function M.is_path(entry)
+  local kind = entry.item.kind
+  return kind == CompletionItemKind.File or kind == CompletionItemKind.Folder or entry.source_id == "path"
+end
 
 function M.get(kind, icons)
   local definition = definitions[kind or 1] or unknown

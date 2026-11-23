@@ -215,6 +215,7 @@ local ok, err = xpcall(function()
     wait("return require('completion_tools').is_menu_visible()")
     lua([[assert(require('completion_tools').get_context().completion_type=='help')
       assert(require('completion_tools').get_selected_item().label=='write-local-help')
+      assert(require('completion_tools').get_selected_item()._syntax==false)
       local seen={}
       for _,w in ipairs(vim.api.nvim_list_wins()) do
         if vim.bo[vim.api.nvim_win_get_buf(w)].filetype=='completion-tools-menu' then
@@ -237,6 +238,7 @@ local ok, err = xpcall(function()
     input(":lua vim.ap")
     wait("return require('completion_tools').is_menu_visible()")
     eq("ap", lua("return require('completion_tools').get_context().prefix"))
+    eq("lua", lua("return require('completion_tools').get_selected_item()._syntax"))
     input("<Tab>")
     wait("return vim.fn.getcmdline()=='lua vim.api'")
     input("<Esc>:lua vim.api")

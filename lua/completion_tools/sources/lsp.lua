@@ -162,7 +162,7 @@ function M.new()
 
     local raw = vim.tbl_extend("force", {}, entry.item)
     raw._client_id, raw._encoding = nil, nil
-    raw._client_name = nil
+    raw._client_name, raw._syntax = nil, nil
     local finished = false
     local ok, id = client:request("completionItem/resolve", raw, function(err, item)
       finished = true

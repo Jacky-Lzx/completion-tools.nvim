@@ -1,4 +1,6 @@
 local M = {}
+local completion_syntax = { lua = "lua", expression = "vim", ["function"] = "vim" }
+
 local function argument_start(before)
   local start, escaped = 0, false
   for i = 1, #before do
@@ -38,7 +40,7 @@ function M.describe(before, cmdtype)
     if #escaping % 2 == 1 and prefix:match("^[vVmMcC]") then
       prefix, start = prefix:sub(2), start + 1
     end
-    return { prefix = prefix, start_col = start }
+    return { prefix = prefix, start_col = start, completion_syntax = false }
   end
   local pattern, kind = vim.fn.getcmdcomplpat(), vim.fn.getcmdcompltype()
   local parsed = command(before)
@@ -88,6 +90,7 @@ function M.describe(before, cmdtype)
     prefix = prefix,
     start_col = #before - #prefix,
     completion_type = kind,
+    completion_syntax = completion_syntax[kind] or false,
     command = parsed and parsed.cmd,
     argument_trigger = before:find("%S") ~= nil and prefix == "",
   }

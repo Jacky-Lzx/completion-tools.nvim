@@ -59,10 +59,12 @@ function M.new(opts)
             end)
           end
         end
+        local folder = label:sub(-1) == "/"
         items[#items + 1] = {
           label = label,
           insertText = text,
-          kind = label:sub(-1) == "/" and 19 or kind,
+          kind = folder and 19 or kind,
+          _syntax = not folder and ctx.completion_syntax or false,
           -- Native completion already interpreted escapes, wildcards and user
           -- commands. Do not discard or reorder these results with another matcher.
           filterText = ctx.prefix,

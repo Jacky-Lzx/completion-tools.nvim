@@ -50,7 +50,7 @@ local function fields(entry, opts)
     detail = ""
   end
   local description = text.clean(details.description, opts.max_label_bytes)
-  local file = item.kind == 17 or item.kind == 19 or entry.source_id == "path"
+  local file = kinds.is_path(entry)
   if file then
     -- File metadata is a location, not a signature in the buffer's language.
     detail = vim.trim(detail)

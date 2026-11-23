@@ -86,7 +86,7 @@ def handle(message):
         result["additionalTextEdits"] = [{"range": {"start": {"line": 0, "character": 0},
             "end": {"line": 0, "character": 0}}, "newText": "import fixture\n"}]
         result["command"] = {"title": "Accept fixture", "command": "fixture.accept"}
-        trace("resolve", label=params["label"])
+        trace("resolve", label=params["label"], private_syntax="_syntax" in params)
         respond(request_id, result, 0.08)
     elif method == "workspace/executeCommand":
         trace("execute", command=params["command"])

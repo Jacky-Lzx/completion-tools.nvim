@@ -1,4 +1,5 @@
 local M = {}
+local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 local kinds = require("completion_tools.kinds")
 local cache, order, next_slot = {}, {}, 1
 local keywords, types = {}, {}
@@ -115,23 +116,17 @@ function M.get(text, label_bytes, entry, ctx, opts)
   if not opts.enabled then
     return {}
   end
-  local ft = ctx.filetype or ""
-  local literal = entry.item.kind == 17 or entry.item.kind == 19 or entry.source_id == "path"
-  if ctx.mode == "cmdline" then
-    if ctx.completion_type == "lua" then
-      ft = "lua"
-    elseif ctx.completion_type == "expression" or ctx.completion_type == "function" then
-      ft = "vim"
-    else
-      -- Help tags, paths, options and commands are names, not source code.
-      -- Never interpret their punctuation/words using the current buffer's language.
-      ft, literal = "", true
-    end
-  end
+  local kind = entry.item.kind
+  local syntax = entry.item._syntax
+  local has_language = type(syntax) == "string" and syntax ~= ""
+  local plain_text = label_bytes > 0 and (kind == nil or kind == CompletionItemKind.Text)
+  local literal = syntax == false
+    or (not has_language and (ctx.completion_syntax == false or plain_text or kinds.is_path(entry)))
+  local ft = literal and "" or (has_language and syntax or ctx.completion_syntax or ctx.filetype or "")
   local key = table.concat({
     ft,
     tostring(literal),
-    tostring(entry.item.kind),
+    tostring(kind),
     tostring(label_bytes),
     tostring(opts.treesitter),
     tostring(opts.max_bytes),
@@ -140,11 +135,9 @@ function M.get(text, label_bytes, entry, ctx, opts)
   local spans = cache[key]
   if not spans then
     spans = {}
-    local _, _, group = kinds.get(entry.item.kind)
-    local plain_text = label_bytes > 0 and (entry.item.kind == nil or entry.item.kind == 1)
-    add(spans, 0, (plain_text or literal) and #text or math.min(label_bytes, #text), group, 110)
-    if not plain_text and not literal then
-      -- Text candidates stay uniformly muted, even when words resemble code.
+    local _, _, group = kinds.get(kind)
+    add(spans, 0, literal and #text or math.min(label_bytes, #text), group, 110)
+    if not literal then
       lexical(text, spans)
       if opts.treesitter and #text <= opts.max_bytes then
         treesitter(text, ft, spans)

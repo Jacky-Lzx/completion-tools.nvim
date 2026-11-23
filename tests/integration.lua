@@ -1924,7 +1924,11 @@ local ok, err = xpcall(function()
     wait("return vim.api.nvim_get_current_line():sub(-1)=='!'")
   end)
   test("LSP protocol: trigger, UTF-16 defaults, cached ranges and late imports/command", function()
-    lua([[fixture_trace={}; require("completion_tools").setup({sources={"lsp"}});
+    lua([[fixture_trace={}; require("completion_tools").setup({sources={"lsp"},
+      providers={lsp={transform_items=function(_,items)
+        for _,item in ipairs(items) do item._syntax=false end
+        return items
+      end}}});
       vim.api.nvim_buf_set_lines(0,0,-1,false,{"header","😀"}); vim.api.nvim_win_set_cursor(0,{2,0})]])
     start_fixture()
     input("A.")
@@ -1938,12 +1942,14 @@ local ok, err = xpcall(function()
     wait(
       "local c=require('completion_tools'); return c.get_context() and c.get_context().before=='😀.fo' and c._can('accept')"
     )
+    eq(false, lua("return require('completion_tools').get_selected_item()._syntax"))
     input("<Tab>")
     wait("return vim.api.nvim_get_current_line() == '😀.foobar'")
     wait("return vim.api.nvim_buf_get_lines(0,0,1,false)[1] == 'import fixture'")
     wait("for _,e in ipairs(fixture_trace) do if e.kind=='execute' then return true end end; return false")
     eq({ "import fixture", "header", "😀.foobar" }, lua("return vim.api.nvim_buf_get_lines(0,0,-1,false)"))
     assert(lua("for _,e in ipairs(fixture_trace) do if e.kind=='capabilities' then return e.snippet end end"))
+    assert(lua("for _,e in ipairs(fixture_trace) do if e.kind=='resolve' then return e.private_syntax==false end end"))
   end)
   test("LSP protocol: incomplete lists retrigger with kind 3", function()
     lua([[fixture_trace={}; require("completion_tools").setup({sources={"lsp"}})]])
