@@ -1,5 +1,5 @@
 vim.opt.rtp:prepend(vim.fn.getcwd())
-local registry = require("completion_tools.user_command")
+local registry = require("completion_tools.utils.user_command")
 local function exercise(buffer)
   local function command()
     return (buffer and vim.api.nvim_buf_get_commands(buffer, {}) or vim.api.nvim_get_commands({})).OwnedCommandFixture

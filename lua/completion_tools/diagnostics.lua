@@ -145,7 +145,7 @@ function M.format(status)
 end
 
 function M.command()
-  return require("completion_tools.user_command").create("CompletionToolsInfo", function()
+  return require("completion_tools.utils.user_command").create("CompletionToolsInfo", function()
     require("completion_tools").show_status()
   end, { desc = "Show completion source status, timings and cache statistics" })
 end

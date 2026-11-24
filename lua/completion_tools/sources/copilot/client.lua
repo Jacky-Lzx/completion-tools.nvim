@@ -296,7 +296,7 @@ function M.new(opts)
       end)
     end, true)
   end
-  command_cleanup = require("completion_tools.user_command").create(command, function(args)
+  command_cleanup = require("completion_tools.utils.user_command").create(command, function(args)
     local action = args.args == "" and "status" or args.args
     if not vim.list_contains({ "auth", "status", "enable", "disable", "restart", "signout" }, action) then
       error("Unknown Copilot action: " .. action)

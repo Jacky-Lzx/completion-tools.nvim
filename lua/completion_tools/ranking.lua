@@ -2,7 +2,7 @@ local M = {}
 
 local function key(item, source, filetype)
   return vim.json.encode({ filetype or "", source })
-    .. require("completion_tools.identity").key({
+    .. require("completion_tools.utils.identity").key({
       label = item.label,
       insertText = item.textEdit and item.textEdit.newText or item.insertText or item.label,
       detail = item.detail,

@@ -1,6 +1,6 @@
 local M = {}
-local identity = require("completion_tools.identity")
-local top_k = require("completion_tools.top_k")
+local identity = require("completion_tools.utils.identity")
+local top_k = require("completion_tools.utils.top_k")
 local byte, find, lower = string.byte, string.find, string.lower
 
 --- A matched candidate together with its source and request metadata.

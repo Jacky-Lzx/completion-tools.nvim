@@ -75,7 +75,7 @@ test("top-k agrees with full ranking and deduplicates sources", function()
   eq("lsp", result2[1].source_id)
 end)
 test("semantic identities retain overloads, imports and edit behavior", function()
-  local identity = require("completion_tools.identity")
+  local identity = require("completion_tools.utils.identity")
   local a = { label = "open", kind = 3, detail = "open(path)", data = { symbol = 1, module = "a" } }
   local b = { label = "open", kind = 3, detail = "open(fd)", data = { symbol = 2, module = "b" } }
   local copy = vim.deepcopy(a)

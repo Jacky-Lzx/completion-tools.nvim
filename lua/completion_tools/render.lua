@@ -1,7 +1,7 @@
 local M = {}
 local CompletionItemKind = require("vim.lsp.protocol").CompletionItemKind
 local base_text = require("base_tools.text")
-local text = require("completion_tools.text")
+local text = require("completion_tools.utils.text")
 local kinds = require("completion_tools.kinds")
 local highlight = require("completion_tools.highlight")
 local keep_path_suffix = { side = "start" }
