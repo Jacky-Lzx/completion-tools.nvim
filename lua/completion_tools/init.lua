@@ -18,7 +18,7 @@ local state = {
   accept_cancels = {},
   watched = {},
 }
-local request_timer, doc_timer, doc_cancel, group
+local request_timer, documentation, group
 
 local function close_timer(id)
   if id and not id:is_closing() then
@@ -32,17 +32,6 @@ local function cancel_requests(keep)
     pcall(cancel, keep)
   end
   state.cancels = {}
-end
-
-local function cancel_doc()
-  if doc_timer then
-    doc_timer:cancel()
-  end
-
-  if doc_cancel then
-    pcall(doc_cancel)
-    doc_cancel = nil
-  end
 end
 
 local function report(message)
@@ -148,78 +137,6 @@ local function watch(buf)
       end
     end,
   })
-end
-
-local function documentation(force)
-  cancel_doc()
-
-  local entry = selected_entry()
-  local previous = state.doc_entry
-  if not entry or not previous or entry.key ~= previous.key or entry.source_id ~= previous.source_id then
-    ui.hide_documentation()
-    state.doc_entry = nil
-  end
-
-  if not entry then
-    return
-  end
-
-  -- Retained candidates are presentation only. Keep an existing document for
-  -- the same item, but never resolve an item against an outdated snapshot.
-  if entry.stale then
-    return
-  end
-
-  local generation = state.generation
-  local may_draw = force
-  local provider = state.providers[entry.source_id]
-
-  local function draw()
-    if generation == state.generation and selected_entry() == entry and M.is_menu_visible() then
-      local item = entry.resolved or entry.item
-      local document
-      if provider and type(provider.documentation) == "function" then
-        local ok, result = pcall(provider.documentation, item, entry.context)
-        if ok then
-          document = type(result) == "table" and result or nil
-        else
-          report(result)
-        end
-      end
-
-      state.doc_entry = ui.documentation(item, state.config, document) and entry or nil
-    end
-  end
-
-  if provider and provider.resolve and not entry.resolved then
-    local ok, cancel = pcall(provider.resolve, entry, function(item)
-      vim.schedule(function()
-        if generation ~= state.generation or selected_entry() ~= entry then
-          return
-        end
-
-        entry.resolved = item
-        if may_draw then
-          draw()
-        end
-      end)
-    end)
-
-    if ok then
-      doc_cancel = type(cancel) == "function" and cancel or nil
-    else
-      report(cancel)
-    end
-  end
-
-  if force then
-    draw()
-  elseif state.config.documentation.auto_show then
-    doc_timer:start(state.config.documentation.delay_ms, function()
-      may_draw = true
-      draw()
-    end)
-  end
 end
 
 local function update_menu_status()
@@ -361,7 +278,7 @@ local function render(pending)
     end
   end
 
-  documentation(false)
+  documentation.refresh(false)
 
   return #items > 0 or not pending
 end
@@ -488,7 +405,7 @@ local function begin_request(ctx, ids, options, has_cached, manual, select_first
   end
 
   cancel_requests(keep)
-  cancel_doc()
+  documentation.cancel()
 
   local previous_context = state.context
   if not context.same(previous_context, ctx) then
@@ -514,7 +431,7 @@ local function begin_request(ctx, ids, options, has_cached, manual, select_first
   if not has_cached and not context.same(previous_context, ctx) and not context.continues(previous_context, ctx) then
     state.items, state.selected = {}, nil
     state.selection_manual = false
-    state.doc_entry = nil
+    documentation.reset()
     ui.hide()
   else
     ui.reposition(ctx, state.config)
@@ -745,7 +662,7 @@ local function queue()
     cancel_requests()
   end
 
-  cancel_doc()
+  documentation.cancel()
 
   state.ready = false
   state.reason = "pending"
@@ -758,7 +675,7 @@ local function queue()
     ui.reposition(ctx, state.config)
   else
     ui.hide()
-    state.doc_entry = nil
+    documentation.reset()
   end
 
   local generation = state.generation
@@ -932,7 +849,8 @@ function M.setup(opts)
   state.ranking = require("completion_tools.ranking").new(config.ranking)
   -- setup may itself run inside Lazy's first InsertEnter callback.
   state.edit_buf, state.edit_tick = vim.api.nvim_get_current_buf(), vim.api.nvim_buf_get_changedtick(0)
-  request_timer, doc_timer = timer.new(), timer.new()
+  request_timer = timer.new()
+  documentation = require("completion_tools.documentation_session").new(state, selected_entry, report)
 
   for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline", "dictionary", "spell", "copilot" }) do
     local provider = require("completion_tools.sources." .. id).new(config[id] or {}, function()
@@ -1060,7 +978,9 @@ function M.hide(reason)
   local visible = ui.visible()
   state.generation = state.generation + 1
   cancel_requests()
-  cancel_doc()
+  if documentation then
+    documentation.cancel()
+  end
 
   if request_timer then
     request_timer:cancel()
@@ -1087,7 +1007,9 @@ function M.hide(reason)
     state.diagnostics.shown({})
   end
 
-  state.doc_entry = nil
+  if documentation then
+    documentation.reset()
+  end
   ui.hide()
 
   return visible
@@ -1194,7 +1116,7 @@ local function select(direction, opts)
 
   state.selection_manual = true
   ui.render(state.items, state.selected, state.context, state.config)
-  documentation(false)
+  documentation.refresh(false)
 
   return true
 end
@@ -1328,7 +1250,7 @@ local function accept_partial(part)
   local ok, err = pcall(function()
     state.generation = state.generation + 1
     cancel_requests()
-    cancel_doc()
+    documentation.cancel()
     local partial = vim.tbl_extend("force", {}, entry, { item = plan.item, context = ctx, resolved = false })
     require("completion_tools.edits").apply(partial, ctx, state.config)
     if provider.execute then
@@ -1373,7 +1295,7 @@ function M.show_documentation()
     return false
   end
 
-  documentation(true)
+  documentation.refresh(true)
   return true
 end
 
@@ -1499,8 +1421,8 @@ function M.dispose()
 
   if request_timer then
     request_timer:close()
-    doc_timer:close()
-    request_timer, doc_timer = nil, nil
+    documentation.close()
+    request_timer, documentation = nil, nil
   end
 
   ui.dispose()
