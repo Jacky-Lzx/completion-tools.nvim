@@ -16,7 +16,6 @@ local state = {
   context = nil,
   disposed = true,
 }
-local documentation
 
 local function report(message)
   vim.schedule(function()
@@ -37,154 +36,7 @@ local function current()
   return state.config and context.get(state.config) or nil
 end
 
-local function selected_entry()
-  return state.selected and state.items[state.selected]
-end
-
-local function update_menu_status()
-  local ctx = state.context
-  local provider = state.providers.copilot
-  if
-    ctx
-    and ctx.mode == "insert"
-    and state.config.copilot.show_status
-    and vim.tbl_contains(state.source_ids or {}, "copilot")
-  then
-    local record = state.run and state.run.records.copilot
-    local client = provider and provider.get_status and provider.get_status()
-    local count = state.groups.copilot and #state.groups.copilot.items or 0
-    ui.set_status(require("completion_tools.sources.copilot.status").format(client, record, count))
-  else
-    ui.set_status(nil)
-  end
-end
-
-local function notify_source_group(name)
-  vim.notify("Completion sources: " .. name, vim.log.levels.INFO)
-end
-
-local function render(pending)
-  local ctx = state.context
-  if not ctx or not context.same(ctx, current()) then
-    return
-  end
-
-  update_menu_status()
-
-  local groups = {}
-  local matcher = require("completion_tools.matcher")
-  local match_options = {
-    max_typos = ctx.mode ~= "cmdline" and state.config.ranking.max_typos or 0,
-    bonus = state.ranking.scorer(ctx),
-  }
-
-  for _, id in ipairs(state.source_ids) do
-    local suppressed = false
-    for _, dependency in ipairs((state.config.providers[id] or {}).fallback_for or {}) do
-      local record = state.run and state.run.records[dependency]
-      suppressed = suppressed or (record and (record.matches or record.status == "skipped"))
-    end
-
-    local record = state.run and state.run.records[id]
-    if state.groups[id] or not record or record.status ~= "pending" then
-      state.retained[id] = nil
-    end
-
-    local source_group = state.groups[id] or (record and record.status == "pending" and state.retained[id])
-    if source_group and not suppressed then
-      local cap = (state.config.providers[id] or {}).max_items
-      if cap then
-        source_group = vim.tbl_extend("force", source_group, {
-          items = vim.tbl_map(function(entry)
-            return entry.item
-          end, matcher.filter({ source_group }, ctx, cap, match_options)),
-        })
-      end
-
-      groups[#groups + 1] = source_group
-    end
-  end
-
-  local previous = selected_entry()
-  local items = matcher.select(groups, ctx, state.config.max_items, match_options)
-  state.reason = #items > 0 and "ready" or (pending and "pending" or "no_matches")
-  state.last_request_reason = state.reason
-
-  -- An empty partial result is not a final "no matches". Keep the last ready
-  -- frame until a useful replacement or the last provider's response arrives.
-  if #items == 0 and pending and ui.visible() then
-    state.ready = false
-    ui.reposition(ctx, state.config)
-    return
-  end
-
-  state.ready = false
-  for _, entry in ipairs(items) do
-    local id = entry.source_id
-    local source_group = state.groups[id]
-    entry.stale = source_group == nil
-    local displayed_group = source_group or state.retained[id]
-    local name = displayed_group and displayed_group.display_name
-    if type(name) == "function" then
-      local ok, value = pcall(name, entry.item)
-      name = ok and value or nil
-    end
-
-    entry.source_name = type(name) == "string" and name ~= "" and name or id
-    state.ready = state.ready or not entry.stale
-  end
-
-  if #items > 0 and not state.ready then
-    state.reason, state.last_request_reason = "pending", "pending"
-  end
-
-  state.items = items
-  state.diagnostics.shown(items)
-  -- A vanished manual choice stays empty until navigation or another edit.
-  state.selected = not state.selection_manual and state.config.preselect and #items > 0 and 1 or nil
-
-  if previous then
-    for i, entry in ipairs(items) do
-      if entry.source_id == previous.source_id and entry.key == previous.key then
-        if entry.item == previous.item and entry.context == previous.context then
-          entry.resolved = previous.resolved
-        end
-
-        if state.selection_manual then
-          state.selected = i
-        end
-
-        break
-      end
-    end
-  end
-
-  if state.select_first and state.ready and #items > 0 then
-    if not state.selected then
-      state.selected, state.selection_manual = 1, true
-    end
-
-    state.select_first = nil
-  end
-
-  ui.set_source_group(state.source_group)
-  ui.render(items, state.selected, ctx, state.config)
-
-  if state.announce_source_group then
-    if ui.visible() then
-      state.announce_source_group = nil
-    elseif not pending then
-      local name = state.announce_source_group
-      state.announce_source_group = nil
-      notify_source_group(name)
-    end
-  end
-
-  documentation.refresh(false)
-
-  return #items > 0 or not pending
-end
-
+local menu = require("completion_tools.menu").new(state, current, report)
 local requests = require("completion_tools.request").new(state, {
   current = current,
   enabled = enabled,
@@ -192,20 +44,17 @@ local requests = require("completion_tools.request").new(state, {
     return M.hide(reason)
   end,
   report = report,
-}, {
-  render = render,
-  notify_source_group = notify_source_group,
-  cancel_documentation = function()
-    if documentation then
-      documentation.cancel()
-    end
-  end,
-  reset_documentation = function()
-    documentation.reset()
-  end,
-})
+}, menu)
 
 M.show = requests.show
+M.is_menu_visible = menu.visible
+M.get_items = menu.get_items
+M.get_selected_item = menu.get_selected_item
+M.select_next = menu.select_next
+M.select_prev = menu.select_prev
+M.show_documentation = menu.show_documentation
+M.scroll_documentation_up = menu.scroll_documentation_up
+M.scroll_documentation_down = menu.scroll_documentation_down
 
 function M.setup(opts)
   if vim.fn.has("nvim-0.12") ~= 1 then
@@ -226,7 +75,7 @@ function M.setup(opts)
   -- setup may itself run inside Lazy's first InsertEnter callback.
   state.edit_buf, state.edit_tick = vim.api.nvim_get_current_buf(), vim.api.nvim_buf_get_changedtick(0)
   requests.setup(timer.new())
-  documentation = require("completion_tools.documentation_session").new(state, selected_entry, report)
+  menu.setup()
 
   for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline", "dictionary", "spell", "copilot" }) do
     local provider = require("completion_tools.sources." .. id).new(config[id] or {}, function()
@@ -276,7 +125,7 @@ function M.setup(opts)
     hide = M.hide,
     watch = requests.watch,
     warmup = warmup,
-    update_menu_status = update_menu_status,
+    update_menu_status = menu.update_status,
     refresh_cmdline = M.refresh_cmdline,
     dispose = M.dispose,
   })
@@ -290,7 +139,7 @@ end
 -- Only an existing completion session is refreshed; layout events cannot open
 -- an idle command line's menu.
 function M.refresh_cmdline()
-  if not state.context or state.context.mode ~= "cmdline" or not ui.visible() then
+  if not state.context or state.context.mode ~= "cmdline" or not menu.visible() then
     return false
   end
 
@@ -299,8 +148,7 @@ function M.refresh_cmdline()
     return M.hide()
   end
 
-  ui.hide_documentation()
-  ui.render(state.items, state.selected, ctx, state.config)
+  menu.redraw_cmdline(ctx)
 
   if not context.same(ctx, state.context) then
     if state.config.cmdline.auto_show then
@@ -345,48 +193,12 @@ function M.refresh_keymaps()
 end
 
 function M.hide(reason)
-  local visible = ui.visible()
+  local visible = menu.visible()
   requests.stop()
 
-  state.items, state.selected, state.context, state.groups, state.ready = {}, nil, nil, {}, false
-  state.retained, state.last_render = {}, nil
-  state.source_group, state.announce_source_group = nil, nil
-  state.select_first = nil
-  state.selection_manual = false
-  state.reason = reason or "hidden"
-
-  if reason then
-    state.last_request_reason = reason
-  end
-
-  if state.diagnostics then
-    state.diagnostics.shown({})
-  end
-
-  if documentation then
-    documentation.reset()
-  end
-  ui.hide()
+  menu.hide(reason)
 
   return visible
-end
-
-function M.is_menu_visible()
-  return ui.visible()
-end
-
-function M.get_items()
-  local items = {}
-  for i, entry in ipairs(state.items) do
-    items[i] = entry.resolved or entry.item
-  end
-
-  return items
-end
-
-function M.get_selected_item()
-  local entry = selected_entry()
-  return entry and (entry.resolved or entry.item)
 end
 
 function M.get_context()
@@ -427,7 +239,7 @@ function M.get_status()
   end
 
   local ok, active = pcall(enabled)
-  local entry = selected_entry()
+  local entry = menu.selected_entry()
   local ready = state.ready == true and not (entry and entry.stale)
 
   return {
@@ -435,9 +247,9 @@ function M.get_status()
     enabled = ok and active or false,
     reason = not state.config and "not_configured" or (state.disposed and "disposed" or state.reason),
     last_request_reason = state.last_request_reason,
-    menu_visible = ui.visible(),
+    menu_visible = menu.visible(),
     ready = ready,
-    stale = ui.visible() and not ready,
+    stale = menu.visible() and not ready,
     mode = state.context and state.context.mode,
     filetype = state.context and state.context.filetype,
     sources = sources,
@@ -451,43 +263,9 @@ function M.show_status()
   return status
 end
 
-local function select(direction, opts)
-  if #state.items == 0 or not state.ready or not ui.visible() or not context.same(state.context, current()) then
-    return false
-  end
-
-  -- Navigation follows screen direction; only the painted row order is reversed.
-  if ui.is_inverse() then
-    direction = -direction
-  end
-
-  local count = opts and opts.count or 1
-  local index = state.selected or (direction == 1 and 0 or #state.items + 1)
-  local target = index + direction * count
-  if opts and opts.wrap == false then
-    state.selected = math.max(1, math.min(#state.items, target))
-  else
-    state.selected = (target - 1) % #state.items + 1
-  end
-
-  state.selection_manual = true
-  ui.render(state.items, state.selected, state.context, state.config)
-  documentation.refresh(false)
-
-  return true
-end
-
-function M.select_next(opts)
-  return select(1, opts)
-end
-
-function M.select_prev(opts)
-  return select(-1, opts)
-end
-
 local acceptance = require("completion_tools.accept").new(state, {
   current = current,
-  selected_entry = selected_entry,
+  selected_entry = menu.selected_entry,
   hide = M.hide,
   show = M.show,
   invalidate = requests.invalidate,
@@ -505,23 +283,6 @@ end
 
 function M.accept_line()
   return acceptance.accept_partial("line")
-end
-
-function M.show_documentation()
-  if not selected_entry() then
-    return false
-  end
-
-  documentation.refresh(true)
-  return true
-end
-
-function M.scroll_documentation_up()
-  return ui.scroll_documentation(-4)
-end
-
-function M.scroll_documentation_down()
-  return ui.scroll_documentation(4)
 end
 
 function M.snippet_forward()
@@ -560,12 +321,12 @@ function M._can(action)
   end
 
   if action == "accept" then
-    local entry = selected_entry()
+    local entry = menu.selected_entry()
     return state.ready and entry ~= nil and not entry.stale and context.same(state.context, current())
   end
 
   if action == "accept_word" or action == "accept_line" then
-    local entry = selected_entry()
+    local entry = menu.selected_entry()
     return state.ready
       and entry ~= nil
       and not entry.stale
@@ -578,7 +339,7 @@ function M._can(action)
   end
 
   if action == "show_documentation" then
-    return selected_entry() ~= nil
+    return menu.selected_entry() ~= nil
   end
 
   if action == "snippet_forward" or action == "snippet_backward" then
@@ -628,12 +389,7 @@ function M.dispose()
   end
 
   requests.dispose()
-  if documentation then
-    documentation.close()
-    documentation = nil
-  end
-
-  ui.dispose()
+  menu.dispose()
   state.providers, state.cache, state.source_ids = {}, {}, {}
   state.builtin_display_names = {}
   state.accepted = nil

@@ -1,5 +1,4 @@
 local context = require("completion_tools.context")
-local ui = require("completion_tools.ui")
 local M = {}
 
 local function close_timer(id)
@@ -9,7 +8,7 @@ local function close_timer(id)
   end
 end
 
-function M.new(state, actions, view)
+function M.new(state, actions, menu)
   local requests = {}
   local request_timer
   local cancels, watched = {}, {}
@@ -218,37 +217,9 @@ function M.new(state, actions, view)
     end
 
     cancel_requests(keep)
-    view.cancel_documentation()
+    menu.cancel_documentation()
 
-    local previous_context = state.context
-    if not context.same(previous_context, ctx) then
-      state.selection_manual = false
-    end
-
-    -- Keep per-source candidates for visual continuity, separately from safe
-    -- cache reuse. Each source must refresh its items before they are accepted.
-    local retained = {}
-    if ui.visible() and (context.same(previous_context, ctx) or context.continues(previous_context, ctx)) then
-      for _, id in ipairs(ids) do
-        if options[id].enabled then
-          retained[id] = state.groups[id] or state.retained[id]
-        end
-      end
-    end
-
-    state.context, state.groups, state.source_ids, state.retained = ctx, {}, ids, retained
-    state.manual = manual
-    state.select_first = select_first
-    state.ready = false
-    state.reason = "pending"
-    if not has_cached and not context.same(previous_context, ctx) and not context.continues(previous_context, ctx) then
-      state.items, state.selected = {}, nil
-      state.selection_manual = false
-      view.reset_documentation()
-      ui.hide()
-    else
-      ui.reposition(ctx, state.config)
-    end
+    menu.begin_request(ctx, ids, options, has_cached, manual, select_first)
 
     return generation
   end
@@ -345,7 +316,7 @@ function M.new(state, actions, view)
         render_timer = nil
         render_queued = false
         if valid(generation, ctx) then
-          if view.render(run and run.pending() or false) then
+          if menu.publish(run and run.pending() or false) then
             state.last_render = vim.uv.hrtime()
           end
         end
@@ -354,7 +325,7 @@ function M.new(state, actions, view)
       -- The first frame of a session is immediate. Share the deadline across
       -- requests too, so each keystroke cannot restart an unbounded paint burst.
       local interval = state.config.menu.update_interval_ms
-      local remaining = ui.visible() and state.last_render and interval - (vim.uv.hrtime() - state.last_render) / 1e6
+      local remaining = menu.visible() and state.last_render and interval - (vim.uv.hrtime() - state.last_render) / 1e6
         or 0
       if remaining > 0 then
         render_timer = vim.defer_fn(flush, math.ceil(remaining))
@@ -425,7 +396,7 @@ function M.new(state, actions, view)
     if reason then
       actions.hide(reason)
       if switched then
-        view.notify_source_group(name)
+        menu.notify_source_group(name)
       end
       return false
     end
@@ -476,21 +447,9 @@ function M.new(state, actions, view)
       cancel_requests()
     end
 
-    view.cancel_documentation()
+    menu.cancel_documentation()
 
-    state.ready = false
-    state.reason = "pending"
-
-    if not same then
-      state.selection_manual = false
-    end
-
-    if same or cached_forward or context.continues(state.context, ctx) then
-      ui.reposition(ctx, state.config)
-    else
-      ui.hide()
-      view.reset_documentation()
-    end
+    menu.pending(ctx, same, cached_forward)
 
     local generation = state.generation
 
@@ -519,7 +478,7 @@ function M.new(state, actions, view)
   function requests.invalidate()
     state.generation = state.generation + 1
     cancel_requests()
-    view.cancel_documentation()
+    menu.cancel_documentation()
   end
 
   function requests.stop()
