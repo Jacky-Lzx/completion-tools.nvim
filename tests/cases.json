@@ -10,7 +10,7 @@
   "fixtures": {
     "base-tools.nvim": {
       "repository": "Jacky-Lzx/base-tools.nvim",
-      "revision": "3a758770e0d507d5d447dd3ea6ff1956baf44dac",
+      "revision": "951deeaaf28badfec5dbbd2b27107cea329f54c0",
       "path": "$BASE_TOOLS_PATH"
     }
   },

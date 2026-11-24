@@ -1465,7 +1465,7 @@ local ok, err = xpcall(function()
     lua([[vim.keymap.set('i','<CR>',function() vim.api.nvim_set_current_line(vim.api.nvim_get_current_line()..'!') end)
       require('completion_tools').setup({sources={},keymap={
         ['<CR>']={'accept','fallback'},
-        ['<F5>']={function(c) vim.api.nvim_set_current_line('custom'); return true end}
+        ['<F5>']=function(c) vim.api.nvim_set_current_line('custom'); return true end
       }})]])
     input("iabc<CR>")
     wait("return vim.api.nvim_get_current_line() == 'abc!'")

@@ -1,4 +1,5 @@
 local keys = require("base_tools.keys")
+local keymaps = require("base_tools.keymap")
 local M = {}
 local installed = {}
 
@@ -10,17 +11,6 @@ local function callback_keys(result)
   end
 
   return keys.encode(result)
-end
-
-local function global_mapping(key, mode)
-  local encoded = keys.encode(key)
-  for _, mapping in ipairs(vim.api.nvim_get_keymap(mode)) do
-    if keys.encode(mapping.lhs) == encoded then
-      return mapping
-    end
-  end
-
-  return {}
 end
 
 local function feed(sequence, remap)
@@ -95,13 +85,13 @@ local action_labels = {
   snippet_backward = "Previous snippet field",
 }
 
-local function description(actions)
-  if type(actions.desc) == "string" and actions.desc ~= "" then
-    return actions.desc
+local function description(binding)
+  if binding.desc and binding.desc ~= "" then
+    return binding.desc
   end
 
   local labels, seen = {}, {}
-  for _, action in ipairs(actions) do
+  for _, action in ipairs(binding.actions) do
     if action ~= "fallback" then
       local label = type(action) == "function" and "Custom completion action"
         or action_labels[action]
@@ -118,49 +108,30 @@ end
 function M.setup(config)
   M.dispose()
 
-  local function install(mode, keymap)
-    for key, actions in pairs(keymap) do
-      if actions ~= false then
-        if type(actions) == "string" then
-          actions = { actions }
-        end
-
-        local mapping = { mode = mode, key = key, actions = actions, previous = global_mapping(key, mode) }
-        mapping.callback = function()
-          run(mapping)
-        end
-        -- Non-expr callbacks permit text edits and custom actions. Buffer-local
-        -- mappings keep Neovim's normal precedence over these global defaults.
-        -- A silent command-line mapping suppresses setcmdline's native redraw,
-        -- leaving both native and external command lines stale until the next key.
-        vim.keymap.set(mode, key, mapping.callback, { silent = mode ~= "c", desc = description(actions) })
-        installed[#installed + 1] = mapping
-      end
+  local function install(mode, bindings)
+    for _, binding in ipairs(bindings) do
+      local mapping = { mode = mode, key = binding.lhs, actions = binding.actions }
+      -- Non-expr callbacks permit text edits. Command-line mappings must keep
+      -- native redraw enabled during setcmdline().
+      local cleanup, previous = keymaps.install(mode, binding.lhs, function()
+        run(mapping)
+      end, { silent = mode ~= "c", desc = description(binding) })
+      mapping.previous = previous or {}
+      installed[#installed + 1] = cleanup
     end
   end
 
-  install("i", config.keymap)
-  install("s", config.keymap)
+  install("i", config._keymap_bindings)
+  install("s", config._keymap_bindings)
 
   if config.cmdline.enabled then
-    install("c", config.cmdline.keymap)
+    install("c", config.cmdline._keymap_bindings)
   end
 end
 
 function M.dispose()
-  for _, mapping in ipairs(installed) do
-    local current = global_mapping(mapping.key, mapping.mode)
-    if current.callback == mapping.callback then
-      vim.keymap.del(mapping.mode, mapping.key)
-
-      if next(mapping.previous) then
-        vim.fn.mapset(
-          mapping.mode,
-          false,
-          vim.tbl_extend("keep", mapping.previous, { abbr = 0, buffer = 0, mode = mapping.mode, scriptversion = 1 })
-        )
-      end
-    end
+  for index = #installed, 1, -1 do
+    installed[index]()
   end
 
   installed = {}

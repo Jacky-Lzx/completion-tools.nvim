@@ -192,7 +192,7 @@ local function validate_general(config)
     )
   end
   assert(type(config.sources) == "table" or type(config.sources) == "function", "completion-tools: invalid sources")
-  assert(type(config.keymap) == "table", "completion-tools: invalid keymap")
+  config._keymap_bindings = require("base_tools.keymap").resolve(config.keymap, { name = "completion-tools.keymap" })
   assert(type(config.keyword_pattern) == "string", "completion-tools: invalid keyword_pattern")
   assert(
     type(config.trigger_characters) == "table" or type(config.trigger_characters) == "function",
@@ -322,10 +322,9 @@ local function validate_cmdline(cmdline)
   )
   assert(integer(cmdline.min_keyword_length, 0), "completion-tools: invalid cmdline.min_keyword_length")
   assert(type(cmdline.fuzzy) == "boolean", "completion-tools: invalid cmdline.fuzzy")
-  assert(
-    type(cmdline.keymap) == "table" and type(cmdline.types) == "table",
-    "completion-tools: invalid cmdline maps/types"
-  )
+  assert(type(cmdline.types) == "table", "completion-tools: invalid cmdline types")
+  cmdline._keymap_bindings =
+    require("base_tools.keymap").resolve(cmdline.keymap, { name = "completion-tools.cmdline.keymap" })
   assert(optional_function(cmdline.get_anchor), "completion-tools: invalid cmdline.get_anchor")
   for _, cmdtype in ipairs(cmdline.types) do
     assert(vim.tbl_contains(M.defaults.cmdline.types, cmdtype), "completion-tools: unsupported cmdline type")
