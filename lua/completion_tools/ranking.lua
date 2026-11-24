@@ -14,25 +14,31 @@ end
 function M.new(opts)
   local records, labels, loaded, dirty = {}, {}, false, false
   local path = opts.history.path or (vim.fn.stdpath("state") .. "/completion-tools/history.json")
+
   local function load()
     if loaded or not opts.history.enabled then
       return
     end
+
     loaded = true
     local stat = vim.uv.fs_stat(path)
     if not stat or stat.size > 2 * 1024 * 1024 then
       return
     end
+
     local ok, data = pcall(function()
       return vim.json.decode(table.concat(vim.fn.readfile(path), "\n"))
     end)
+
     if not ok or type(data) ~= "table" or data.version ~= 1 or type(data.records) ~= "table" then
       return
     end
+
     for _, record in ipairs(data.records) do
       if #records >= opts.history.max_entries then
         break
       end
+
       if
         type(record) == "table"
         and type(record.key) == "string"
@@ -46,10 +52,12 @@ function M.new(opts)
       end
     end
   end
+
   local function save()
     if not dirty then
       return
     end
+
     local ok = pcall(function()
       vim.fn.mkdir(vim.fs.dirname(path), "p")
       local temporary = path .. "." .. vim.fn.getpid() .. ".tmp"
@@ -57,16 +65,20 @@ function M.new(opts)
       local renamed, err = vim.uv.fs_rename(temporary, path)
       assert(renamed, err)
     end)
+
     if ok then
       dirty = false
     end
   end
+
   local timer
   local ranking = {}
+
   function ranking.record(entry, ctx)
     if not opts.history.enabled or ctx.mode == "cmdline" then
       return
     end
+
     load()
     local id = key(entry.item, entry.source_id, ctx.filetype)
     local record
@@ -76,24 +88,30 @@ function M.new(opts)
         break
       end
     end
+
     record = record or { key = id, label = entry.item.label, count = 0 }
     record.count, record.time = math.min(record.count + 1, 1000), os.time()
     table.insert(records, 1, record)
+
     while #records > opts.history.max_entries do
       table.remove(records)
     end
+
     labels = {}
     for _, value in ipairs(records) do
       labels[value.label] = true
     end
+
     dirty = true
     timer = timer or vim.uv.new_timer()
     timer:start(500, 0, vim.schedule_wrap(save))
   end
+
   function ranking.scorer(ctx)
     if ctx.mode == "cmdline" then
       return
     end
+
     load()
     local nearby = {}
     if opts.proximity.enabled and vim.api.nvim_buf_is_valid(ctx.bufnr) then
@@ -106,10 +124,13 @@ function M.new(opts)
         end
       end
     end
+
     if not opts.history.enabled and not opts.proximity.enabled then
       return
     end
+
     local now = os.time()
+
     return function(item, source)
       local score = nearby[item.label] or 0
       if labels[item.label] then
@@ -122,17 +143,21 @@ function M.new(opts)
           end
         end
       end
+
       return score
     end
   end
+
   function ranking.dispose()
     if timer then
       timer:stop()
       timer:close()
       timer = nil
     end
+
     save()
   end
+
   return ranking
 end
 

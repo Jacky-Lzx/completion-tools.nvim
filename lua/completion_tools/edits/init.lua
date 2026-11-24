@@ -6,13 +6,16 @@ local function units(text, encoding)
   if encoding == "utf-8" then
     return #text
   end
+
   return vim.str_utfindex(text, encoding, #text, false)
 end
+
 local function byte_col(buf, position, encoding)
   local line = vim.api.nvim_buf_get_lines(buf, position.line, position.line + 1, false)[1] or ""
   if encoding == "utf-8" then
     return math.min(position.character, #line)
   end
+
   return vim.str_byteindex(line, encoding, position.character, false)
 end
 
@@ -25,6 +28,7 @@ function M.rebase(range, old, ctx, encoding)
       position.character = position.character + delta
     end
   end
+
   return result
 end
 
@@ -36,6 +40,7 @@ function M.range(entry, ctx, mode)
     local range = edit.range or (mode == "insert" and edit.insert) or edit.replace or edit.insert
     return M.rebase(range, entry.context, ctx, encoding), encoding
   end
+
   return {
     start = { line = ctx.row, character = units(ctx.line:sub(1, entry.start_col), encoding) },
     ["end"] = { line = ctx.row, character = units(ctx.before, encoding) },
@@ -54,6 +59,7 @@ local function additional_range(entry, range, ctx, encoding)
   -- the same zero-width start. Edits after it move past newly typed text.
   local before = finish.line < primary_start.line
     or (finish.line == primary_start.line and finish.character <= primary_start.character)
+
   if not before then
     local old_col = units(old.before, encoding)
     local delta = units(ctx.before, encoding) - old_col
@@ -63,66 +69,49 @@ local function additional_range(entry, range, ctx, encoding)
       end
     end
   end
+
   return result
 end
 
-function M.apply(entry, ctx, config, opts)
-  local item = entry.resolved or entry.item
-  local text = item.textEdit and item.textEdit.newText or item.insertText or item.label
-  text = text:gsub("\r\n?", "\n")
-  if ctx.mode == "cmdline" then
-    vim.fn.setcmdline(
-      ctx.line:sub(1, entry.start_col) .. text .. ctx.line:sub(ctx.col + 1),
-      entry.start_col + #text + 1
-    )
-    return
-  end
-  local range, encoding = M.range(entry, ctx, opts and opts.mode or config.accept.mode)
-  local insert_mode = item.insertTextMode or (item._client_id and 2 or nil)
-  local insertion = require("completion_tools.edits.insertion")
-  local end_line = vim.api.nvim_buf_get_lines(ctx.bufnr, range["end"].line, range["end"].line + 1, false)[1] or ""
-  local cursor_offset
-  text, cursor_offset = insertion.brackets(text, item, end_line:sub(byte_col(ctx.bufnr, range["end"], encoding) + 1))
-  local indentation = ctx.before:match("^[ \t]*")
-  if insert_mode == 2 then
-    text = insertion.indent(text, indentation)
-  end
-  local snippet = item.insertTextFormat == InsertTextFormat.Snippet
-  local edits, mark = {}, nil
-  for _, edit in ipairs(item.additionalTextEdits or {}) do
-    edits[#edits + 1] = { newText = edit.newText, range = additional_range(entry, edit.range, ctx, encoding) }
-  end
-  local primary = { range = range, newText = snippet and "" or text }
+local function apply_buffer_edits(bufnr, encoding, edits, primary)
   edits[#edits + 1] = primary
   for i, edit in ipairs(edits) do
     edit.order = i
   end
+
   table.sort(edits, function(a, b)
     if a.range.start.line ~= b.range.start.line then
       return a.range.start.line > b.range.start.line
     end
+
     if a.range.start.character ~= b.range.start.character then
       return a.range.start.character > b.range.start.character
     end
+
     return a.order > b.order
   end)
+
   -- Follow native edit ordering, but create the anchor immediately after the
   -- primary edit. An anchor created before all edits cannot distinguish an
   -- import at primary.start from a suffix insertion at primary.end.
+  local mark
   local ok, err = pcall(function()
     for i, edit in ipairs(edits) do
       local row, col
       if edit == primary then
-        row, col = range.start.line, byte_col(ctx.bufnr, range.start, encoding)
+        local start = primary.range.start
+        row, col = start.line, byte_col(bufnr, start, encoding)
       end
+
       if i > 1 then
         pcall(vim.cmd, "undojoin")
       end
-      vim.lsp.util.apply_text_edits({ edit }, ctx.bufnr, encoding)
+
+      vim.lsp.util.apply_text_edits({ edit }, bufnr, encoding)
       if edit == primary then
         local lines = vim.split(primary.newText, "\n", { plain = true })
         mark = vim.api.nvim_buf_set_extmark(
-          ctx.bufnr,
+          bufnr,
           ns,
           row + #lines - 1,
           (#lines == 1 and col or 0) + #lines[#lines],
@@ -131,21 +120,61 @@ function M.apply(entry, ctx, config, opts)
       end
     end
   end)
+
   if not ok then
     if mark then
-      vim.api.nvim_buf_del_extmark(ctx.bufnr, ns, mark)
+      vim.api.nvim_buf_del_extmark(bufnr, ns, mark)
     end
     error(err)
   end
+
+  return mark
+end
+
+function M.apply(entry, ctx, config, opts)
+  local item = entry.resolved or entry.item
+  local text = item.textEdit and item.textEdit.newText or item.insertText or item.label
+  text = text:gsub("\r\n?", "\n")
+
+  if ctx.mode == "cmdline" then
+    vim.fn.setcmdline(
+      ctx.line:sub(1, entry.start_col) .. text .. ctx.line:sub(ctx.col + 1),
+      entry.start_col + #text + 1
+    )
+    return
+  end
+
+  local range, encoding = M.range(entry, ctx, opts and opts.mode or config.accept.mode)
+  local insert_mode = item.insertTextMode or (item._client_id and 2 or nil)
+  local insertion = require("completion_tools.edits.insertion")
+  local end_line = vim.api.nvim_buf_get_lines(ctx.bufnr, range["end"].line, range["end"].line + 1, false)[1] or ""
+  local cursor_offset
+  text, cursor_offset = insertion.brackets(text, item, end_line:sub(byte_col(ctx.bufnr, range["end"], encoding) + 1))
+  local indentation = ctx.before:match("^[ \t]*")
+
+  if insert_mode == 2 then
+    text = insertion.indent(text, indentation)
+  end
+
+  local snippet = item.insertTextFormat == InsertTextFormat.Snippet
+  local edits = {}
+  for _, edit in ipairs(item.additionalTextEdits or {}) do
+    edits[#edits + 1] = { newText = edit.newText, range = additional_range(entry, edit.range, ctx, encoding) }
+  end
+
+  local primary = { range = range, newText = snippet and "" or text }
+  local mark = apply_buffer_edits(ctx.bufnr, encoding, edits, primary)
   local position = vim.api.nvim_buf_get_extmark_by_id(ctx.bufnr, ns, mark, {})
   local row, col = position[1], position[2]
   vim.api.nvim_win_set_cursor(ctx.winid, { row + 1, col - cursor_offset })
+
   if snippet then
     local expanded, expand_err = pcall(insertion.expand, text, config, {
       insert_text_mode = insert_mode,
       indentation = indentation,
       bufnr = ctx.bufnr,
     })
+
     if not expanded then
       -- A malformed server snippet falls back to its literal body.
       pcall(vim.cmd, "undojoin")
@@ -155,9 +184,11 @@ function M.apply(entry, ctx, config, opts)
       vim.notify("completion-tools: snippet expansion failed: " .. tostring(expand_err), vim.log.levels.WARN)
     end
   end
+
   local end_position = vim.api.nvim_buf_get_extmark_by_id(ctx.bufnr, ns, mark, {})
   vim.api.nvim_buf_del_extmark(ctx.bufnr, ns, mark)
   local end_line = vim.api.nvim_buf_get_lines(ctx.bufnr, end_position[1], end_position[1] + 1, false)[1]
+
   return {
     range = range,
     encoding = encoding,
@@ -180,8 +211,10 @@ function M.apply_resolved(entry, ctx, item, transaction)
         position.line, position.character = new_end.line, new_end.character + position.character - old_end.character
       end
     end
+
     edits[#edits + 1] = { newText = edit.newText, range = range }
   end
+
   if #edits > 0 then
     vim.api.nvim_buf_call(ctx.bufnr, function()
       pcall(vim.cmd, "undojoin")

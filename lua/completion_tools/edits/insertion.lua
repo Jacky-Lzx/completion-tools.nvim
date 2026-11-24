@@ -9,12 +9,15 @@ function M.brackets(text, item, suffix)
   if item.insertTextFormat == protocol.InsertTextFormat.Snippet or not callable or suffix:match("^%s*%(") then
     return text, 0
   end
+
   if text ~= "" and not text:find("[()\n]") then
     return text .. "()", 1
   end
+
   if text:sub(-1) == "(" and not text:sub(1, -2):find("[()\n]") then
     return text .. ")", 1
   end
+
   return text, 0
 end
 
@@ -28,8 +31,10 @@ function M.indent(text, indentation)
     if line:sub(1, #base) == base then
       line = line:sub(#base + 1)
     end
+
     lines[i] = line ~= "" and indentation .. line or ""
   end
+
   return table.concat(lines, "\n")
 end
 
@@ -39,10 +44,12 @@ function M.expand(text, config, options)
     -- indentation when an explicit insert_text_mode is present.
     return config.snippets.expand(text, options)
   end
+
   local mode = options.insert_text_mode
   if not mode then
     return vim.snippet.expand(text)
   end
+
   local buf, win = options.bufnr, vim.api.nvim_get_current_win()
   local cursor = vim.api.nvim_win_get_cursor(win)
   local row, col = cursor[1] - 1, cursor[2]
@@ -52,6 +59,7 @@ function M.expand(text, config, options)
   if mode == 1 then
     vim.bo[buf].expandtab = false
   end
+
   -- Native expand queues selection keys using absolute positions. Defer that
   -- first jump until indentation edits have moved the placeholder extmarks.
   local jump = vim.snippet.jump
@@ -71,10 +79,12 @@ function M.expand(text, config, options)
       end
     end
   end
+
   vim.api.nvim_buf_del_extmark(buf, ns, mark)
   if not ok then
     error(err)
   end
+
   jump(1)
 end
 
