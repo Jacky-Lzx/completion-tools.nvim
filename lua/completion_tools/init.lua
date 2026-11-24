@@ -18,13 +18,7 @@ local state = {
   accept_cancels = {},
   watched = {},
 }
-local timer, doc_timer, doc_cancel, group
-
-local function stop_timer(id)
-  if id and not id:is_closing() then
-    id:stop()
-  end
-end
+local request_timer, doc_timer, doc_cancel, group
 
 local function close_timer(id)
   if id and not id:is_closing() then
@@ -39,18 +33,23 @@ local function cancel_requests(keep)
   end
   state.cancels = {}
 end
+
 local function cancel_doc()
-  stop_timer(doc_timer)
+  if doc_timer then
+    doc_timer:cancel()
+  end
   if doc_cancel then
     pcall(doc_cancel)
     doc_cancel = nil
   end
 end
+
 local function report(message)
   vim.schedule(function()
     vim.notify("completion-tools: " .. tostring(message), vim.log.levels.ERROR)
   end)
 end
+
 local function enabled()
   local value = state.config and state.config.enabled
   return not state.disposed
@@ -59,15 +58,19 @@ local function enabled()
     and vim.fn.reg_executing() == ""
     and not vim.o.paste
 end
+
 local function current()
   return state.config and context.get(state.config) or nil
 end
+
 local function valid(generation, ctx)
   return not state.disposed and generation == state.generation and context.same(ctx, current())
 end
+
 local function selected_entry()
   return state.selected and state.items[state.selected]
 end
+
 local function accepted_event(entry, ctx, extra)
   local item, public = entry.resolved or entry.item, {}
   for key, value in pairs(item) do
@@ -75,6 +78,7 @@ local function accepted_event(entry, ctx, extra)
       public[key] = value
     end
   end
+
   vim.api.nvim_exec_autocmds("User", {
     pattern = "CompletionToolsAccept",
     modeline = false,
@@ -85,10 +89,12 @@ local function accepted_event(entry, ctx, extra)
     ),
   })
 end
+
 local function watch(buf)
   if state.watched[buf] or not vim.api.nvim_buf_is_loaded(buf) then
     return
   end
+
   local token = {}
   state.watched[buf] = token
   vim.api.nvim_buf_attach(buf, false, {
@@ -96,6 +102,7 @@ local function watch(buf)
       if state.watched[buf] ~= token then
         return true
       end
+
       for id, cache in pairs(state.cache) do
         if cache.response and cache.context.bufnr == buf then
           -- Custom reuse requires an uninterrupted series of insertions at the
@@ -114,10 +121,12 @@ local function watch(buf)
         end
       end
     end,
+
     on_lines = function(_, _, _, first, old_last, new_last)
       if state.watched[buf] ~= token then
         return true
       end
+
       for id, cache in pairs(state.cache) do
         local ctx = cache.context
         if ctx.bufnr == buf and (first ~= ctx.row or old_last ~= first + 1 or new_last ~= old_last) then
@@ -125,11 +134,13 @@ local function watch(buf)
         end
       end
     end,
+
     on_detach = function()
       if state.watched[buf] == token then
         state.watched[buf] = nil
       end
     end,
+
     on_reload = function()
       if state.watched[buf] == token then
         state.cache = {}
@@ -193,14 +204,10 @@ local function documentation(force)
   if force then
     draw()
   elseif state.config.documentation.auto_show then
-    doc_timer:start(
-      state.config.documentation.delay_ms,
-      0,
-      vim.schedule_wrap(function()
-        may_draw = true
-        draw()
-      end)
-    )
+    doc_timer:start(state.config.documentation.delay_ms, function()
+      may_draw = true
+      draw()
+    end)
   end
 end
 
@@ -699,7 +706,6 @@ local function queue()
 
   state.ready = false
   state.reason = "pending"
-  stop_timer(timer)
 
   if not same then
     state.selection_manual = false
@@ -713,17 +719,11 @@ local function queue()
 
   local generation = state.generation
 
-  local function run()
+  request_timer:start(state.config.debounce_ms, function()
     if generation == state.generation and not state.disposed then
       request(manual, sources)
     end
-  end
-
-  if state.config.debounce_ms == 0 then
-    vim.schedule(run)
-  else
-    timer:start(state.config.debounce_ms, 0, vim.schedule_wrap(run))
-  end
+  end)
 end
 
 local function register_autocmds(config, warmup)
@@ -863,6 +863,7 @@ function M.setup(opts)
   assert(opts == nil or type(opts) == "table", "completion-tools.nvim: setup expects a table")
   opts = vim.deepcopy(opts or {})
   local config = require("completion_tools.config").validate(opts)
+  local timer = require("base_tools.timer")
 
   M.dispose()
   state.config, state.disposed = config, false
@@ -872,7 +873,7 @@ function M.setup(opts)
   state.ranking = require("completion_tools.ranking").new(config.ranking)
   -- setup may itself run inside Lazy's first InsertEnter callback.
   state.edit_buf, state.edit_tick = vim.api.nvim_get_current_buf(), vim.api.nvim_buf_get_changedtick(0)
-  timer, doc_timer = vim.uv.new_timer(), vim.uv.new_timer()
+  request_timer, doc_timer = timer.new(), timer.new()
 
   for _, id in ipairs({ "lsp", "buffer", "path", "snippets", "cmdline", "dictionary", "spell", "copilot" }) do
     local provider = require("completion_tools.sources." .. id).new(config[id] or {}, function()
@@ -965,7 +966,9 @@ function M.register_source(id, provider)
 end
 
 function M.show(opts)
-  stop_timer(timer)
+  if request_timer then
+    request_timer:cancel()
+  end
   local ctx = current()
   if ctx and ctx.mode == "insert" then
     -- A mapping can run before TextChangedI for the characters preceding it.
@@ -986,7 +989,9 @@ function M.hide(reason)
   state.generation = state.generation + 1
   cancel_requests()
   cancel_doc()
-  stop_timer(timer)
+  if request_timer then
+    request_timer:cancel()
+  end
   for id, cache in pairs(state.cache) do
     if cache.response then
       state.cache[id] = nil
@@ -1231,19 +1236,24 @@ local function accept_partial(part)
   end
   return true
 end
+
 function M.accept_word()
   return accept_partial("word")
 end
+
 function M.accept_line()
   return accept_partial("line")
 end
+
 function M.show_documentation()
   if not selected_entry() then
     return false
   end
+
   documentation(true)
   return true
 end
+
 function M.scroll_documentation_up()
   return ui.scroll_documentation(-4)
 end
@@ -1339,9 +1349,11 @@ function M.dispose()
       provider.dispose()
     end
   end
-  close_timer(timer)
-  close_timer(doc_timer)
-  timer, doc_timer = nil, nil
+  if request_timer then
+    request_timer:close()
+    doc_timer:close()
+    request_timer, doc_timer = nil, nil
+  end
   ui.dispose()
   state.providers, state.cache, state.source_ids = {}, {}, {}
   state.builtin_display_names = {}
