@@ -51,9 +51,11 @@ function M.run(args)
     close(record)
     record.status, record.error = "error", tostring(err)
     record.elapsed_ms = (vim.uv.hrtime() - record.started) / 1e6
+
     if record.cancel then
       pcall(record.cancel)
     end
+
     args.failed(id, err)
     args.changed()
   end
@@ -77,6 +79,7 @@ function M.run(args)
           if record.cancel then
             pcall(record.cancel)
           end
+
           args.changed()
           pump()
         end)
@@ -98,6 +101,7 @@ function M.run(args)
         if record.status == "done" then
           close(record)
         end
+
         args.changed()
       end
 
@@ -144,6 +148,7 @@ function M.run(args)
               if other.status == "pending" or other.status == "waiting" then
                 ready = false
               end
+
               blocked = blocked or other.matches or other.status == "skipped"
             end
           end
@@ -155,6 +160,7 @@ function M.run(args)
             else
               start(id)
             end
+
             again = true
           end
         end
@@ -181,8 +187,10 @@ function M.run(args)
         if record.started then
           record.elapsed_ms = (vim.uv.hrtime() - record.started) / 1e6
         end
+
         record.status = "cancelled"
       end
+
       if record.cancel then
         pcall(record.cancel, keep and keep[id])
         record.cancel = nil

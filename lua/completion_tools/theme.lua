@@ -1,6 +1,7 @@
 -- Optional theme service. Standalone completion uses the active Statement color.
 local M = {}
 local palette, stop
+
 local function definition(name)
   local seen = {}
   while name and not seen[name] do
@@ -9,10 +10,13 @@ local function definition(name)
     if not value.link then
       return value
     end
+
     name = value.link
   end
+
   return {}
 end
+
 local function apply()
   local api = vim.api
   local menu, border, float = definition("Pmenu"), definition("FloatBorder"), definition("NormalFloat")
@@ -27,9 +31,11 @@ local function apply()
     Doc = { fg = c and c.float_fg or float.fg, bg = float_bg },
     DocBorder = { fg = border_fg, bg = float_bg },
   }
+
   for name, value in pairs(groups) do
     local public, private = "CompletionTools" .. name, "CompletionToolsDefault" .. name
     api.nvim_set_hl(0, private, value)
+
     local empty = vim.tbl_isempty(api.nvim_get_hl(0, { name = public, create = false }))
     api.nvim_set_hl(0, public, { link = private, default = not empty })
   end
@@ -43,12 +49,16 @@ function M.highlights()
       apply()
     end)
   end
+
   apply()
 end
+
 function M.dispose()
   if stop then
     stop()
   end
+
   palette, stop = nil, nil
 end
+
 return M
