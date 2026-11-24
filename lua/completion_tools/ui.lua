@@ -35,11 +35,13 @@ local viewport = 1
 local geometry, doc_item, doc_content
 ---@type completion_tools.MenuStatus|nil
 local menu_status
+local menu_source_group
 local doc_view, doc_token, doc_media
 local doc_lines, doc_language, doc_markdown, doc_rules_width
 local doc_position, doc_footer
 local frame_items, frame_selected
 local frame_layout, frame_lines, frame_spans, frame_config
+local frame_footer
 local shrink_timer, shrink_token
 local status_timer, status_token, status_frame = nil, nil, 1
 local render = require("completion_tools.render")
@@ -74,12 +76,29 @@ local function status_text()
   return menu_status.text .. (frame and " " .. frame or "")
 end
 
-local function status_footer(width)
-  if not menu_status then
-    return ""
+local function sync_footer(width)
+  if not (menu_source_group or menu_status or frame_footer) then
+    return
   end
-  local label = base_text.clip(status_text(), width - 2)
-  return { { " " .. label .. " ", menu_status.highlight } }
+
+  local status = menu_status and base_text.clip(" " .. status_text() .. " ", width) or ""
+  -- Reserve room for the status before handing the slots to base-tools.
+  local space = width - vim.fn.strdisplaywidth(status) - 2
+  local name = menu_source_group and base_text.clip(menu_source_group, space) or ""
+  local left = name ~= "" and " " .. name .. " " or false
+  local right = status ~= "" and { { status, menu_status.highlight } } or false
+  local previous = frame_footer or { left = false, right = false }
+  local changed = {}
+  if left ~= previous.left then
+    changed.left = left
+  end
+  if not vim.deep_equal(right, previous.right) then
+    changed.right = right
+  end
+  if next(changed) then
+    menu:set_border_labels({ bottom = changed })
+  end
+  frame_footer = (left or right) and { left = left, right = right } or nil
 end
 
 local function sync_status_animation()
@@ -107,10 +126,7 @@ local function sync_status_animation()
       end
 
       status_frame = status_frame % #menu_status.frames + 1
-      local footer = status_footer(vim.api.nvim_win_get_width(menu.win))
-      -- Animation changes only the border, leaving text, selection and geometry intact.
-      menu:update({ footer = footer, footer_pos = "right" })
-      frame_config.footer = footer
+      sync_footer(vim.api.nvim_win_get_width(menu.win))
     end)
   )
 end
@@ -224,9 +240,13 @@ function M.set_status(status)
   sync_status_animation()
 end
 
+function M.set_source_group(name)
+  menu_source_group = name
+end
+
 function M.hide()
   stop_status_animation()
-  menu_status = nil
+  menu_status, menu_source_group, frame_footer = nil, nil, nil
   cancel_shrink()
   if menu then
     menu:close()
@@ -320,10 +340,8 @@ local function placement(count, width, ctx, config)
     border = opts.border,
     focusable = false,
     zindex = 100,
-    footer = status_footer(width),
-    footer_pos = "right",
   }
-  if menu_status and (opts.border == "none" or opts.border == "shadow") then
+  if (menu_status or menu_source_group) and (opts.border == "none" or opts.border == "shadow") then
     window_config.border = { "", "", "", "", "", "─", "", "" }
   end
   local next_geometry = {
@@ -396,6 +414,7 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
       menu:update(window_config)
     end
   else
+    frame_footer = nil
     menu = float.open({
       buf = buf,
       config = window_config,
@@ -418,6 +437,7 @@ local function paint(items, selected, ctx, config, layout, window_config, next_g
   geometry = next_geometry
   frame_items, frame_selected = items, selected
   frame_layout, frame_lines, frame_spans, frame_config = layout, lines, spans, window_config
+  sync_footer(window_config.width)
   sync_status_animation()
   if moved and valid(doc) and doc_item then
     M.documentation(doc_item, config, doc_content)
@@ -506,6 +526,7 @@ function M.reposition(ctx, config)
       M.documentation(doc_item, config, doc_content)
     end
   end
+  sync_footer(wc.width)
   return true
 end
 

@@ -442,6 +442,32 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         assert snapshot["empty_menu"]["samples"] >= 5 and snapshot["empty_menu"]["blank"] == 0, snapshot
         os.write(primary, b"\x1b")
         wait(lambda s: s["mode"] == "n" and not s["visible"], "empty-menu cleanup")
+        os.write(primary, b":lua completion_tui_source_groups()\r")
+        wait(lambda s: s["mode"] == "n" and s["line"] == "", "source group fixture")
+        os.write(primary, b"ia")
+        initial = wait(lambda s: s.get("selected") == "alpha" and s.get("menu_footer"), "initial group menu")
+        os.write(primary, b"\x1bn")
+        group = wait(lambda s: s.get("menu_footer", "").startswith(" Words")
+                     and "" in s["menu_footer"], "source group and Copilot share the footer")
+        assert "…" in group["menu_footer"] and group["menu"]["width"] == initial["menu"]["width"], group
+        spun = wait(lambda s: s.get("menu_footer", "").startswith(" Words")
+                    and re.search(r"[⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏]", s["menu_footer"])
+                    and s["menu_footer"] != group["menu_footer"], "spinner keeps the group label")
+        assert spun["menu"]["win"] == group["menu"]["win"], spun
+        before_switch = len(output)
+        os.write(primary, b"\x1bn")
+        wait(lambda s: not s["visible"] and b"Completion sources: Empty" in output[before_switch:],
+             "empty group switches with an echo")
+        os.write(primary, b"\x1bp")
+        wait(lambda s: s.get("menu_footer", "").startswith(" Words"), "previous group restores the menu")
+        os.write(primary, b"\x1bp")
+        wait(lambda s: s.get("menu_footer") == initial["menu_footer"], "default group clears the footer label")
+        os.write(primary, b"l")
+        wait(lambda s: s.get("prefix") == "al" and s.get("menu_footer") == initial["menu_footer"],
+             "automatic refresh leaves the default group unlabeled")
+        os.write(primary, b"\x1b:lua require('completion_tools.source_selection').reset()\r")
+        wait(lambda s: s["mode"] == "n" and not s["visible"], "source group cleanup")
+        assert output[before_switch:].count(b"Completion sources: Empty") == 1
         for attempt in range(5):
             os.write(primary, b":lua completion_tui_manual()\r")
             wait(lambda s: s["mode"] == "n" and s.get("manual", {}).get("calls") == 0,

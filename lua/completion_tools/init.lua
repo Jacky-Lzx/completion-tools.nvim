@@ -222,6 +222,10 @@ local function update_menu_status()
   end
 end
 
+local function notify_source_group(name)
+  vim.notify("Completion sources: " .. name, vim.log.levels.INFO)
+end
+
 local function render(pending)
   local ctx = state.context
   if not ctx or not context.same(ctx, current()) then
@@ -321,7 +325,17 @@ local function render(pending)
     state.select_first = nil
   end
 
+  ui.set_source_group(state.source_group)
   ui.render(items, state.selected, ctx, state.config)
+  if state.announce_source_group then
+    if ui.visible() then
+      state.announce_source_group = nil
+    elseif not pending then
+      local name = state.announce_source_group
+      state.announce_source_group = nil
+      notify_source_group(name)
+    end
+  end
   documentation(false)
   return #items > 0 or not pending
 end
@@ -615,14 +629,26 @@ local function run_request(generation, ctx, ids, options, reused)
   end
 end
 
-local function request(manual, override, select_first)
-  if not enabled() then
-    M.hide("disabled")
-    return false
-  end
+local function request(manual, override, select_first, explicit)
   local ctx = current()
-  if not ctx or vim.fn.pumvisible() == 1 or (ctx.mode == "cmdline" and vim.fn.wildmenumode() == 1) then
-    M.hide(ctx and "native_completion" or "unsupported_context")
+  local source_selection = package.loaded["completion_tools.source_selection"]
+  local name, switched
+  if source_selection then
+    name, switched = source_selection._menu_group(ctx, override, explicit)
+  end
+  local reason
+  if not enabled() then
+    reason = "disabled"
+  elseif not ctx then
+    reason = "unsupported_context"
+  elseif vim.fn.pumvisible() == 1 or (ctx.mode == "cmdline" and vim.fn.wildmenumode() == 1) then
+    reason = "native_completion"
+  end
+  if reason then
+    M.hide(reason)
+    if switched then
+      notify_source_group(name)
+    end
     return false
   end
 
@@ -633,6 +659,14 @@ local function request(manual, override, select_first)
     return false
   end
 
+  state.source_group = name
+  if switched then
+    state.announce_source_group = name
+  elseif
+    state.announce_source_group and (state.announce_source_group ~= name or not context.same(state.context, ctx))
+  then
+    state.announce_source_group = nil
+  end
   local generation = begin_request(ctx, ids, options, #cached_ids > 0, manual, select_first)
   run_request(generation, ctx, ids, options, reused)
   return true
@@ -938,7 +972,7 @@ function M.show(opts)
     -- Those edits are already included in this explicit request's snapshot.
     state.edit_buf, state.edit_tick = ctx.bufnr, ctx.tick
   end
-  return request(true, opts and opts.sources)
+  return request(true, opts and opts.sources, nil, true)
 end
 function M.refresh_keymaps()
   if state.disposed then
@@ -960,6 +994,7 @@ function M.hide(reason)
   end
   state.items, state.selected, state.context, state.groups, state.ready = {}, nil, nil, {}, false
   state.retained, state.last_render = {}, nil
+  state.source_group, state.announce_source_group = nil, nil
   state.select_first = nil
   state.selection_manual = false
   state.reason = reason or "hidden"

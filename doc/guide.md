@@ -149,3 +149,14 @@ the separate spell source offers native spelling corrections.
 ## Completion integration lifecycle
 
 `require("completion_tools.source_selection")` is a UI-independent API: `sources(config, ctx)`, `active_sources(config, ctx)`, `cycle(config, direction, ctx)`, `toggle_source(config, name, ctx)` and `reset(ctx)`. `config.groups` lists extra source groups after dynamic defaults. Context uses `bufnr`. Manual overrides remain buffer-local until reset; returned lists are copies.
+
+After `cycle()`, the selected extra group appears on the left of the menu's
+bottom border. Use `{ name = "Code", sources = { "lsp", "path" } }` for a short
+group name. Plain source lists display their source IDs. Returning to the default
+group, toggling a source, or resetting the selection clears the group label.
+
+To refresh immediately from a key mapping, call `cmp.hide()` then
+`cmp.show({ sources = selection.cycle(config, 1) })`, where `selection` is the
+source selection module. If an extra group yields no menu, Neovim issues a
+notification with the group name. Automatic completion can use the same selection
+through `sources = function(ctx) return selection.active_sources(config, ctx) end`.

@@ -346,6 +346,59 @@ function _G.completion_tui_empty_menu()
     },
   })
 end
+function _G.completion_tui_source_groups()
+  vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
+  vim.api.nvim_win_set_cursor(0, { 1, 0 })
+  local selection = require("completion_tools.source_selection")
+  selection.reset()
+  local groups = {
+    default = { "words" },
+    groups = {
+      { name = "Words and code suggestions", sources = { "words", "copilot" } },
+      { name = "Empty", sources = { "empty" } },
+    },
+  }
+  local function cycle(direction)
+    return function(cmp)
+      local sources = selection.cycle(groups, direction)
+      cmp.hide()
+      return cmp.show({ sources = sources })
+    end
+  end
+  require("completion-tools").setup({
+    sources = function(ctx)
+      return selection.active_sources(groups, ctx)
+    end,
+    menu = { min_width = 16, max_width = 16, border = "rounded", columns = { { "label" } } },
+    documentation = { auto_show = false },
+    copilot = { show_status = true },
+    providers = {
+      words = {
+        complete = function(_, callback)
+          callback({ items = { { label = "alpha" } } })
+        end,
+      },
+      copilot = {
+        complete = function(_, callback)
+          local timer = vim.defer_fn(function()
+            callback({ items = {} })
+          end, 1000)
+          return function()
+            if not timer:is_closing() then
+              timer:close()
+            end
+          end
+        end,
+      },
+      empty = {
+        complete = function(_, callback)
+          callback({ items = {} })
+        end,
+      },
+    },
+    keymap = { ["<A-n>"] = { cycle(1) }, ["<A-p>"] = { cycle(-1) } },
+  })
+end
 function _G.completion_tui_triggers()
   vim.api.nvim_buf_set_lines(0, 0, -1, false, { "" })
   vim.bo.filetype = "lua"
@@ -833,8 +886,10 @@ timer:start(
             end
           end
           data.menu_screen = ""
+          data.menu_footer = ""
           for col = at.col, at.col + geometry.width - 1 do
             data.menu_screen = data.menu_screen .. vim.fn.screenstring(at.row, col)
+            data.menu_footer = data.menu_footer .. vim.fn.screenstring(top.row + geometry.height, col)
           end
           if completion_handoff and completion_handoff.active then
             data.menu_all_screen = ""

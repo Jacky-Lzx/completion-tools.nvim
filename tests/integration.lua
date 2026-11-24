@@ -2574,7 +2574,9 @@ local ok, err = xpcall(function()
           if vim.bo[vim.api.nvim_win_get_buf(win)].filetype=='completion-tools-menu' then
             local chunks=vim.api.nvim_win_get_config(win).footer or {}
             local result={}
-            for _,chunk in ipairs(chunks) do result[#result+1]=chunk[1] end
+            for _,chunk in ipairs(chunks) do
+              if chunk[2]~='FloatBorder' then result[#result+1]=chunk[1] end
+            end
             return table.concat(result),win
           end
         end
