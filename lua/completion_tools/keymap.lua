@@ -1,64 +1,76 @@
+local keys = require("base_tools.keys")
 local M = {}
 local installed = {}
 
-local function termcode(key)
-  -- Expr helpers such as pairs.expr() already return encoded keycodes.
-  -- Passing K_SPECIAL through replace_termcodes again inserts escaped bytes.
-  if key:find("\128", 1, true) then
-    return key
+local function callback_keys(result)
+  -- Callbacks can return either notation or an already encoded sequence.
+  -- Preserve K_SPECIAL bytes in results such as pairs.expr().
+  if result:find("\128", 1, true) then
+    return result
   end
-  return vim.api.nvim_replace_termcodes(key, true, false, true)
+
+  return keys.encode(result)
 end
 
 local function global_mapping(key, mode)
+  local encoded = keys.encode(key)
   for _, mapping in ipairs(vim.api.nvim_get_keymap(mode)) do
-    if termcode(mapping.lhs) == termcode(key) then
+    if keys.encode(mapping.lhs) == encoded then
       return mapping
     end
   end
+
   return {}
 end
-local function feed(keys, remap)
-  if keys and keys ~= "" then
+
+local function feed(sequence, remap)
+  if sequence and sequence ~= "" then
     -- Put fallback before the remaining typed input. Inserting at the back can
     -- reorder a fast "Tab then text" sequence.
-    vim.api.nvim_feedkeys(keys, remap and "im" or "in", false)
+    vim.api.nvim_feedkeys(sequence, remap and "im" or "in", false)
   end
 end
+
 local function fallback(mapping)
   local previous = mapping.previous
   if previous.callback then
     local result = previous.callback()
+
     if previous.expr == 1 then
       if previous.replace_keycodes == 1 then
-        result = termcode(result or "")
+        result = callback_keys(result or "")
       end
+
       feed(result, previous.noremap == 0)
     end
   elseif previous.rhs then
-    local result = previous.expr == 1 and vim.api.nvim_eval(previous.rhs) or previous.rhs
-    feed(termcode(result), previous.noremap == 0)
+    local result = previous.expr == 1 and callback_keys(vim.api.nvim_eval(previous.rhs)) or keys.encode(previous.rhs)
+    feed(result, previous.noremap == 0)
   else
-    feed(termcode(mapping.key), false)
+    feed(keys.encode(mapping.key), false)
   end
 end
+
 local function run(mapping)
   local cmp = require("completion_tools")
   if mapping.mode == "c" and not cmp._cmdline_active() then
     fallback(mapping)
     return
   end
+
   for _, action in ipairs(mapping.actions) do
     if action == "fallback" then
       fallback(mapping)
       return
     end
+
     if type(action) == "function" then
       local result = action(cmp)
       if type(result) == "string" then
-        feed(termcode(result), false)
+        feed(callback_keys(result), false)
         return
       end
+
       if result then
         return
       end
@@ -82,10 +94,12 @@ local action_labels = {
   snippet_forward = "Next snippet field",
   snippet_backward = "Previous snippet field",
 }
+
 local function description(actions)
   if type(actions.desc) == "string" and actions.desc ~= "" then
     return actions.desc
   end
+
   local labels, seen = {}, {}
   for _, action in ipairs(actions) do
     if action ~= "fallback" then
@@ -97,17 +111,20 @@ local function description(actions)
       end
     end
   end
+
   return "Completion: " .. (#labels > 0 and table.concat(labels, " / ") or "Use original key")
 end
 
 function M.setup(config)
   M.dispose()
+
   local function install(mode, keymap)
     for key, actions in pairs(keymap) do
       if actions ~= false then
         if type(actions) == "string" then
           actions = { actions }
         end
+
         local mapping = { mode = mode, key = key, actions = actions, previous = global_mapping(key, mode) }
         mapping.callback = function()
           run(mapping)
@@ -121,8 +138,10 @@ function M.setup(config)
       end
     end
   end
+
   install("i", config.keymap)
   install("s", config.keymap)
+
   if config.cmdline.enabled then
     install("c", config.cmdline.keymap)
   end
@@ -133,6 +152,7 @@ function M.dispose()
     local current = global_mapping(mapping.key, mapping.mode)
     if current.callback == mapping.callback then
       vim.keymap.del(mapping.mode, mapping.key)
+
       if next(mapping.previous) then
         vim.fn.mapset(
           mapping.mode,
@@ -142,6 +162,8 @@ function M.dispose()
       end
     end
   end
+
   installed = {}
 end
+
 return M
