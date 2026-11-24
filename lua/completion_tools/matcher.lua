@@ -115,8 +115,9 @@ local function better(a, b)
 end
 
 function M.has_match(group, ctx, opts)
+  local excluded_label = group.excluded_label and group.excluded_label(ctx)
   for _, item in ipairs(group.items) do
-    if type(item.label) == "string" and not (group.source_id == "buffer" and item.label == ctx.prefix) then
+    if type(item.label) == "string" and item.label ~= excluded_label then
       local start_col = group.start_cols and group.start_cols[item] or group.start_col
       local query = lower(ctx.before:sub(start_col + 1))
       local text = item.filterText or item.label
@@ -138,6 +139,7 @@ function M.filter(groups, ctx, limit, opts)
   local query_cache, index = {}, 0
 
   for _, group in ipairs(groups) do
+    local excluded_label = group.excluded_label and group.excluded_label(ctx)
     local client_priorities = {}
     for priority, name in ipairs(group.client_order or {}) do
       client_priorities[name] = priority
@@ -172,8 +174,7 @@ function M.filter(groups, ctx, limit, opts)
           score = score + opts.bonus(item, group.source_id)
         end
 
-        -- Exclude the word being typed from the buffer source only.
-        if (not cutoff or score >= cutoff.score) and not (group.source_id == "buffer" and item.label == ctx.prefix) then
+        if item.label ~= excluded_label and (not cutoff or score >= cutoff.score) then
           local candidate = {
             item = item,
             group = group,

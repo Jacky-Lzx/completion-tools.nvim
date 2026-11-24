@@ -89,14 +89,21 @@ test("semantic identities retain overloads, imports and edit behavior", function
   copy.insertTextFormat = 2
   assert(identity.key(copy) ~= identity.key(a))
 end)
-test("buffer source excludes the typed word only", function()
-  local result = matcher.filter(
-    { group({ { label = "apple" } }, "buffer"), group({ { label = "apple" } }, "lsp") },
-    { before = "apple", prefix = "apple" },
-    5
-  )
+test("a source's excluded label follows the current prefix", function()
+  local words = group({ { label = "apple" } }, "words")
+  words.excluded_label = function(ctx)
+    return ctx.prefix
+  end
+  local lsp = group({ { label = "apple" } }, "lsp", 0, 2)
+  local exact = { before = "apple", prefix = "apple" }
+  eq(false, matcher.has_match(words, exact))
+  local result = matcher.filter({ words, lsp }, exact, 5)
   eq(1, #result)
   eq("lsp", result[1].source_id)
+
+  local partial = { before = "app", prefix = "app" }
+  eq(true, matcher.has_match(words, partial))
+  eq("words", matcher.filter({ words, lsp }, partial, 5)[1].source_id)
 end)
 test("configuration preserves empty source and keymap lists", function()
   local cfg = require("completion_tools.config").validate({ sources = {}, keymap = {} })

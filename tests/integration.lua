@@ -634,6 +634,30 @@ local ok, err = xpcall(function()
     input("<Tab>!")
     wait("return vim.api.nvim_get_current_line()=='alpha!'")
   end)
+  test("the current buffer word leaves room for a fallback source", function()
+    lua([[
+      vim.api.nvim_buf_set_lines(0, 0, -1, false, { "alpha", "" })
+      vim.api.nvim_win_set_cursor(0, { 2, 0 })
+      require("completion_tools").setup({
+        sources = { "buffer", "fallback" },
+        providers = {
+          fallback = {
+            fallback_for = { "buffer" },
+            complete = function(_, callback)
+              callback({ items = { { label = "alphabet" } } })
+            end,
+          },
+        },
+      })
+    ]])
+    input("ial")
+    wait([[local cmp = require("completion_tools")
+      return cmp._can("accept") and cmp.get_selected_item().label == "alpha"]])
+    input("pha")
+    wait([[local cmp = require("completion_tools")
+      local items = cmp.get_items()
+      return cmp._can("accept") and #items == 1 and items[1].label == "alphabet"]])
+  end)
   test("matching main results suppress fallback even when configured first", function()
     lua([[fallback_calls=0
       require('completion_tools').setup({sources={'fallback','main'},providers={

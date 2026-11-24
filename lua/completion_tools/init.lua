@@ -489,6 +489,7 @@ local function receive_response(generation, ctx, id, priority, response)
     items = items,
     source_id = id,
     display_name = configured.display_name or provider.display_name or state.builtin_display_names[id],
+    excluded_label = provider.excluded_label,
     priority = priority,
     insert_at = configured.insert_at,
     client_order = id == "lsp" and configured.client_order or nil,

@@ -204,6 +204,10 @@ function M.new(opts, refresh)
     return state
   end
 
+  function source.excluded_label(ctx)
+    return ctx.prefix
+  end
+
   function source.complete(ctx, callback)
     local buffers = opts.get_bufnrs and opts.get_bufnrs(ctx) or { ctx.bufnr }
     local items = {}
