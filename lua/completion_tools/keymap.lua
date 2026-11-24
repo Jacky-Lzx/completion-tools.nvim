@@ -1,5 +1,6 @@
 local M = {}
 local installed = {}
+
 local function termcode(key)
   -- Expr helpers such as pairs.expr() already return encoded keycodes.
   -- Passing K_SPECIAL through replace_termcodes again inserts escaped bytes.
@@ -8,6 +9,7 @@ local function termcode(key)
   end
   return vim.api.nvim_replace_termcodes(key, true, false, true)
 end
+
 local function global_mapping(key, mode)
   for _, mapping in ipairs(vim.api.nvim_get_keymap(mode)) do
     if termcode(mapping.lhs) == termcode(key) then

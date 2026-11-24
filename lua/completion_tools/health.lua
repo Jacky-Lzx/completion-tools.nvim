@@ -6,20 +6,28 @@ function M.check()
     vim.health.error("Neovim 0.12+ is required", { "Upgrade Neovim" })
     return
   end
-  if #vim.api.nvim_get_runtime_file("lua/base_tools/init.lua", false) == 0 then
-    vim.health.error("base-tools.nvim is required", { "Add base-tools.nvim to runtimepath" })
+
+  local ok, err = pcall(require, "base_tools")
+  if not ok then
+    vim.health.error(
+      "Cannot load base-tools.nvim: " .. tostring(err),
+      { "Ensure base-tools.nvim is installed and on runtimepath" }
+    )
     return
   end
+
   local issues = {}
   local function problem(level, message, advice)
     issues[#issues + 1] = { level = level, message = message, advice = advice }
   end
+
   local plugin = package.loaded.completion_tools
   local status = plugin and plugin.get_status()
   if not status or not status.configured then
     vim.health.info("Not configured; completion checks skipped.")
     return
   end
+
   for id, item in pairs(status.sources) do
     if not item.registered then
       problem(
@@ -51,9 +59,11 @@ function M.check()
     end
     return a.message < b.message
   end)
+
   for _, issue in ipairs(issues) do
     vim.health[issue.level](issue.message, issue.advice)
   end
+
   if #issues == 0 then
     vim.health.ok("Configured completion sources are available.")
   end
