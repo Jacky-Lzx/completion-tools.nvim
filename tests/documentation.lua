@@ -120,11 +120,21 @@ assert(
   "The fenced code should use the Lua parser"
 )
 eq(2, vim.wo[current.win].conceallevel)
-local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
+local function marks(primary, fallback)
+  local source = vim.api.nvim_buf_get_extmarks(current.buf, vim.api.nvim_create_namespace(primary), 0, -1, {
+    details = true,
+  })
+  if #source == 0 then
+    source = vim.api.nvim_buf_get_extmarks(current.buf, vim.api.nvim_create_namespace(fallback), 0, -1, {
+      details = true,
+    })
+  end
+  return source
+end
 local function concealed_rows()
   return vim.tbl_map(function(mark)
     return mark[2]
-  end, vim.api.nvim_buf_get_extmarks(current.buf, doc_ns, 0, -1, {}))
+  end, marks("base-tools-markdown-fences", "completion-tools-documentation"))
 end
 eq({ 0, 2, 3, 7, 11, 13 }, concealed_rows())
 
@@ -156,6 +166,34 @@ assert(ui.documentation({}, cfg, doc.code("**raw**", "lua")))
 vim.treesitter.start = start
 eq({ "**raw**" }, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
 assert(not vim.treesitter.highlighter.active[current.buf])
+
+local rule_lines = { "Markdown preview with enough text", "", "---", "", "A heading", "---", "", "> ***" }
+local rule_text = table.concat(rule_lines, "\n")
+local rule_doc = doc.markdown(rule_text)
+local function rule_marks()
+  return marks("base-tools-markdown-rules", "completion-tools-documentation-rules")
+end
+
+assert(ui.documentation({}, cfg, rule_doc))
+local rule_win = current.win
+local rule_width = vim.api.nvim_win_get_width(rule_win)
+local rules = rule_marks()
+eq(2, #rules)
+eq({ 2, 7 }, { rules[1][2], rules[2][2] })
+eq({ { string.rep("─", rule_width), "CompletionToolsDocBorder" } }, rules[1][4].virt_text)
+eq({ { string.rep("─", rule_width - 2), "CompletionToolsDocBorder" } }, rules[2][4].virt_text)
+
+local narrow = vim.deepcopy(cfg)
+narrow.documentation.max_width = 16
+assert(ui.documentation({}, narrow, rule_doc))
+eq(rule_win, current.win)
+eq(16, vim.api.nvim_win_get_width(rule_win))
+eq({ { string.rep("─", 16), "CompletionToolsDocBorder" } }, rule_marks()[1][4].virt_text)
+local rule_tick = vim.api.nvim_buf_get_changedtick(current.buf)
+assert(ui.documentation({}, narrow, doc.code(rule_text, "markdown")))
+eq(rule_tick, vim.api.nvim_buf_get_changedtick(current.buf))
+eq({}, rule_marks())
+eq(rule_lines, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
 
 local long = {
   documentation = { kind = "plaintext", value = string.rep(string.rep("word ", 12) .. "\n", 40) },

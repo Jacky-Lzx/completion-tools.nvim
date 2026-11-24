@@ -73,6 +73,7 @@ local function append_section(lines, section)
   if #lines > 0 then
     lines[#lines + 1] = ""
   end
+
   vim.list_extend(lines, section)
 end
 

@@ -4,6 +4,7 @@ local base_text = require("base_tools.text")
 local has_markdown, base_markdown = pcall(require, "base_tools.markdown")
 local has_preview, preview_window = pcall(require, "base_tools.preview")
 local document_window = has_preview and preview_window or float
+local document_markdown = { rule_highlight = "CompletionToolsDocBorder" }
 local document_scrollbar = {
   track_highlight = "CompletionToolsDocBorder",
   thumb_highlight = "CompletionToolsDocScrollThumb",
@@ -28,13 +29,14 @@ end
 
 local ns = vim.api.nvim_create_namespace("completion-tools-menu")
 local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
+local doc_rules_ns = vim.api.nvim_create_namespace("completion-tools-documentation-rules")
 local menu, doc, buf, doc_buf
 local viewport = 1
 local geometry, doc_item, doc_content
 ---@type completion_tools.MenuStatus|nil
 local menu_status
 local doc_view, doc_token, doc_media
-local doc_lines, doc_language
+local doc_lines, doc_language, doc_markdown, doc_rules_width
 local doc_position, doc_footer
 local frame_items, frame_selected
 local frame_layout, frame_lines, frame_spans, frame_config
@@ -212,7 +214,7 @@ function M.hide_documentation()
     doc:close()
   end
   doc, doc_item, doc_content, doc_media, doc_footer = nil, nil, nil, nil, nil
-  doc_lines, doc_language = nil, nil
+  doc_lines, doc_language, doc_markdown = nil, nil, nil
 end
 
 --- Update the footer status and synchronize its animation timer.
@@ -507,23 +509,55 @@ function M.reposition(ctx, config)
   return true
 end
 
-local function conceal_markdown_fences(bufnr)
-  if has_markdown then
-    base_markdown.conceal_fences(bufnr, doc_ns)
-    return
-  end
+local function visit_markdown_nodes(bufnr, node_type, visit)
   local ok, parser = pcall(vim.treesitter.get_parser, bufnr, "markdown")
   if not ok or not parser then
     return
   end
 
-  -- Keep fence text available for language injections even with older highlight queries.
-  local query = vim.treesitter.query.parse("markdown", "(fenced_code_block_delimiter) @fence")
+  local query = vim.treesitter.query.parse("markdown", "(" .. node_type .. ") @node")
   for _, tree in ipairs(parser:parse()) do
     for _, node in query:iter_captures(tree:root(), bufnr) do
-      vim.api.nvim_buf_set_extmark(bufnr, doc_ns, node:start(), 0, { conceal_lines = "" })
+      visit(node)
     end
   end
+end
+
+local function conceal_markdown_fences(bufnr)
+  if has_markdown then
+    base_markdown.conceal_fences(bufnr, doc_ns)
+    return
+  end
+
+  -- Keep fence text available for language injections even with older highlight queries.
+  visit_markdown_nodes(bufnr, "fenced_code_block_delimiter", function(node)
+    vim.api.nvim_buf_set_extmark(bufnr, doc_ns, node:start(), 0, { conceal_lines = "" })
+  end)
+end
+
+local function render_markdown_rules(bufnr, win, markdown, replace)
+  local width = markdown and vim.api.nvim_win_get_width(win) or nil
+  if not replace and width == doc_rules_width then
+    return
+  end
+  if doc_rules_width then
+    vim.api.nvim_buf_clear_namespace(bufnr, doc_rules_ns, 0, -1)
+  end
+  doc_rules_width = width
+  if not width then
+    return
+  end
+
+  visit_markdown_nodes(bufnr, "thematic_break", function(node)
+    local row, col = node:start()
+    local cells = width - vim.fn.virtcol({ row + 1, col + 1 }, false, win) + 1
+    if cells > 0 then
+      vim.api.nvim_buf_set_extmark(bufnr, doc_rules_ns, row, col, {
+        virt_text = { { string.rep("─", cells), "CompletionToolsDocBorder" } },
+        virt_text_pos = "overlay",
+      })
+    end
+  end)
 end
 
 function M.documentation(item, config, document)
@@ -599,6 +633,8 @@ function M.documentation(item, config, document)
       scrollbar = not media and document_scrollbar or nil,
       border_labels = not media and doc_border_labels or nil,
       win_options = {
+        conceallevel = 0,
+        concealcursor = "nvic",
         winhighlight = "Normal:CompletionToolsDoc,FloatBorder:CompletionToolsDocBorder"
           .. ",Search:None,IncSearch:None,CurSearch:None",
       },
@@ -620,11 +656,20 @@ function M.documentation(item, config, document)
   local doc_win = doc.win
   vim.wo[doc_win].wrap = not media
   vim.wo[doc_win].smoothscroll = not media
-  vim.wo[doc_win].conceallevel = markdown and 2 or 0
-  vim.wo[doc_win].concealcursor = "nvic"
+  local shared_markdown = doc.set_format ~= nil
+  local format = markdown and "markdown" or nil
+  if not shared_markdown then
+    vim.wo[doc_win].conceallevel = markdown and 2 or 0
+  end
   if replace then
-    if doc_border_labels then
-      doc:set_content({ lines = lines, language = language or false, scroll = keep_scroll and "keep" or "top" })
+    if doc_border_labels or shared_markdown then
+      doc:set_content({
+        lines = lines,
+        language = language or false,
+        format = shared_markdown and format or nil,
+        markdown = document_markdown,
+        scroll = keep_scroll and "keep" or "top",
+      })
     else
       if has_preview then
         doc:set_lines(lines)
@@ -635,11 +680,14 @@ function M.documentation(item, config, document)
         pcall(vim.treesitter.start, doc_buf, vim.treesitter.language.get_lang(language) or language)
       end
     end
-    if language == "markdown" then
+    if not shared_markdown and language == "markdown" then
       conceal_markdown_fences(doc_buf)
     end
     doc_lines, doc_language = lines, language
+  elseif shared_markdown and doc_markdown ~= markdown then
+    doc:set_format(format or false, document_markdown)
   end
+  doc_markdown = markdown
   if not media then
     if doc.content_height then
       wc.height = doc:content_height({ max_height = max_height })
@@ -649,6 +697,9 @@ function M.documentation(item, config, document)
     wc.row = math.max(top, math.min(geometry.row, bottom - wc.height - 1))
   end
   doc:update(wc)
+  if not shared_markdown then
+    render_markdown_rules(doc_buf, doc_win, markdown, replace)
+  end
   if replace and not doc_border_labels then
     vim.api.nvim_win_set_cursor(doc_win, { 1, 0 })
   end

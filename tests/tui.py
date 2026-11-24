@@ -249,7 +249,8 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         attrs = snapshot["menu_attrs"]
         assert attrs["ignore"] != attrs["ore"] == attrs["Snippet"], snapshot
         assert "`" not in snapshot["doc_screen"] and "Use path." in snapshot["doc_screen"], snapshot
-        assert "*" not in snapshot["doc_screen"] and "---" in snapshot["doc_screen"], snapshot
+        assert "*" not in snapshot["doc_screen"] and "---" in snapshot["doc_lines"], snapshot
+        assert any(re.fullmatch("─{3,}", row) for row in snapshot["doc_screen"].splitlines()), snapshot
         assert "@param path" in snapshot["doc_screen"], snapshot
         assert any(b"3" in codes.split(b";") for codes in re.findall(rb"\x1b\[([0-9;]*)m", output)), \
             "Markdown italics were not emitted to the terminal"
@@ -292,7 +293,8 @@ with tempfile.TemporaryDirectory(prefix="completion-tools-tui-") as temporary:
         fcntl.ioctl(primary, termios.TIOCSWINSZ, struct.pack("HHHH", 36, 120, 0, 0))
         child.send_signal(signal.SIGWINCH)
         os.write(primary, b":lua completion_tui_path_preview()\r")
-        wait(lambda s: s["line"] == "" and s["mode"] == "n", "path preview fixture")
+        wait(lambda s: s.get("columns") == 120 and s["line"] == "" and s["mode"] == "n",
+             "path preview fixture and restored terminal width")
         os.write(primary, b"i./")
         snapshot = wait(lambda s: s.get("selected") == "previewa.lua"
                         and "preview value" in s.get("doc_screen", ""),
