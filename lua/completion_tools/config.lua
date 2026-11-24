@@ -37,7 +37,7 @@ M.defaults = {
   timeout_ms = 2000,
   max_items = 50,
   preselect = true,
-  accept = { mode = "replace" },
+  accept = { mode = "replace", auto_brackets = true },
   ranking = {
     history = { enabled = false, max_entries = 1000 },
     proximity = { enabled = false, lines = 50 },
@@ -196,6 +196,10 @@ local function validate_general(config)
     end
   end
   assert(config.accept.mode == "insert" or config.accept.mode == "replace", "completion-tools: invalid accept.mode")
+  assert(
+    type(config.accept.auto_brackets) == "boolean" or type(config.accept.auto_brackets) == "function",
+    "completion-tools: invalid accept.auto_brackets"
+  )
   assert(integer(config.timeout_ms, 0), "completion-tools: invalid timeout_ms")
 end
 

@@ -1518,6 +1518,12 @@ local ok, err = xpcall(function()
         { kind = 3, suffix = "", body = "foo", expected = "foo()" },
         { kind = 3, suffix = "(value)", body = "foo", expected = "foo(value)", offset = 0 },
         { kind = 3, suffix = "value", body = "foo()", expected = "foo()value", offset = 0 },
+        { kind = 3, suffix = "", body = "foo{arg}", expected = "foo{arg}", offset = 0 },
+        { kind = 3, suffix = "", body = "foo[arg]", expected = "foo[arg]", offset = 0 },
+        { kind = 3, suffix = "", body = "foo", expected = "foo", offset = 0, auto_brackets = false },
+        { kind = 3, suffix = "", body = "foo", expected = "foo", offset = 0, filetype = "tex" },
+        { kind = 3, suffix = "", body = "foo", expected = "foo", offset = 0, filetype = "lua", client = "no-parens" },
+        { kind = 3, suffix = "", body = "foo", expected = "foo()", filetype = "lua", client = "allow-parens" },
         { kind = 6, suffix = "value", body = "foo", expected = "foovalue", offset = 0 },
         {
           kind = 3,
@@ -1536,10 +1542,18 @@ local ok, err = xpcall(function()
           [[
           local case=...
           if vim.snippet.active() then vim.snippet.stop() end
-          require('completion_tools').setup({auto_show=false,sources={'test'},
+          vim.bo.filetype = case.filetype or ''
+          local auto_brackets = case.auto_brackets
+          if case.filetype then
+            auto_brackets = function(ctx, item)
+              return ctx.filetype ~= 'tex' and item._client_name ~= 'no-parens'
+            end
+          end
+          require('completion_tools').setup({auto_show=false,sources={'test'},accept={auto_brackets=auto_brackets},
             keymap={['<C-Space>']={'show'},['<Tab>']={'accept'},['<CR>']={'accept'}},
             providers={test={complete=function(_,cb)
-              cb({items={{label='foo',kind=case.kind,insertText=case.body,insertTextFormat=case.format}}})
+              cb({items={{label='foo',kind=case.kind,insertText=case.body,insertTextFormat=case.format,
+                _client_name=case.client}}})
             end}}})
           vim.api.nvim_buf_set_lines(0,0,-1,false,{'fo'..case.suffix})
           vim.api.nvim_win_set_cursor(0,{1,2})

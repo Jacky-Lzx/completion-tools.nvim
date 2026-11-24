@@ -6,7 +6,12 @@ local ns = vim.api.nvim_create_namespace("completion-tools-snippet-indent")
 -- Completion inserts delimiters as text, independently of insert-mode mappings.
 function M.brackets(text, item, suffix)
   local callable = item.kind == CompletionItemKind.Method or item.kind == CompletionItemKind.Function
-  if item.insertTextFormat == protocol.InsertTextFormat.Snippet or not callable or suffix:match("^%s*%(") then
+  if
+    item.insertTextFormat == protocol.InsertTextFormat.Snippet
+    or not callable
+    or text:find("[{}%[%]]")
+    or suffix:match("^%s*%(")
+  then
     return text, 0
   end
 

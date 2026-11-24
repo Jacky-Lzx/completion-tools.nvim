@@ -147,11 +147,20 @@ function M.apply(entry, ctx, config, opts)
   local range, encoding = M.range(entry, ctx, opts and opts.mode or config.accept.mode)
   local insert_mode = item.insertTextMode or (item._client_id and 2 or nil)
   local insertion = require("completion_tools.edits.insertion")
-  local end_line = vim.api.nvim_buf_get_lines(ctx.bufnr, range["end"].line, range["end"].line + 1, false)[1] or ""
-  local cursor_offset
-  text, cursor_offset = insertion.brackets(text, item, end_line:sub(byte_col(ctx.bufnr, range["end"], encoding) + 1))
-  local indentation = ctx.before:match("^[ \t]*")
+  local auto_brackets = config.accept.auto_brackets
+  if type(auto_brackets) == "function" then
+    auto_brackets = auto_brackets(ctx, item)
+  end
 
+  local cursor_offset = 0
+  if auto_brackets then
+    local finish = range["end"]
+    local line = vim.api.nvim_buf_get_lines(ctx.bufnr, finish.line, finish.line + 1, false)[1] or ""
+    local suffix = line:sub(byte_col(ctx.bufnr, finish, encoding) + 1)
+    text, cursor_offset = insertion.brackets(text, item, suffix)
+  end
+
+  local indentation = ctx.before:match("^[ \t]*")
   if insert_mode == 2 then
     text = insertion.indent(text, indentation)
   end

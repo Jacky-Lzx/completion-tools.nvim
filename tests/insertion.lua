@@ -23,6 +23,7 @@ end
 eq("foo", insertion.brackets("foo", { kind = 6 }, "value"))
 eq("foo$0", insertion.brackets("foo$0", { kind = 3, insertTextFormat = 2 }, "value"))
 assert(not pcall(config.validate, { accept = { mode = "invalid" } }))
+assert(not pcall(config.validate, { accept = { auto_brackets = "invalid" } }))
 local line = "😀foTAIL"
 local ctx = {
   row = 0,
