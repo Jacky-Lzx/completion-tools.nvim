@@ -1,5 +1,6 @@
 local M = {}
 local context = require("completion_tools.context")
+local events = require("completion_tools.events")
 local ui = require("completion_tools.ui")
 local state = {
   generation = 0,
@@ -17,7 +18,7 @@ local state = {
   disposed = true,
   watched = {},
 }
-local request_timer, documentation, group
+local request_timer, documentation
 
 local function close_timer(id)
   if id and not id:is_closing() then
@@ -667,150 +668,6 @@ local function queue()
   end)
 end
 
-local function register_autocmds(config, warmup)
-  group = vim.api.nvim_create_augroup("CompletionTools", { clear = true })
-
-  vim.api.nvim_create_autocmd("InsertEnter", {
-    group = group,
-    callback = function(args)
-      M.hide()
-      state.edit_buf, state.edit_tick = args.buf, vim.api.nvim_buf_get_changedtick(args.buf)
-    end,
-  })
-
-  vim.api.nvim_create_autocmd({ "TextChangedI", "TextChangedP" }, {
-    group = group,
-    callback = function(args)
-      local tick = vim.api.nvim_buf_get_changedtick(args.buf)
-      local changed = state.edit_buf ~= args.buf or state.edit_tick ~= tick
-      state.edit_buf, state.edit_tick = args.buf, tick
-      if config.auto_show and changed then
-        queue()
-      end
-    end,
-  })
-
-  vim.api.nvim_create_autocmd("CursorMovedI", {
-    group = group,
-    callback = function()
-      if not state.context then
-        return
-      end
-
-      local ctx = current()
-      if not context.same(state.context, ctx) then
-        if config.auto_show and ctx and state.context.tick ~= ctx.tick then
-          queue()
-        else
-          M.hide()
-        end
-      end
-    end,
-  })
-
-  vim.api.nvim_create_autocmd({ "InsertLeave", "BufLeave", "WinLeave", "CmdlineLeave" }, {
-    group = group,
-    callback = function()
-      M.hide()
-      state.cache = {}
-    end,
-  })
-
-  vim.api.nvim_create_autocmd({ "BufEnter", "InsertEnter" }, {
-    group = group,
-    callback = function(args)
-      watch(args.buf)
-      warmup(args.buf)
-    end,
-  })
-
-  if config.cmdline.enabled then
-    vim.api.nvim_create_autocmd("CmdlineEnter", {
-      group = group,
-      callback = function()
-        M.hide()
-        state.cache = {}
-        state.accepted = nil
-      end,
-    })
-
-    vim.api.nvim_create_autocmd("CmdlineChanged", {
-      group = group,
-      callback = function()
-        -- Repainting an unchanged search through setcmdline() must retain the
-        -- current request and manual selection instead of starting them again.
-        if context.same(state.context, current()) then
-          return
-        end
-        if config.cmdline.auto_show then
-          queue()
-        else
-          M.hide()
-        end
-      end,
-    })
-  end
-
-  vim.api.nvim_create_autocmd("ColorScheme", { group = group, callback = ui.highlights })
-
-  vim.api.nvim_create_autocmd("User", {
-    group = group,
-    pattern = { "ThemeToolsIconsChanged", "ThemeToolsReady" },
-    callback = function(event)
-      if event.match == "ThemeToolsReady" then
-        ui.highlights()
-      end
-      if state.context and M.is_menu_visible() then
-        ui.refresh_icons(state.items, state.selected, state.context, state.config)
-      end
-    end,
-  })
-
-  vim.api.nvim_create_autocmd("FileType", {
-    group = group,
-    callback = function(args)
-      if state.context and args.buf == state.context.bufnr then
-        M.hide()
-        state.cache = {}
-      end
-    end,
-  })
-
-  vim.api.nvim_create_autocmd({ "LspAttach", "LspDetach" }, {
-    group = group,
-    callback = function(args)
-      state.cache.lsp = nil
-      if args.buf == vim.api.nvim_get_current_buf() and state.context and (config.auto_show or state.manual) then
-        queue()
-      end
-    end,
-  })
-
-  vim.api.nvim_create_autocmd("User", {
-    group = group,
-    pattern = "CompletionToolsCopilotStatus",
-    callback = function()
-      if ui.visible() and state.context and context.same(state.context, current()) then
-        update_menu_status()
-        ui.reposition(state.context, state.config)
-      end
-    end,
-  })
-
-  vim.api.nvim_create_autocmd("VimResized", {
-    group = group,
-    callback = function()
-      if state.context and state.context.mode == "cmdline" then
-        vim.schedule(M.refresh_cmdline)
-      else
-        M.hide()
-      end
-    end,
-  })
-
-  vim.api.nvim_create_autocmd("VimLeavePre", { group = group, callback = M.dispose })
-end
-
 function M.setup(opts)
   if vim.fn.has("nvim-0.12") ~= 1 then
     error("completion-tools requires Neovim 0.12+")
@@ -874,7 +731,16 @@ function M.setup(opts)
 
   ui.highlights()
 
-  register_autocmds(config, warmup)
+  events.setup(state, {
+    current = current,
+    queue = queue,
+    hide = M.hide,
+    watch = watch,
+    warmup = warmup,
+    update_menu_status = update_menu_status,
+    refresh_cmdline = M.refresh_cmdline,
+    dispose = M.dispose,
+  })
   require("completion_tools.keymap").setup(config)
   warmup(vim.api.nvim_get_current_buf())
   watch(vim.api.nvim_get_current_buf())
@@ -1246,10 +1112,7 @@ function M.dispose()
 
   state.disposed = true
   acceptance.cancel()
-  if group then
-    vim.api.nvim_del_augroup_by_id(group)
-    group = nil
-  end
+  events.dispose()
 
   require("completion_tools.keymap").dispose()
   for _, provider in pairs(state.providers) do
