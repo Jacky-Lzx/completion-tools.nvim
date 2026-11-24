@@ -239,11 +239,12 @@ triggering/filtering, not the transmitted document context.
 
                                                     *completion-tools-cmdline*
 cmdline = { enabled=false, auto_show=true, fuzzy=true, min_keyword_length=1,
-types={":","/","?"} }
+types={":","/","?"},
+sources={ [":"]={"cmdline"}, ["/"]={"buffer"}, ["?"]={"buffer"} } }
 
-Ex uses native getcompletion() (including custom user-command completions);
-search uses buffer words. Native order, wildcards and escaped paths are
-retained. fuzzy=true temporarily enables native fuzzy matching for Ex
+By default, Ex uses native getcompletion(), including custom user-command
+completions, and search uses buffer words. Native order, wildcards and escaped
+paths are retained. fuzzy=true temporarily enables native fuzzy matching for Ex
 completion and restores 'wildoptions' even after errors. Set fuzzy=false to
 follow your existing 'wildoptions'. File/directory names still use native
 wildcard expansion. Custom completers follow native semantics. Acceptance
@@ -534,6 +535,7 @@ in `config.lua` (../lua/completion_tools/config.lua).
       cmdline = {
         enabled = false, auto_show = true, fuzzy = true,
         min_keyword_length = 1, types = { ":", "/", "?" },
+        sources = { [":"] = { "cmdline" }, ["/"] = { "buffer" }, ["?"] = { "buffer" } },
       },
     })
 <
@@ -845,6 +847,11 @@ native semantics. Native ordering and matches are preserved; wildcards and
 escaped characters are not filtered again. Path insertion escapes spaces and
 other special characters. Replacement preserves modifiers, `no`/`inv`
 prefixes, Lua namespaces and trailing text.
+
+`cmdline.sources` sets provider lists per command-line type. Defaults are
+`{ [":"] = { "cmdline" }, ["/"] = { "buffer" }, ["?"] = { "buffer" } }`.
+Omitted entries use their defaults. An empty list runs no providers for that
+type. The top-level `sources` option selects providers for insert mode.
 
 Empty command lines and whitespace do not open the menu. Empty arguments after
 a meaningful command, such as `:set `, may show contextual candidates.

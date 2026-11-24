@@ -118,6 +118,11 @@ M.defaults = {
     fuzzy = true,
     min_keyword_length = 1,
     types = { ":", "/", "?" },
+    sources = {
+      [":"] = { "cmdline" },
+      ["/"] = { "buffer" },
+      ["?"] = { "buffer" },
+    },
     keymap = {
       ["<C-Space>"] = { "show", "fallback" },
       ["<Tab>"] = { "accept", "show", "fallback" },
@@ -154,6 +159,12 @@ local function merge_options(opts)
   replace_fields(config.menu, opts.menu, { "columns" }, vim.deepcopy)
   replace_fields(config.dictionary, opts.dictionary, { "files" })
   replace_fields(config.cmdline, opts.cmdline, { "keymap", "types" }, vim.deepcopy)
+
+  local cmdline_sources = opts.cmdline and opts.cmdline.sources
+  if type(cmdline_sources) == "table" then
+    replace_fields(config.cmdline.sources, cmdline_sources, M.defaults.cmdline.types, vim.deepcopy)
+  end
+
   return config
 end
 
@@ -317,7 +328,16 @@ local function validate_cmdline(cmdline)
   )
   assert(optional_function(cmdline.get_anchor), "completion-tools: invalid cmdline.get_anchor")
   for _, cmdtype in ipairs(cmdline.types) do
-    assert(vim.tbl_contains({ ":", "/", "?" }, cmdtype), "completion-tools: unsupported cmdline type")
+    assert(vim.tbl_contains(M.defaults.cmdline.types, cmdtype), "completion-tools: unsupported cmdline type")
+  end
+
+  assert(type(cmdline.sources) == "table", "completion-tools: invalid cmdline.sources")
+  for cmdtype, ids in pairs(cmdline.sources) do
+    assert(vim.tbl_contains(M.defaults.cmdline.types, cmdtype), "completion-tools: unsupported cmdline.sources type")
+    assert(vim.islist(ids), "completion-tools: cmdline.sources entries must be lists")
+    for _, id in ipairs(ids) do
+      assert(type(id) == "string" and id ~= "", "completion-tools: invalid cmdline source ID")
+    end
   end
 end
 

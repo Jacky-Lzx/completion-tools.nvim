@@ -300,6 +300,35 @@ local ok, err = xpcall(function()
     input("<Tab><CR>")
     wait("return vim.api.nvim_get_mode().mode=='n' and vim.fn.getreg('/')=='bravo'")
   end)
+  test("source lists replace defaults for individual command-line types", function()
+    lua([[
+      vim.api.nvim_buf_set_lines(0,0,-1,false,{'bravo'})
+      require('completion_tools').setup({
+        sources=function() error('Insert-only source selector ran in cmdline mode') end,
+        cmdline={enabled=true,sources={[':']={'fixture'},['?']={}}},
+        providers={fixture={complete=function(ctx,cb)
+          assert(ctx.cmdtype==':')
+          cb({items={{label='FixtureAlternate'}}})
+        end}}
+      })
+    ]])
+    input(":FixtureAl")
+    wait("return require('completion_tools')._can('accept')")
+    eq(
+      { "FixtureAlternate" },
+      lua("return vim.tbl_map(function(i) return i.label end, require('completion_tools').get_items())")
+    )
+    input("<Tab>")
+    wait("return vim.fn.getcmdline()=='FixtureAlternate'")
+
+    input("<Esc>/br")
+    wait("local item=require('completion_tools').get_selected_item();return item and item.label=='bravo'")
+
+    input("<Esc>?br")
+    wait([[local c=require('completion_tools');local ctx=c.get_context()
+      return ctx and ctx.cmdtype=='?' and c.get_status().reason=='no_matches']])
+    assert(not lua("return require('completion_tools').is_menu_visible()"))
+  end)
   for _, cmdtype in ipairs({ "/", "?" }) do
     test("delayed " .. cmdtype .. " candidates paint while preserving search highlights", function()
       lua([[

@@ -349,11 +349,10 @@ end
 
 local function source_ids(ctx, override)
   if ctx.mode == "cmdline" then
-    return ctx.cmdtype == ":" and { "cmdline" } or { "buffer" }
+    return state.config.cmdline.sources[ctx.cmdtype]
   end
   local configured = override or state.config.sources
-  local ids = type(configured) == "function" and configured(ctx) or configured
-  return ids
+  return type(configured) == "function" and configured(ctx) or configured
 end
 
 local function prepare_sources(ctx, ids)
