@@ -7,7 +7,10 @@ function M.check()
     return
   end
 
-  local ok, err = pcall(require, "base_tools.user_command")
+  local ok, err = pcall(function()
+    require("base_tools.user_command")
+    require("base_tools.highlight")
+  end)
   if not ok then
     vim.health.error(
       "Cannot load base-tools.nvim: " .. tostring(err),

@@ -1,25 +1,14 @@
 -- Optional theme service. Standalone completion uses the active Statement color.
+local resolve_highlight = require("base_tools.highlight").resolve
+
 local M = {}
 local palette, stop
 
-local function definition(name)
-  local seen = {}
-  while name and not seen[name] do
-    seen[name] = true
-    local value = vim.api.nvim_get_hl(0, { name = name, link = true, create = false })
-    if not value.link then
-      return value
-    end
-
-    name = value.link
-  end
-
-  return {}
-end
-
 local function apply()
   local api = vim.api
-  local menu, border, float = definition("Pmenu"), definition("FloatBorder"), definition("NormalFloat")
+  local menu = resolve_highlight("Pmenu")
+  local border = resolve_highlight("FloatBorder")
+  local float = resolve_highlight("NormalFloat")
   local c = palette and palette.ui
   local menu_bg = c and c.menu_bg or menu.bg or "NONE"
   local float_bg = c and c.float_bg or float.bg or "NONE"
