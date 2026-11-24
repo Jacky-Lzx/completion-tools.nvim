@@ -1,5 +1,6 @@
 local M = {}
 local identity = require("completion_tools.identity")
+local top_k = require("completion_tools.top_k")
 local byte, find, lower = string.byte, string.find, string.lower
 
 --- A matched candidate together with its source and request metadata.
@@ -69,6 +70,7 @@ function M.score(text, query)
     score = score + 16 + (boundary and 24 or 0) + (at == previous + 1 and 12 or 0) - math.min(at - previous - 1, 20)
     previous, pos = at, at + 1
   end
+
   return score - math.min(#text - #query, 100)
 end
 
@@ -76,30 +78,39 @@ local function better(a, b)
   if a.score ~= b.score then
     return a.score > b.score
   end
+
   -- sortText is local to a provider/client, not a cross-source priority.
   if a.group.priority ~= b.group.priority then
     return a.group.priority < b.group.priority
   end
+
   if a.group.source_id ~= b.group.source_id then
     return a.group.source_id < b.group.source_id
   end
+
   if a.client_priority ~= b.client_priority then
     return a.client_priority < b.client_priority
   end
+
   if a.client_name ~= b.client_name then
     return a.client_name < b.client_name
   end
+
   if a.client_id ~= b.client_id then
     return a.client_id < b.client_id
   end
+
   local ai, bi = a.item, b.item
   local as, bs = ai.sortText or ai.label, bi.sortText or bi.label
+
   if as ~= bs then
     return as < bs
   end
+
   if ai.label ~= bi.label then
     return ai.label < bi.label
   end
+
   return a.index < b.index
 end
 
@@ -109,46 +120,35 @@ function M.has_match(group, ctx, opts)
       local start_col = group.start_cols and group.start_cols[item] or group.start_col
       local query = lower(ctx.before:sub(start_col + 1))
       local text = item.filterText or item.label
+
       if M.score(text, query) or (opts and opts.max_typos == 1 and typo_score(text, query)) then
         return true
       end
     end
   end
+
   return false
 end
 
 -- Keep only the best K in a min-heap, instead of sorting every match.
 ---@return completion_tools.Entry[]
 function M.filter(groups, ctx, limit, opts)
-  local heap, keys, index = {}, {}, 0
-  local function swap(a, b)
-    heap[a], heap[b] = heap[b], heap[a]
-    keys[heap[a].key], keys[heap[b].key] = a, b
-  end
-  local function down(i)
-    while i * 2 <= #heap do
-      local child = i * 2
-      if child < #heap and better(heap[child], heap[child + 1]) then
-        child = child + 1
-      end
-      if not better(heap[i], heap[child]) then
-        break
-      end
-      swap(i, child)
-      i = child
-    end
-  end
-  local query_cache = {}
+  local top = top_k.new(limit, better)
+  local cutoff
+  local query_cache, index = {}, 0
+
   for _, group in ipairs(groups) do
     local client_priorities = {}
     for priority, name in ipairs(group.client_order or {}) do
       client_priorities[name] = priority
     end
+
     local query = query_cache[group.start_col]
     if not query then
       query = lower(ctx.before:sub(group.start_col + 1))
       query_cache[group.start_col] = query
     end
+
     for _, item in ipairs(group.items) do
       index = index + 1
       local start_col = group.start_cols and group.start_cols[item] or group.start_col
@@ -160,21 +160,20 @@ function M.filter(groups, ctx, limit, opts)
           query_cache[start_col] = item_query
         end
       end
+
       local score = type(item.label) == "string" and M.score(item.filterText or item.label, item_query)
       if score == nil and type(item.label) == "string" and opts and opts.max_typos == 1 then
         score = typo_score(item.filterText or item.label, item_query)
       end
+
       if score then
         score = score + group.score_offset + (item.preselect and 8 or 0)
         if opts and opts.bonus then
           score = score + opts.bonus(item, group.source_id)
         end
+
         -- Exclude the word being typed from the buffer source only.
-        local root = heap[1]
-        if
-          (#heap < limit or score >= root.score)
-          and not (group.source_id == "buffer" and item.label == ctx.prefix)
-        then
+        if (not cutoff or score >= cutoff.score) and not (group.source_id == "buffer" and item.label == ctx.prefix) then
           local candidate = {
             item = item,
             group = group,
@@ -184,42 +183,21 @@ function M.filter(groups, ctx, limit, opts)
             client_name = item._client_name or "",
             client_id = item._client_id or 0,
           }
+
           -- Avoid computing semantic identities for equal-score candidates
           -- already below the top-K cutoff (notably empty-query word lists).
-          if #heap < limit or better(candidate, root) then
-            local key = identity.key(item)
-            candidate.key = key
-            local existing = keys[key]
-            if existing then
-              if better(candidate, heap[existing]) then
-                heap[existing] = candidate
-                down(existing)
-              end
-            elseif #heap < limit then
-              heap[#heap + 1] = candidate
-              local i = #heap
-              keys[key] = i
-              while i > 1 do
-                local parent = math.floor(i / 2)
-                if not better(heap[parent], heap[i]) then
-                  break
-                end
-                swap(parent, i)
-                i = parent
-              end
-            elseif better(candidate, heap[1]) then
-              keys[heap[1].key] = nil
-              heap[1], keys[key] = candidate, 1
-              down(1)
-            end
+          if not cutoff or better(candidate, cutoff) then
+            candidate.key = identity.key(item)
+            top.offer(candidate.key, candidate)
+            cutoff = top.cutoff()
           end
         end
       end
     end
   end
-  table.sort(heap, better)
+
   local result = {}
-  for i, candidate in ipairs(heap) do
+  for i, candidate in ipairs(top.sorted()) do
     local group = candidate.group
     result[i] = {
       key = candidate.key,
@@ -232,6 +210,7 @@ function M.filter(groups, ctx, limit, opts)
     }
     result[i].start_col = group.start_cols and group.start_cols[candidate.item] or group.start_col
   end
+
   return result
 end
 
