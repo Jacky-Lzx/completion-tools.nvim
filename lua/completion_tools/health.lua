@@ -7,11 +7,11 @@ function M.check()
     return
   end
 
-  local ok, err = pcall(require, "base_tools")
+  local ok, err = pcall(require, "base_tools.user_command")
   if not ok then
     vim.health.error(
       "Cannot load base-tools.nvim: " .. tostring(err),
-      { "Ensure base-tools.nvim is installed and on runtimepath" }
+      { "Update base-tools.nvim and ensure it is on runtimepath" }
     )
     return
   end
