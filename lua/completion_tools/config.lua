@@ -28,127 +28,19 @@ local M = {}
 ---@field max_label_bytes integer Byte limit applied when preparing display text.
 ---@field highlight completion_tools.MenuHighlightOptions Highlight settings.
 
-M.defaults = {
-  enabled = true,
-  auto_show = true,
-  trigger_characters = { "." },
-  min_keyword_length = 1,
-  debounce_ms = 0,
-  timeout_ms = 2000,
-  max_items = 50,
-  preselect = true,
-  accept = { mode = "replace", auto_brackets = true },
-  ranking = {
-    history = { enabled = false, max_entries = 1000 },
-    proximity = { enabled = false, lines = 50 },
-    max_typos = 0,
-  },
-  keyword_pattern = [[\k*$]],
-  sources = { "lsp", "path", "buffer", "snippets" },
-  providers = {},
-  keymap = {
-    ["<C-Space>"] = { "show", "show_documentation" },
-    ["<C-n>"] = { "select_next", "fallback" },
-    ["<C-p>"] = { "select_prev", "fallback" },
-    ["<C-y>"] = { "accept", "fallback" },
-    ["<C-e>"] = { "hide", "fallback" },
-    ["<Tab>"] = { "accept", "snippet_forward", "fallback" },
-    ["<S-Tab>"] = { "snippet_backward", "fallback" },
-  },
-  menu = {
-    max_height = 12,
-    inverse = "auto",
-    shrink_delay_ms = 50,
-    update_interval_ms = 16,
-    min_width = 18,
-    max_width = 72,
-    border = "single",
-    columns = { { "kind_icon" }, { "label", gap = 1 }, { "kind" }, { "source" } },
-    column_gap = 1,
-    padding = 1,
-    kind_icons = true,
-    label_details = true,
-    max_label_bytes = 1024,
-    highlight = { enabled = true, treesitter = true, max_bytes = 1024, cache_size = 512 },
-  },
-  documentation = { auto_show = true, delay_ms = 150, max_width = 72, max_height = 18, border = "single" },
-  buffer = { max_bytes = 1024 * 1024, max_words = 20000, max_buffers = 8, batch_lines = 128, min_length = 3 },
-  path = {
-    max_entries = 10000,
-    cache_ms = 1000,
-    show_hidden = false,
-    preview = { enabled = true, max_bytes = 64 * 1024, max_lines = 100 },
-  },
-  dictionary = {
-    files = {},
-    min_keyword_length = 3,
-    max_items = 10,
-    matching = "fuzzy",
-    capitalize = true,
-    max_bytes = 16 * 1024 * 1024,
-    max_words = 500000,
-    max_word_bytes = 256,
-    timeout_ms = 5000,
-    documentation = { enabled = true, command = "wn", timeout_ms = 1500 },
-  },
-  spell = {
-    min_keyword_length = 2,
-    max_items = 3,
-    debounce_ms = 60,
-    timeout_ms = 5000,
-    sort = "match",
-    preselect_current_word = true,
-    suggest_when_correct = false,
-  },
-  snippets = { collection = {} },
-  copilot = {
-    debounce_ms = 150,
-    request_mode = "cycling",
-    max_items = 3,
-    show_status = true,
-    command = { "copilot-language-server", "--stdio" },
-    filetypes = {},
-    settings = {},
-    workspace_folders = {},
-    language_ids = {},
-  },
-  cmdline = {
-    enabled = false,
-    auto_show = true,
-    fuzzy = true,
-    min_keyword_length = 1,
-    types = { ":", "/", "?" },
-    sources = {
-      [":"] = { "cmdline" },
-      ["/"] = { "buffer" },
-      ["?"] = { "buffer" },
-    },
-    keymap = {
-      ["<C-Space>"] = { "show", "fallback" },
-      ["<Tab>"] = { "accept", "show", "fallback" },
-      ["<S-Tab>"] = { "select_prev", "show", "fallback" },
-      ["<C-n>"] = { "select_next", "fallback" },
-      ["<C-p>"] = { "select_prev", "fallback" },
-      ["<Up>"] = { "select_prev", "fallback" },
-      ["<Down>"] = { "select_next", "fallback" },
-    },
-  },
-}
-
+local config = require("base_tools.config")
 local V = require("base_tools.config.validators")
 local boolean, string_value = V.type("boolean"), V.type("string")
 local table_value, callback = V.type("table"), V.type("function")
 local optional_callback = V.optional(callback)
 local nonnegative_integer, positive_integer = V.integer(0), V.integer(1)
+local nonempty_string = V.nonempty_string()
+local source_list = V.list_of(nonempty_string)
 
 local function at_least(minimum)
   return function(value)
     return type(value) == "number" and value >= minimum, "must be a number greater than or equal to " .. minimum
   end
-end
-
-local function nonempty_string(value)
-  return type(value) == "string" and value ~= "", "must be a nonempty string"
 end
 
 local function strings(value)
@@ -161,13 +53,6 @@ local function strings(value)
     end
   end
   return true
-end
-
-local function source_list(value)
-  if not vim.islist(value) then
-    return false, "must be a list of source IDs"
-  end
-  return strings(value)
 end
 
 local function trigger_characters(value)
@@ -261,26 +146,6 @@ local function columns(value)
   return true
 end
 
-local function map_of(check, message)
-  return function(value)
-    if type(value) ~= "table" then
-      return false, "must be a table"
-    end
-    for key, entry in pairs(value) do
-      if not check(entry, key) then
-        return false, message
-      end
-    end
-    return true
-  end
-end
-
-local function filetype_map(check, message)
-  return map_of(function(value, key)
-    return type(key) == "string" and check(value)
-  end, message)
-end
-
 local function cmdline_types(value)
   if type(value) ~= "table" then
     return false, "must be a table"
@@ -293,21 +158,9 @@ local function cmdline_types(value)
   return true
 end
 
-local function cmdline_sources(value)
-  if type(value) ~= "table" then
-    return false, "must be a table"
-  end
-  for cmdtype, ids in pairs(value) do
-    if not vim.tbl_contains(M.defaults.cmdline.types, cmdtype) then
-      return false, "contains an unsupported command-line type"
-    end
-    local valid, message = source_list(ids)
-    if not valid then
-      return false, tostring(cmdtype) .. " " .. message
-    end
-  end
-  return true
-end
+local cmdline_sources = V.map_of(source_list, function(cmdtype)
+  return vim.tbl_contains(M.defaults.cmdline.types, cmdtype), "is not a supported command-line type"
+end)
 
 local function copilot_command(value)
   if type(value) ~= "table" or #value == 0 then
@@ -316,138 +169,222 @@ local function copilot_command(value)
   return strings(value)
 end
 
-local rules = {
-  enabled = V.any_of(boolean, callback),
-  auto_show = boolean,
-  preselect = boolean,
-  max_items = positive_integer,
-  min_keyword_length = at_least(0),
-  debounce_ms = at_least(0),
-  timeout_ms = nonnegative_integer,
-  keyword_pattern = string_value,
-  sources = V.any_of(table_value, callback),
-  trigger_characters = V.any_of(trigger_characters, callback),
-  keymap = keymap("keymap"),
-  providers = providers,
-  accept = { mode = V.one_of({ "insert", "replace" }), auto_brackets = V.any_of(boolean, callback) },
-  buffer = {
-    max_bytes = at_least(1),
-    max_words = at_least(1),
-    max_buffers = at_least(1),
-    batch_lines = at_least(1),
-    min_length = at_least(1),
-  },
-  ranking = {
-    history = { enabled = boolean, max_entries = positive_integer, path = V.optional(nonempty_string) },
-    proximity = { enabled = boolean, lines = nonnegative_integer },
-    max_typos = V.integer(0, 1),
-  },
-  menu = {
-    max_width = positive_integer,
-    max_height = positive_integer,
-    min_width = at_least(1),
-    shrink_delay_ms = nonnegative_integer,
-    update_interval_ms = nonnegative_integer,
-    inverse = V.one_of({ "auto", true, false }),
-    columns = columns,
-    column_gap = nonnegative_integer,
-    padding = nonnegative_integer,
-    max_label_bytes = V.integer(4),
-    kind_icons = V.any_of(boolean, map_of(string_value, "must contain only string icons")),
-    label_details = boolean,
-    highlight = {
-      enabled = boolean,
-      treesitter = boolean,
-      cache_size = nonnegative_integer,
-      max_bytes = positive_integer,
-      custom = optional_callback,
-    },
-  },
-  documentation = {
-    max_width = positive_integer,
-    max_height = positive_integer,
-    delay_ms = at_least(0),
-    on_render = optional_callback,
-  },
-  copilot = {
-    debounce_ms = nonnegative_integer,
-    max_items = positive_integer,
-    request_mode = V.one_of({ "cycling", "staged" }),
-    show_status = boolean,
-    command = copilot_command,
-    filetypes = filetype_map(boolean, "must map filetypes to booleans"),
-    settings = table_value,
-    root_dir = V.optional(V.any_of(callback, nonempty_string)),
-    workspace_folders = strings,
-    language_ids = filetype_map(nonempty_string, "must map filetypes to nonempty strings"),
-    should_attach = optional_callback,
-  },
-  cmdline = {
-    enabled = boolean,
-    auto_show = boolean,
-    fuzzy = boolean,
-    min_keyword_length = nonnegative_integer,
-    types = cmdline_types,
-    sources = cmdline_sources,
-    keymap = keymap("cmdline.keymap"),
-    get_anchor = optional_callback,
-  },
-  dictionary = {
-    files = V.any_of(strings, callback),
-    min_keyword_length = positive_integer,
-    max_items = positive_integer,
-    timeout_ms = positive_integer,
-    max_bytes = positive_integer,
-    max_words = positive_integer,
-    max_word_bytes = positive_integer,
-    matching = V.one_of({ "prefix", "fuzzy" }),
-    capitalize = boolean,
-    documentation = { enabled = boolean, command = nonempty_string, timeout_ms = positive_integer },
-  },
-  spell = {
-    min_keyword_length = positive_integer,
-    max_items = positive_integer,
-    timeout_ms = positive_integer,
-    debounce_ms = nonnegative_integer,
-    sort = V.one_of({ "match", "suggestion" }),
-    preselect_current_word = boolean,
-    suggest_when_correct = boolean,
-    enable_in_context = optional_callback,
-  },
-  path = {
-    max_entries = at_least(1),
-    cache_ms = at_least(0),
-    preview = { enabled = boolean, max_bytes = positive_integer, max_lines = positive_integer },
-  },
-  snippets = table_value,
-}
-
 local function menu_widths(menu)
   return menu.min_width <= menu.max_width, "min_width must not exceed max_width"
 end
+
+local definition = {
+  enabled = { default = true, validate = V.any_of(boolean, callback) },
+  auto_show = { default = true, validate = boolean },
+  trigger_characters = { default = { "." }, validate = V.any_of(trigger_characters, callback), replace = true },
+  min_keyword_length = { default = 1, validate = at_least(0) },
+  debounce_ms = { default = 0, validate = at_least(0) },
+  timeout_ms = { default = 2000, validate = nonnegative_integer },
+  max_items = { default = 50, validate = positive_integer },
+  preselect = { default = true, validate = boolean },
+  accept = {
+    fields = {
+      mode = { default = "replace", validate = V.one_of({ "insert", "replace" }) },
+      auto_brackets = { default = true, validate = V.any_of(boolean, callback) },
+    },
+  },
+  ranking = {
+    fields = {
+      history = {
+        fields = {
+          enabled = { default = false, validate = boolean },
+          max_entries = { default = 1000, validate = positive_integer },
+          path = { validate = V.optional(nonempty_string) },
+        },
+      },
+      proximity = {
+        fields = {
+          enabled = { default = false, validate = boolean },
+          lines = { default = 50, validate = nonnegative_integer },
+        },
+      },
+      max_typos = { default = 0, validate = V.integer(0, 1) },
+    },
+  },
+  keyword_pattern = { default = [[\k*$]], validate = string_value },
+  sources = {
+    default = { "lsp", "path", "buffer", "snippets" },
+    validate = V.any_of(table_value, callback),
+    replace = true,
+  },
+  providers = { default = {}, validate = providers },
+  keymap = {
+    default = {
+      ["<C-Space>"] = { "show", "show_documentation" },
+      ["<C-n>"] = { "select_next", "fallback" },
+      ["<C-p>"] = { "select_prev", "fallback" },
+      ["<C-y>"] = { "accept", "fallback" },
+      ["<C-e>"] = { "hide", "fallback" },
+      ["<Tab>"] = { "accept", "snippet_forward", "fallback" },
+      ["<S-Tab>"] = { "snippet_backward", "fallback" },
+    },
+    validate = keymap("keymap"),
+    replace = true,
+  },
+  menu = {
+    validate = menu_widths,
+    fields = {
+      max_height = { default = 12, validate = positive_integer },
+      inverse = { default = "auto", validate = V.one_of({ "auto", true, false }) },
+      shrink_delay_ms = { default = 50, validate = nonnegative_integer },
+      update_interval_ms = { default = 16, validate = nonnegative_integer },
+      min_width = { default = 18, validate = at_least(1) },
+      max_width = { default = 72, validate = positive_integer },
+      border = { default = "single" },
+      columns = {
+        default = { { "kind_icon" }, { "label", gap = 1 }, { "kind" }, { "source" } },
+        validate = columns,
+        replace = true,
+      },
+      column_gap = { default = 1, validate = nonnegative_integer },
+      padding = { default = 1, validate = nonnegative_integer },
+      kind_icons = {
+        default = true,
+        validate = V.any_of(boolean, V.map_of(string_value)),
+      },
+      label_details = { default = true, validate = boolean },
+      max_label_bytes = { default = 1024, validate = V.integer(4) },
+      highlight = {
+        fields = {
+          enabled = { default = true, validate = boolean },
+          treesitter = { default = true, validate = boolean },
+          max_bytes = { default = 1024, validate = positive_integer },
+          cache_size = { default = 512, validate = nonnegative_integer },
+          custom = { validate = optional_callback },
+        },
+      },
+    },
+  },
+  documentation = {
+    fields = {
+      auto_show = { default = true },
+      delay_ms = { default = 150, validate = at_least(0) },
+      max_width = { default = 72, validate = positive_integer },
+      max_height = { default = 18, validate = positive_integer },
+      border = { default = "single" },
+      on_render = { validate = optional_callback },
+    },
+  },
+  buffer = {
+    fields = {
+      max_bytes = { default = 1024 * 1024, validate = at_least(1) },
+      max_words = { default = 20000, validate = at_least(1) },
+      max_buffers = { default = 8, validate = at_least(1) },
+      batch_lines = { default = 128, validate = at_least(1) },
+      min_length = { default = 3, validate = at_least(1) },
+    },
+  },
+  path = {
+    fields = {
+      max_entries = { default = 10000, validate = at_least(1) },
+      cache_ms = { default = 1000, validate = at_least(0) },
+      show_hidden = { default = false },
+      preview = {
+        fields = {
+          enabled = { default = true, validate = boolean },
+          max_bytes = { default = 64 * 1024, validate = positive_integer },
+          max_lines = { default = 100, validate = positive_integer },
+        },
+      },
+    },
+  },
+  dictionary = {
+    fields = {
+      files = { default = {}, validate = V.any_of(strings, callback), replace = true },
+      min_keyword_length = { default = 3, validate = positive_integer },
+      max_items = { default = 10, validate = positive_integer },
+      matching = { default = "fuzzy", validate = V.one_of({ "prefix", "fuzzy" }) },
+      capitalize = { default = true, validate = boolean },
+      max_bytes = { default = 16 * 1024 * 1024, validate = positive_integer },
+      max_words = { default = 500000, validate = positive_integer },
+      max_word_bytes = { default = 256, validate = positive_integer },
+      timeout_ms = { default = 5000, validate = positive_integer },
+      documentation = {
+        fields = {
+          enabled = { default = true, validate = boolean },
+          command = { default = "wn", validate = nonempty_string },
+          timeout_ms = { default = 1500, validate = positive_integer },
+        },
+      },
+    },
+  },
+  spell = {
+    fields = {
+      min_keyword_length = { default = 2, validate = positive_integer },
+      max_items = { default = 3, validate = positive_integer },
+      debounce_ms = { default = 60, validate = nonnegative_integer },
+      timeout_ms = { default = 5000, validate = positive_integer },
+      sort = { default = "match", validate = V.one_of({ "match", "suggestion" }) },
+      preselect_current_word = { default = true, validate = boolean },
+      suggest_when_correct = { default = false, validate = boolean },
+      enable_in_context = { validate = optional_callback },
+    },
+  },
+  snippets = { default = { collection = {} }, validate = table_value },
+  copilot = {
+    fields = {
+      debounce_ms = { default = 150, validate = nonnegative_integer },
+      request_mode = { default = "cycling", validate = V.one_of({ "cycling", "staged" }) },
+      max_items = { default = 3, validate = positive_integer },
+      show_status = { default = true, validate = boolean },
+      command = { default = { "copilot-language-server", "--stdio" }, validate = copilot_command, replace = true },
+      filetypes = { default = {}, validate = V.map_of(boolean, string_value) },
+      settings = { default = {}, validate = table_value },
+      root_dir = { validate = V.optional(V.any_of(callback, nonempty_string)) },
+      workspace_folders = { default = {}, validate = strings, replace = true },
+      language_ids = {
+        default = {},
+        validate = V.map_of(nonempty_string, string_value),
+      },
+      should_attach = { validate = optional_callback },
+    },
+  },
+  cmdline = {
+    fields = {
+      enabled = { default = false, validate = boolean },
+      auto_show = { default = true, validate = boolean },
+      fuzzy = { default = true, validate = boolean },
+      min_keyword_length = { default = 1, validate = nonnegative_integer },
+      types = { default = { ":", "/", "?" }, validate = cmdline_types, replace = true },
+      sources = {
+        validate = cmdline_sources,
+        fields = {
+          [":"] = { default = { "cmdline" }, replace = true },
+          ["/"] = { default = { "buffer" }, replace = true },
+          ["?"] = { default = { "buffer" }, replace = true },
+        },
+      },
+      keymap = {
+        default = {
+          ["<C-Space>"] = { "show", "fallback" },
+          ["<Tab>"] = { "accept", "show", "fallback" },
+          ["<S-Tab>"] = { "select_prev", "show", "fallback" },
+          ["<C-n>"] = { "select_next", "fallback" },
+          ["<C-p>"] = { "select_prev", "fallback" },
+          ["<Up>"] = { "select_prev", "fallback" },
+          ["<Down>"] = { "select_next", "fallback" },
+        },
+        validate = keymap("cmdline.keymap"),
+        replace = true,
+      },
+      get_anchor = { validate = optional_callback },
+    },
+  },
+}
+
+local defaults, rules = config.compile_definition(definition)
+M.defaults = defaults
 
 local instance
 
 function M.instance()
   if not instance then
-    instance = require("base_tools.config").new(M.defaults, {
-      schema = rules,
-      fields = { { path = { "menu" }, validate = menu_widths } },
-      replace = {
-        { "sources" },
-        { "trigger_characters" },
-        { "keymap" },
-        { "copilot", "command" },
-        { "copilot", "workspace_folders" },
-        { "menu", "columns" },
-        { "dictionary", "files" },
-        { "cmdline", "keymap" },
-        { "cmdline", "types" },
-        { "cmdline", "sources", ":" },
-        { "cmdline", "sources", "/" },
-        { "cmdline", "sources", "?" },
-      },
-    })
+    instance = config.new(M.defaults, rules)
   end
   return instance
 end
