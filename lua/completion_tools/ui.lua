@@ -30,6 +30,7 @@ end
 local ns = vim.api.nvim_create_namespace("completion-tools-menu")
 local doc_ns = vim.api.nvim_create_namespace("completion-tools-documentation")
 local doc_rules_ns = vim.api.nvim_create_namespace("completion-tools-documentation-rules")
+local doc_rule_spacing_ns = vim.api.nvim_create_namespace("completion-tools-documentation-rule-spacing")
 local menu, doc, buf, doc_buf
 local viewport = 1
 local geometry, doc_item, doc_content
@@ -556,6 +557,29 @@ local function conceal_markdown_fences(bufnr)
   end)
 end
 
+local function conceal_rule_spacing(bufnr, markdown, lines)
+  vim.api.nvim_buf_clear_namespace(bufnr, doc_rule_spacing_ns, 0, -1)
+  if not markdown then
+    return
+  end
+
+  -- Keep the source spacing so a rule after a paragraph still parses as a rule.
+  local hidden = {}
+  visit_markdown_nodes(bufnr, "thematic_break", function(node)
+    local rule = node:start() + 1
+    for _, step in ipairs({ -1, 1 }) do
+      local row = rule + step
+      while lines[row] and lines[row]:match("^%s*$") do
+        if not hidden[row] then
+          vim.api.nvim_buf_set_extmark(bufnr, doc_rule_spacing_ns, row - 1, 0, { conceal_lines = "" })
+          hidden[row] = true
+        end
+        row = row + step
+      end
+    end
+  end)
+end
+
 local function render_markdown_rules(bufnr, win, markdown, replace)
   local width = markdown and vim.api.nvim_win_get_width(win) or nil
   if not replace and width == doc_rules_width then
@@ -707,6 +731,9 @@ function M.documentation(item, config, document)
     doc_lines, doc_language = lines, language
   elseif shared_markdown and doc_markdown ~= markdown then
     doc:set_format(format or false, document_markdown)
+  end
+  if replace or doc_markdown ~= markdown then
+    conceal_rule_spacing(doc_buf, markdown, lines)
   end
   doc_markdown = markdown
   if not media then

@@ -124,7 +124,7 @@ local function marks(primary, fallback)
   local source = vim.api.nvim_buf_get_extmarks(current.buf, vim.api.nvim_create_namespace(primary), 0, -1, {
     details = true,
   })
-  if #source == 0 then
+  if #source == 0 and fallback then
     source = vim.api.nvim_buf_get_extmarks(current.buf, vim.api.nvim_create_namespace(fallback), 0, -1, {
       details = true,
     })
@@ -173,6 +173,11 @@ local rule_doc = doc.markdown(rule_text)
 local function rule_marks()
   return marks("base-tools-markdown-rules", "completion-tools-documentation-rules")
 end
+local function rule_spacing_rows()
+  return vim.tbl_map(function(mark)
+    return mark[2]
+  end, marks("completion-tools-documentation-rule-spacing"))
+end
 
 assert(ui.documentation({}, cfg, rule_doc))
 local rule_win = current.win
@@ -180,6 +185,8 @@ local rule_width = vim.api.nvim_win_get_width(rule_win)
 local rules = rule_marks()
 eq(2, #rules)
 eq({ 2, 7 }, { rules[1][2], rules[2][2] })
+eq({ 1, 3, 6 }, rule_spacing_rows())
+eq(5, vim.api.nvim_win_get_height(rule_win))
 eq({ { string.rep("─", rule_width), "CompletionToolsDocBorder" } }, rules[1][4].virt_text)
 eq({ { string.rep("─", rule_width - 2), "CompletionToolsDocBorder" } }, rules[2][4].virt_text)
 
@@ -193,6 +200,7 @@ local rule_tick = vim.api.nvim_buf_get_changedtick(current.buf)
 assert(ui.documentation({}, narrow, doc.code(rule_text, "markdown")))
 eq(rule_tick, vim.api.nvim_buf_get_changedtick(current.buf))
 eq({}, rule_marks())
+eq({}, rule_spacing_rows())
 eq(rule_lines, vim.api.nvim_buf_get_lines(current.buf, 0, -1, false))
 
 local long = {

@@ -1948,7 +1948,7 @@ local ok, err = xpcall(function()
     lua([[
       require('completion_tools').setup({sources={'test'},documentation={delay_ms=5,max_width=40},
         providers={test={complete=function(_,cb) cb({items={{label='alpha',documentation={kind='markdown',
-          value='Overview\n\n---\n\n@*param* `url` — **Target** file.\n*outer **inner** text*\n\n```text\n---\n```'}}}}) end}}})
+          value='Overview\n\n---\n\n \t\n@*param* `url` — **Target** file.\n*outer **inner** text*\n\n```text\n---\n```'}}}}) end}}})
     ]])
     input("ial")
     wait(
@@ -1968,14 +1968,16 @@ local ok, err = xpcall(function()
         for col=at.col,at.col+width-1 do text=text..vim.fn.screenstring(at.row+row,col) end
         return text:gsub('%s+$','')
       end
-      assert(screen(2)==string.rep("─",width),screen(2))
-      assert(screen(4)=='@param url — Target file.',screen(4))
-      assert(screen(5)=='outer inner text',screen(5))
-      assert(vim.fn.screenattr(at.row+4,at.col)~=vim.fn.screenattr(at.row+4,at.col+1),'Italic style missing')
-      assert(vim.fn.screenattr(at.row+5,at.col)~=vim.fn.screenattr(at.row+5,at.col+6),'Nested bold style missing')
-      assert(screen(7)=='---',screen(7))
+      assert(screen(0)=='Overview',screen(0))
+      assert(screen(1)==string.rep("─",width),screen(1))
+      assert(screen(2)=='@param url — Target file.',screen(2))
+      assert(screen(3)=='outer inner text',screen(3))
+      assert(vim.fn.screenattr(at.row+2,at.col)~=vim.fn.screenattr(at.row+2,at.col+1),'Italic style missing')
+      assert(vim.fn.screenattr(at.row+3,at.col)~=vim.fn.screenattr(at.row+3,at.col+6),'Nested bold style missing')
+      assert(screen(4)=='',screen(4))
+      assert(screen(5)=='---',screen(5))
       local raw=table.concat(vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win),0,-1,false),'\n')
-      assert(raw:find('Overview\n\n---\n',1,true),raw)
+      assert(raw:find('Overview\n\n---\n\n \t\n',1,true),raw)
       assert(raw:find('@*param*',1,true),'Expected conceal rather than destructive marker removal')
     ]])
   end)
