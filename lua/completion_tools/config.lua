@@ -135,92 +135,70 @@ M.defaults = {
   },
 }
 
-local function replace_fields(target, overrides, fields, copy)
-  if not overrides then
-    return
-  end
+local V = require("base_tools.config.validators")
+local boolean, string_value = V.type("boolean"), V.type("string")
+local table_value, callback = V.type("table"), V.type("function")
+local optional_callback = V.optional(callback)
+local nonnegative_integer, positive_integer = V.integer(0), V.integer(1)
 
-  for _, field in ipairs(fields) do
-    local value = overrides[field]
-    if value ~= nil then
-      if copy then
-        value = copy(value)
-      end
-      target[field] = value
+local function at_least(minimum)
+  return function(value)
+    return type(value) == "number" and value >= minimum, "must be a number greater than or equal to " .. minimum
+  end
+end
+
+local function nonempty_string(value)
+  return type(value) == "string" and value ~= "", "must be a nonempty string"
+end
+
+local function strings(value)
+  if type(value) ~= "table" then
+    return false, "must be a table of nonempty strings"
+  end
+  for _, item in ipairs(value) do
+    if not nonempty_string(item) then
+      return false, "must contain only nonempty strings"
     end
   end
+  return true
 end
 
-local function merge_options(opts)
-  local config = vim.tbl_deep_extend("force", vim.deepcopy(M.defaults), opts)
-  -- These fields replace the defaults even when the override is empty.
-  replace_fields(config.copilot, opts.copilot, { "command", "workspace_folders" }, vim.deepcopy)
-  replace_fields(config, opts, { "sources", "trigger_characters", "keymap" })
-  replace_fields(config.menu, opts.menu, { "columns" }, vim.deepcopy)
-  replace_fields(config.dictionary, opts.dictionary, { "files" })
-  replace_fields(config.cmdline, opts.cmdline, { "keymap", "types" }, vim.deepcopy)
-
-  local cmdline_sources = opts.cmdline and opts.cmdline.sources
-  if type(cmdline_sources) == "table" then
-    replace_fields(config.cmdline.sources, cmdline_sources, M.defaults.cmdline.types, vim.deepcopy)
+local function source_list(value)
+  if not vim.islist(value) then
+    return false, "must be a list of source IDs"
   end
-
-  return config
+  return strings(value)
 end
 
-local function integer(value, minimum)
-  return type(value) == "number" and value >= minimum and value % 1 == 0
-end
-
-local function optional_integer(value, minimum)
-  return value == nil or integer(value, minimum)
-end
-
-local function optional_function(value)
-  return value == nil or type(value) == "function"
-end
-
-local function validate_general(config)
-  for _, name in ipairs({ "max_items", "min_keyword_length", "debounce_ms" }) do
-    assert(type(config[name]) == "number" and config[name] >= 0, "completion-tools: invalid " .. name)
+local function trigger_characters(value)
+  if type(value) ~= "table" then
+    return false, "must be a table of trigger characters"
   end
-  assert(config.max_items >= 1 and config.max_items % 1 == 0, "completion-tools: max_items must be a positive integer")
-  for _, field in ipairs({ "max_bytes", "max_words", "max_buffers", "batch_lines", "min_length" }) do
-    assert(
-      type(config.buffer[field]) == "number" and config.buffer[field] >= 1,
-      "completion-tools: buffer." .. field .. " must be positive"
-    )
-  end
-  assert(type(config.sources) == "table" or type(config.sources) == "function", "completion-tools: invalid sources")
-  config._keymap_bindings = require("base_tools.keymap").resolve(config.keymap, { name = "completion-tools.keymap" })
-  assert(type(config.keyword_pattern) == "string", "completion-tools: invalid keyword_pattern")
-  assert(
-    type(config.trigger_characters) == "table" or type(config.trigger_characters) == "function",
-    "completion-tools: invalid trigger_characters"
-  )
-  if type(config.trigger_characters) == "table" then
-    for _, character in ipairs(config.trigger_characters) do
-      assert(
-        type(character) == "string" and vim.fn.strchars(character) == 1,
-        "completion-tools: trigger_characters must contain single characters"
-      )
+  for _, character in ipairs(value) do
+    if type(character) ~= "string" or vim.fn.strchars(character) ~= 1 then
+      return false, "must contain only single characters"
     end
   end
-  assert(config.accept.mode == "insert" or config.accept.mode == "replace", "completion-tools: invalid accept.mode")
-  assert(
-    type(config.accept.auto_brackets) == "boolean" or type(config.accept.auto_brackets) == "function",
-    "completion-tools: invalid accept.auto_brackets"
-  )
-  assert(integer(config.timeout_ms, 0), "completion-tools: invalid timeout_ms")
+  return true
 end
 
-local function validate_window_size(window, section)
-  for _, field in ipairs({ "max_width", "max_height" }) do
-    assert(integer(window[field], 1), "completion-tools: invalid " .. section .. "." .. field)
+local function compile_keymap(spec, name)
+  return require("base_tools.keymap").resolve(spec, { name = "completion-tools." .. name })
+end
+
+local function keymap(name)
+  return function(spec)
+    compile_keymap(spec, name)
+    return true
   end
 end
 
-local function validate_providers(providers)
+local function providers(value)
+  if type(value) ~= "table" then
+    return false, "must be a table"
+  end
+  local optional_position = V.optional(positive_integer)
+  local optional_timeout = V.optional(nonnegative_integer)
   local visiting, visited = {}, {}
   local function visit(id)
     assert(not visiting[id], "completion-tools: cyclic provider fallback_for: " .. id)
@@ -228,233 +206,287 @@ local function validate_providers(providers)
       return
     end
     visiting[id] = true
-    local provider = providers[id] or {}
-    assert(optional_integer(provider.insert_at, 1), "completion-tools: invalid provider insert_at")
-    local client_order = provider.client_order
-    if client_order ~= nil then
+    local provider = value[id]
+    assert(provider == nil or type(provider) == "table", "completion-tools: invalid provider " .. tostring(id))
+    provider = provider or {}
+    assert(optional_position(provider.insert_at), "completion-tools: invalid provider insert_at")
+    assert(optional_timeout(provider.timeout_ms), "completion-tools: invalid provider timeout_ms")
+    assert(optional_position(provider.max_items), "completion-tools: invalid provider max_items")
+    if provider.client_order ~= nil then
       assert(
-        id == "lsp" and type(client_order) == "table" and vim.islist(client_order),
+        id == "lsp" and vim.islist(provider.client_order),
         "completion-tools: client_order must be an LSP client name list"
       )
       local seen = {}
-      for _, name in ipairs(client_order) do
+      for _, name in ipairs(provider.client_order) do
         assert(
-          type(name) == "string" and name ~= "" and not seen[name],
+          nonempty_string(name) and not seen[name],
           "completion-tools: client_order expects unique nonempty client names"
         )
         seen[name] = true
       end
     end
-    assert(optional_integer(provider.timeout_ms, 0), "completion-tools: invalid provider timeout_ms")
-    assert(optional_integer(provider.max_items, 1), "completion-tools: invalid provider max_items")
-    local fallback_for = provider.fallback_for
-    if fallback_for ~= nil then
-      assert(type(fallback_for) == "table", "completion-tools: invalid fallback_for")
-      for _, dependency in ipairs(fallback_for) do
+    if provider.fallback_for ~= nil then
+      assert(type(provider.fallback_for) == "table", "completion-tools: invalid fallback_for")
+      for _, dependency in ipairs(provider.fallback_for) do
         assert(type(dependency) == "string", "completion-tools: fallback_for expects source IDs")
         visit(dependency)
       end
     end
     visiting[id], visited[id] = nil, true
   end
-  for id in pairs(providers) do
+  for id in pairs(value) do
     visit(id)
   end
+  return true
 end
 
-local function validate_ranking(ranking)
-  assert(
-    type(ranking.history.enabled) == "boolean" and type(ranking.proximity.enabled) == "boolean",
-    "completion-tools: invalid ranking flags"
-  )
-  assert(
-    integer(ranking.history.max_entries, 1) and integer(ranking.proximity.lines, 0),
-    "completion-tools: invalid ranking limits"
-  )
-  assert(ranking.max_typos == 0 or ranking.max_typos == 1, "completion-tools: ranking.max_typos must be 0 or 1")
-  assert(
-    ranking.history.path == nil or (type(ranking.history.path) == "string" and ranking.history.path ~= ""),
-    "completion-tools: invalid ranking.history.path"
-  )
-end
-
-local function validate_copilot(copilot)
-  assert(integer(copilot.debounce_ms, 0), "completion-tools: invalid copilot.debounce_ms")
-  assert(integer(copilot.max_items, 1), "completion-tools: invalid copilot.max_items")
-  assert(
-    copilot.request_mode == "cycling" or copilot.request_mode == "staged",
-    "completion-tools: invalid copilot.request_mode"
-  )
-  assert(type(copilot.show_status) == "boolean", "completion-tools: invalid copilot.show_status")
-  assert(type(copilot.command) == "table" and #copilot.command > 0, "completion-tools: invalid copilot.command")
-  for _, arg in ipairs(copilot.command) do
-    assert(type(arg) == "string" and arg ~= "", "completion-tools: invalid copilot.command argument")
+local function columns(value)
+  if type(value) ~= "table" or #value == 0 then
+    return false, "must contain at least one column"
   end
-  assert(type(copilot.filetypes) == "table", "completion-tools: invalid copilot.filetypes")
-  for ft, value in pairs(copilot.filetypes) do
-    assert(type(ft) == "string" and type(value) == "boolean", "completion-tools: invalid copilot.filetypes entry")
-  end
-  assert(type(copilot.settings) == "table", "completion-tools: invalid copilot.settings")
-  assert(
-    copilot.root_dir == nil
-      or type(copilot.root_dir) == "function"
-      or (type(copilot.root_dir) == "string" and copilot.root_dir ~= ""),
-    "completion-tools: invalid copilot.root_dir"
-  )
-  assert(type(copilot.workspace_folders) == "table", "completion-tools: invalid copilot.workspace_folders")
-  for _, path in ipairs(copilot.workspace_folders) do
-    assert(type(path) == "string" and path ~= "", "completion-tools: invalid copilot.workspace_folders entry")
-  end
-  assert(type(copilot.language_ids) == "table", "completion-tools: invalid copilot.language_ids")
-  for ft, language in pairs(copilot.language_ids) do
-    assert(
-      type(ft) == "string" and type(language) == "string" and language ~= "",
-      "completion-tools: invalid copilot.language_ids entry"
-    )
-  end
-  assert(optional_function(copilot.should_attach), "completion-tools: invalid copilot.should_attach")
-end
-
-local function validate_cmdline(cmdline)
-  assert(
-    type(cmdline.enabled) == "boolean" and type(cmdline.auto_show) == "boolean",
-    "completion-tools: invalid cmdline flags"
-  )
-  assert(integer(cmdline.min_keyword_length, 0), "completion-tools: invalid cmdline.min_keyword_length")
-  assert(type(cmdline.fuzzy) == "boolean", "completion-tools: invalid cmdline.fuzzy")
-  assert(type(cmdline.types) == "table", "completion-tools: invalid cmdline types")
-  cmdline._keymap_bindings =
-    require("base_tools.keymap").resolve(cmdline.keymap, { name = "completion-tools.cmdline.keymap" })
-  assert(optional_function(cmdline.get_anchor), "completion-tools: invalid cmdline.get_anchor")
-  for _, cmdtype in ipairs(cmdline.types) do
-    assert(vim.tbl_contains(M.defaults.cmdline.types, cmdtype), "completion-tools: unsupported cmdline type")
-  end
-
-  assert(type(cmdline.sources) == "table", "completion-tools: invalid cmdline.sources")
-  for cmdtype, ids in pairs(cmdline.sources) do
-    assert(vim.tbl_contains(M.defaults.cmdline.types, cmdtype), "completion-tools: unsupported cmdline.sources type")
-    assert(vim.islist(ids), "completion-tools: cmdline.sources entries must be lists")
-    for _, id in ipairs(ids) do
-      assert(type(id) == "string" and id ~= "", "completion-tools: invalid cmdline source ID")
-    end
-  end
-end
-
-local function validate_dictionary(dictionary)
-  for _, field in ipairs({ "min_keyword_length", "max_items", "timeout_ms" }) do
-    assert(integer(dictionary[field], 1), "completion-tools: invalid dictionary." .. field)
-  end
-  local files = dictionary.files
-  assert(type(files) == "table" or type(files) == "function", "completion-tools: invalid dictionary.files")
-  if type(files) == "table" then
-    for _, file in ipairs(files) do
-      assert(type(file) == "string" and file ~= "", "completion-tools: invalid dictionary path")
-    end
-  end
-  for _, field in ipairs({ "max_bytes", "max_words", "max_word_bytes" }) do
-    assert(integer(dictionary[field], 1), "completion-tools: invalid dictionary." .. field)
-  end
-  assert(
-    dictionary.matching == "prefix" or dictionary.matching == "fuzzy",
-    "completion-tools: invalid dictionary.matching"
-  )
-  assert(type(dictionary.capitalize) == "boolean", "completion-tools: invalid dictionary.capitalize")
-  local documentation = dictionary.documentation
-  assert(
-    type(documentation) == "table"
-      and type(documentation.enabled) == "boolean"
-      and type(documentation.command) == "string"
-      and documentation.command ~= ""
-      and integer(documentation.timeout_ms, 1),
-    "completion-tools: invalid dictionary.documentation"
-  )
-end
-
-local function validate_spell(spell)
-  for _, field in ipairs({ "min_keyword_length", "max_items", "timeout_ms" }) do
-    assert(integer(spell[field], 1), "completion-tools: invalid spell." .. field)
-  end
-  assert(integer(spell.debounce_ms, 0), "completion-tools: invalid spell.debounce_ms")
-  assert(spell.sort == "match" or spell.sort == "suggestion", "completion-tools: invalid spell.sort")
-  for _, field in ipairs({ "preselect_current_word", "suggest_when_correct" }) do
-    assert(type(spell[field]) == "boolean", "completion-tools: invalid spell." .. field)
-  end
-  assert(optional_function(spell.enable_in_context), "completion-tools: invalid spell.enable_in_context")
-end
-
-local function validate_menu(menu)
-  validate_window_size(menu, "menu")
-  assert(menu.min_width >= 1 and menu.min_width <= menu.max_width, "completion-tools: invalid menu.min_width")
-  assert(integer(menu.shrink_delay_ms, 0), "completion-tools: invalid menu.shrink_delay_ms")
-  assert(integer(menu.update_interval_ms, 0), "completion-tools: invalid menu.update_interval_ms")
-  assert(
-    menu.inverse == "auto" or type(menu.inverse) == "boolean",
-    'completion-tools: menu.inverse must be "auto", true or false'
-  )
   local components, seen = require("completion_tools.render").components, {}
-  assert(type(menu.columns) == "table" and #menu.columns > 0, "completion-tools: empty menu.columns")
-  for _, column in ipairs(menu.columns) do
-    assert(type(column) == "table" and #column > 0, "completion-tools: invalid menu column")
-    assert(optional_integer(column.gap, 0), "completion-tools: invalid column gap")
+  local optional_gap = V.optional(nonnegative_integer)
+  for _, column in ipairs(value) do
+    if type(column) ~= "table" or #column == 0 or not optional_gap(column.gap) then
+      return false, "must contain nonempty columns with nonnegative integer gaps"
+    end
     for _, name in ipairs(column) do
-      assert(components[name] and not seen[name], "completion-tools: unknown or repeated menu component")
+      if not components[name] or seen[name] then
+        return false, "contains an unknown or repeated component"
+      end
       seen[name] = true
     end
   end
-  for _, field in ipairs({ "column_gap", "padding" }) do
-    assert(integer(menu[field], 0), "completion-tools: invalid menu." .. field)
+  return true
+end
+
+local function map_of(check, message)
+  return function(value)
+    if type(value) ~= "table" then
+      return false, "must be a table"
+    end
+    for key, entry in pairs(value) do
+      if not check(entry, key) then
+        return false, message
+      end
+    end
+    return true
   end
-  assert(integer(menu.max_label_bytes, 4), "completion-tools: invalid menu.max_label_bytes")
-  assert(type(menu.kind_icons) == "boolean" or type(menu.kind_icons) == "table", "completion-tools: invalid kind_icons")
-  if type(menu.kind_icons) == "table" then
-    for _, icon in pairs(menu.kind_icons) do
-      assert(type(icon) == "string", "completion-tools: kind icons must be strings")
+end
+
+local function filetype_map(check, message)
+  return map_of(function(value, key)
+    return type(key) == "string" and check(value)
+  end, message)
+end
+
+local function cmdline_types(value)
+  if type(value) ~= "table" then
+    return false, "must be a table"
+  end
+  for _, cmdtype in ipairs(value) do
+    if not vim.tbl_contains(M.defaults.cmdline.types, cmdtype) then
+      return false, "contains an unsupported command-line type"
     end
   end
-  assert(type(menu.label_details) == "boolean", "completion-tools: invalid label_details")
-  assert(type(menu.highlight) == "table", "completion-tools: invalid menu.highlight")
-  assert(
-    type(menu.highlight.enabled) == "boolean" and type(menu.highlight.treesitter) == "boolean",
-    "completion-tools: invalid highlight flags"
-  )
-  assert(
-    integer(menu.highlight.cache_size, 0) and integer(menu.highlight.max_bytes, 1),
-    "completion-tools: invalid highlight limits"
-  )
-  assert(optional_function(menu.highlight.custom), "completion-tools: invalid highlight callback")
+  return true
 end
 
-local function validate_path(path)
-  assert(path.max_entries >= 1 and path.cache_ms >= 0, "completion-tools: invalid path limits")
-  local preview = path.preview
-  assert(type(preview) == "table" and type(preview.enabled) == "boolean", "completion-tools: invalid path.preview")
-  assert(
-    integer(preview.max_bytes, 1) and integer(preview.max_lines, 1),
-    "completion-tools: invalid path preview limits"
-  )
+local function cmdline_sources(value)
+  if type(value) ~= "table" then
+    return false, "must be a table"
+  end
+  for cmdtype, ids in pairs(value) do
+    if not vim.tbl_contains(M.defaults.cmdline.types, cmdtype) then
+      return false, "contains an unsupported command-line type"
+    end
+    local valid, message = source_list(ids)
+    if not valid then
+      return false, tostring(cmdtype) .. " " .. message
+    end
+  end
+  return true
 end
 
-local function validate_documentation(documentation)
-  validate_window_size(documentation, "documentation")
-  assert(optional_function(documentation.on_render), "completion-tools: documentation.on_render must be a function")
-  assert(documentation.delay_ms >= 0, "completion-tools: invalid documentation delay")
+local function copilot_command(value)
+  if type(value) ~= "table" or #value == 0 then
+    return false, "must contain at least one command argument"
+  end
+  return strings(value)
+end
+
+local rules = {
+  enabled = V.any_of(boolean, callback),
+  auto_show = boolean,
+  preselect = boolean,
+  max_items = positive_integer,
+  min_keyword_length = at_least(0),
+  debounce_ms = at_least(0),
+  timeout_ms = nonnegative_integer,
+  keyword_pattern = string_value,
+  sources = V.any_of(table_value, callback),
+  trigger_characters = V.any_of(trigger_characters, callback),
+  keymap = keymap("keymap"),
+  providers = providers,
+  accept = { mode = V.one_of({ "insert", "replace" }), auto_brackets = V.any_of(boolean, callback) },
+  buffer = {
+    max_bytes = at_least(1),
+    max_words = at_least(1),
+    max_buffers = at_least(1),
+    batch_lines = at_least(1),
+    min_length = at_least(1),
+  },
+  ranking = {
+    history = { enabled = boolean, max_entries = positive_integer, path = V.optional(nonempty_string) },
+    proximity = { enabled = boolean, lines = nonnegative_integer },
+    max_typos = V.integer(0, 1),
+  },
+  menu = {
+    max_width = positive_integer,
+    max_height = positive_integer,
+    min_width = at_least(1),
+    shrink_delay_ms = nonnegative_integer,
+    update_interval_ms = nonnegative_integer,
+    inverse = V.one_of({ "auto", true, false }),
+    columns = columns,
+    column_gap = nonnegative_integer,
+    padding = nonnegative_integer,
+    max_label_bytes = V.integer(4),
+    kind_icons = V.any_of(boolean, map_of(string_value, "must contain only string icons")),
+    label_details = boolean,
+    highlight = {
+      enabled = boolean,
+      treesitter = boolean,
+      cache_size = nonnegative_integer,
+      max_bytes = positive_integer,
+      custom = optional_callback,
+    },
+  },
+  documentation = {
+    max_width = positive_integer,
+    max_height = positive_integer,
+    delay_ms = at_least(0),
+    on_render = optional_callback,
+  },
+  copilot = {
+    debounce_ms = nonnegative_integer,
+    max_items = positive_integer,
+    request_mode = V.one_of({ "cycling", "staged" }),
+    show_status = boolean,
+    command = copilot_command,
+    filetypes = filetype_map(boolean, "must map filetypes to booleans"),
+    settings = table_value,
+    root_dir = V.optional(V.any_of(callback, nonempty_string)),
+    workspace_folders = strings,
+    language_ids = filetype_map(nonempty_string, "must map filetypes to nonempty strings"),
+    should_attach = optional_callback,
+  },
+  cmdline = {
+    enabled = boolean,
+    auto_show = boolean,
+    fuzzy = boolean,
+    min_keyword_length = nonnegative_integer,
+    types = cmdline_types,
+    sources = cmdline_sources,
+    keymap = keymap("cmdline.keymap"),
+    get_anchor = optional_callback,
+  },
+  dictionary = {
+    files = V.any_of(strings, callback),
+    min_keyword_length = positive_integer,
+    max_items = positive_integer,
+    timeout_ms = positive_integer,
+    max_bytes = positive_integer,
+    max_words = positive_integer,
+    max_word_bytes = positive_integer,
+    matching = V.one_of({ "prefix", "fuzzy" }),
+    capitalize = boolean,
+    documentation = { enabled = boolean, command = nonempty_string, timeout_ms = positive_integer },
+  },
+  spell = {
+    min_keyword_length = positive_integer,
+    max_items = positive_integer,
+    timeout_ms = positive_integer,
+    debounce_ms = nonnegative_integer,
+    sort = V.one_of({ "match", "suggestion" }),
+    preselect_current_word = boolean,
+    suggest_when_correct = boolean,
+    enable_in_context = optional_callback,
+  },
+  path = {
+    max_entries = at_least(1),
+    cache_ms = at_least(0),
+    preview = { enabled = boolean, max_bytes = positive_integer, max_lines = positive_integer },
+  },
+  snippets = table_value,
+}
+
+local function add_fields(fields, ruleset, prefix)
+  local keys = vim.tbl_keys(ruleset)
+  table.sort(keys)
+  for _, key in ipairs(keys) do
+    local rule = ruleset[key]
+    local path = vim.list_extend(vim.list_slice(prefix), { key })
+    if type(rule) == "table" then
+      fields[#fields + 1] = { path = path, validate = table_value }
+      add_fields(fields, rule, path)
+    else
+      fields[#fields + 1] = { path = path, validate = rule }
+    end
+  end
+end
+
+local function menu_widths(menu)
+  return menu.min_width <= menu.max_width, "min_width must not exceed max_width"
+end
+
+local instance
+
+function M.instance()
+  if not instance then
+    local fields = {}
+    add_fields(fields, rules, {})
+    fields[#fields + 1] = { path = { "menu" }, validate = menu_widths }
+    instance = require("base_tools.config").new(M.defaults, {
+      fields = fields,
+      replace = {
+        { "sources" },
+        { "trigger_characters" },
+        { "keymap" },
+        { "copilot", "command" },
+        { "copilot", "workspace_folders" },
+        { "menu", "columns" },
+        { "dictionary", "files" },
+        { "cmdline", "keymap" },
+        { "cmdline", "types" },
+        { "cmdline", "sources", ":" },
+        { "cmdline", "sources", "/" },
+        { "cmdline", "sources", "?" },
+      },
+    })
+  end
+  return instance
+end
+
+function M.compile(candidate)
+  candidate._keymap_bindings = compile_keymap(candidate.keymap, "keymap")
+  candidate.cmdline._keymap_bindings = compile_keymap(candidate.cmdline.keymap, "cmdline.keymap")
+  return candidate
 end
 
 function M.validate(opts)
   assert(type(opts) == "table", "completion-tools: setup expects a table")
-  local config = merge_options(opts)
-  validate_general(config)
-  validate_providers(config.providers)
-  validate_ranking(config.ranking)
-  validate_menu(config.menu)
-  validate_documentation(config.documentation)
-  validate_copilot(config.copilot)
-  validate_cmdline(config.cmdline)
-  validate_dictionary(config.dictionary)
-  validate_spell(config.spell)
-  validate_path(config.path)
-  assert(type(config.snippets) == "table", "completion-tools: invalid snippets")
-  return config
+  local store = M.instance()
+  local candidate = store:resolve(opts)
+  store:check(candidate)
+  return M.compile(candidate)
+end
+
+function M.reset()
+  if instance then
+    instance:reset()
+  end
 end
 
 return M

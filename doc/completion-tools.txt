@@ -62,6 +62,8 @@ not load the completion engine or UI:
 The module is available as "completion-tools" and "completion_tools".
 
 setup(opts)              Configure providers, mappings and autocmds.
+get_config(...)          Read a detached configuration or option value.
+validate_config(path, value)  Check a proposed replacement for an existing option.
 show(opts?)              Request completions, optionally with opts.sources.
 hide()                   Hide menu and documentation, cancel pending work.
 is_menu_visible()        Return whether the floating menu is visible.
@@ -457,6 +459,11 @@ handlers or commands. Repeating setup must not accumulate automatic
 registrations.
 
 Validated setup resolves from defaults before releasing the previous instance.
+`get_config()` returns a copy of the active options, or the defaults before
+setup and after disposal. `get_config("menu", "max_height")` reads one value.
+`validate_config({ "menu", "max_height" }, 15)` checks a proposed value
+without reconfiguring the engine. Invalid values raise an error.
+
 `dispose()` cancels requests and acceptance work, stops timers/providers,
 closes menus and restores unchanged owned input mappings. It is repeatable;
 diagnostic status can report disposal without reinitializing. Call `setup()`

@@ -56,17 +56,10 @@ M.show_documentation = menu.show_documentation
 M.scroll_documentation_up = menu.scroll_documentation_up
 M.scroll_documentation_down = menu.scroll_documentation_down
 
-function M.setup(opts)
-  if vim.fn.has("nvim-0.12") ~= 1 then
-    error("completion-tools requires Neovim 0.12+")
-  end
+local dispose_runtime
 
-  assert(opts == nil or type(opts) == "table", "completion-tools.nvim: setup expects a table")
-  opts = vim.deepcopy(opts or {})
-  local config = require("completion_tools.config").validate(opts)
-  local timer = require("base_tools.timer")
-
-  M.dispose()
+local function apply_config(config, timer)
+  dispose_runtime()
   state.config, state.disposed = config, false
   state.diagnostics = require("completion_tools.diagnostics").new()
   state.run, state.reason, state.last_request_reason = nil, "idle", nil
@@ -132,7 +125,29 @@ function M.setup(opts)
   require("completion_tools.keymap").setup(config)
   warmup(vim.api.nvim_get_current_buf())
   requests.watch(vim.api.nvim_get_current_buf())
+end
+
+function M.setup(opts)
+  if vim.fn.has("nvim-0.12") ~= 1 then
+    error("completion-tools requires Neovim 0.12+")
+  end
+
+  assert(opts == nil or type(opts) == "table", "completion-tools.nvim: setup expects a table")
+  local config = require("completion_tools.config")
+  local timer = require("base_tools.timer")
+  local store = config.instance()
+  store:commit(store:resolve(opts), function(candidate)
+    apply_config(config.compile(candidate), timer)
+  end)
   return M
+end
+
+function M.get_config(...)
+  return require("completion_tools.config").instance():get(...)
+end
+
+function M.validate_config(path, value)
+  require("completion_tools.config").instance():validate(path, value)
 end
 
 -- External command-line renderers can call this after their geometry settles.
@@ -365,7 +380,7 @@ function M.get_lsp_capabilities(base)
   return require("completion_tools.capabilities").get_lsp_capabilities(base)
 end
 
-function M.dispose()
+dispose_runtime = function()
   M.hide()
   if state.dispose_command then
     state.dispose_command()
@@ -393,6 +408,14 @@ function M.dispose()
   state.providers, state.cache, state.source_ids = {}, {}, {}
   state.builtin_display_names = {}
   state.accepted = nil
+end
+
+function M.dispose()
+  dispose_runtime()
+  local config = package.loaded["completion_tools.config"]
+  if config then
+    config.reset()
+  end
 end
 
 return M
