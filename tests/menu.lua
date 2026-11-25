@@ -413,6 +413,38 @@ test("candidate and contextual languages override the buffer filetype", function
     assert(#span_for(spans, "@string") > 0)
   end
 end)
+test("overlapping Tree-sitter captures keep query order and explicit priorities", function()
+  local ok, loaded = pcall(vim.treesitter.language.add, "lua")
+  if not ok or not loaded then
+    return
+  end
+
+  vim.treesitter.query.set(
+    "lua",
+    "highlights",
+    [[
+      (function_call) @outer
+      (identifier) @variable
+      (function_call name: (identifier) @function.builtin)
+      ((identifier) @low (#set! priority 90))
+      ((identifier) @high (#eq? @high "modname") (#set! priority 115))
+    ]]
+  )
+  local menu = config.validate({}).menu
+  local spans = highlight.get("require(modname)", "lua", menu.highlight)
+  vim.treesitter.query.set("lua", "highlights", nil)
+
+  local captures = vim.tbl_filter(function(span)
+    return span[4] >= 130
+  end, spans)
+  eq({
+    { 0, 7, { "@low.lua", "@outer.lua", "@variable.lua", "@function.builtin.lua" }, 130 },
+    { 7, 8, "@outer.lua", 130 },
+    { 8, 15, { "@low.lua", "@outer.lua", "@variable.lua" }, 130 },
+    { 15, 16, "@outer.lua", 130 },
+    { 8, 15, "@high.lua", 145 },
+  }, captures)
+end)
 test("custom spans are clipped and never contaminate cached built-in spans", function()
   local menu = config.validate({
     menu = {

@@ -375,6 +375,43 @@ local ok, err = xpcall(function()
     input("<Tab>!")
     wait("return vim.api.nvim_get_current_line() == 'decode(!)'")
   end)
+  test("Lua completion renders the builtin capture ahead of the variable capture", function()
+    lua([[
+      require('completion_tools').setup({sources={'test'},documentation={auto_show=false},providers={test={
+        complete=function(_,cb) cb({items={{label='require(modname)',kind=3}}}) end,
+      }}})
+    ]])
+    input("ireq")
+    wait("return require('completion_tools').is_menu_visible()")
+    lua([[
+      local win
+      for _,id in ipairs(vim.api.nvim_list_wins()) do
+        if vim.bo[vim.api.nvim_win_get_buf(id)].filetype=='completion-tools-menu' then win=id end
+      end
+      local line=vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(win),0,1,false)[1]
+      local function attr(word)
+        local col=assert(line:find(word,1,true))+#word-1
+        local pos=vim.fn.screenpos(win,1,col)
+        assert(vim.fn.screenstring(pos.row,pos.col)==word:sub(-1))
+        return vim.fn.screenattr(pos.row,pos.col)
+      end
+      local builtin,variable='@function.builtin.lua','@variable.lua'
+      local function get_hl(name) return vim.api.nvim_get_hl(0,{name=name,create=false}) end
+      local original_builtin,original_variable=get_hl(builtin),get_hl(variable)
+      vim.cmd.redraw()
+      local initial=attr('require')
+      vim.api.nvim_set_hl(0,builtin,{fg='#01fefe'})
+      vim.cmd.redraw()
+      local function_attr,argument_attr=attr('require'),attr('modname')
+      assert(function_attr~=initial,'Builtin highlight did not reach the menu')
+      vim.api.nvim_set_hl(0,variable,{fg='#fc01fc'})
+      vim.cmd.redraw()
+      assert(attr('require')==function_attr,'Generic capture replaced the builtin capture')
+      assert(attr('modname')~=argument_attr,'The argument lost its variable highlight')
+      vim.api.nvim_set_hl(0,builtin,original_builtin)
+      vim.api.nvim_set_hl(0,variable,original_variable)
+    ]])
+  end)
   test("only visible menu rows are highlighted", function()
     lua([[
       visible_highlights={}

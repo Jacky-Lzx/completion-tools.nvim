@@ -272,14 +272,13 @@ function M.row(layout, index, entry, ctx, opts)
     end
   end
 
-  local function add_spans(marks, code, start, first, last)
+  local function add_spans(marks, code, start, first, last, syntax)
     for _, span in ipairs(marks) do
       if
         type(span) == "table"
         and type(span[1]) == "number"
         and type(span[2]) == "number"
-        and type(span[3]) == "string"
-        and span[3] ~= ""
+        and ((type(span[3]) == "string" and span[3] ~= "") or (syntax and type(span[3]) == "table"))
       then
         local left, right = math.max(first, span[1]), math.min(last, span[2])
         if left % 1 == 0 and right % 1 == 0 and boundary(code, left) and boundary(code, right) then
@@ -291,7 +290,7 @@ function M.row(layout, index, entry, ctx, opts)
 
   local function add_syntax(code, filetype, start, first, last)
     if filetype and last > first then
-      add_spans(highlight.get(code, filetype, opts.highlight), code, start, first, last)
+      add_spans(highlight.get(code, filetype, opts.highlight), code, start, first, last, true)
     end
   end
 

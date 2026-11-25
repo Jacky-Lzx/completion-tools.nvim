@@ -83,6 +83,44 @@ local function lexical(text, spans)
   end
 end
 
+local function stack_captures(spans, captures, priority)
+  local boundaries, starts = {}, {}
+  for index, capture in ipairs(captures) do
+    local first, last = capture[1], capture[2]
+    boundaries[first], boundaries[last] = true, true
+    starts[first] = starts[first] or {}
+    table.insert(starts[first], index)
+  end
+
+  local columns, active = vim.tbl_keys(boundaries), {}
+  table.sort(columns)
+  for i = 1, #columns - 1 do
+    local first, last = columns[i], columns[i + 1]
+    for j = #active, 1, -1 do
+      if captures[active[j]][2] <= first then
+        table.remove(active, j)
+      end
+    end
+    if starts[first] then
+      vim.list_extend(active, starts[first])
+      table.sort(active, function(left, right)
+        local left_priority, right_priority = captures[left][4], captures[right][4]
+        return left_priority < right_priority or (left_priority == right_priority and left < right)
+      end)
+    end
+
+    if #active == 1 then
+      add(spans, first, last, captures[active[1]][3], priority)
+    elseif #active > 1 then
+      -- Stacked extmark groups apply in list order, like Tree-sitter captures.
+      local groups = vim.tbl_map(function(index)
+        return captures[index][3]
+      end, active)
+      add(spans, first, last, groups, priority)
+    end
+  end
+end
+
 local function treesitter(text, filetype, spans)
   -- Plain identifiers need only kind coloring; do not load a parser for buffer words.
   if not text:find("[%(%):<{}]") or filetype == "" then
@@ -100,15 +138,25 @@ local function treesitter(text, filetype, spans)
     parser = vim.treesitter.get_string_parser(text, lang, { injections = { [lang] = "" } })
     local tree = parser:parse()[1]
 
+    local by_priority = {}
     for id, node, metadata in query:iter_captures(tree:root(), text, 0, 1) do
       local capture = query.captures[id]
       if capture:sub(1, 1) ~= "_" and capture ~= "spell" and capture ~= "nospell" then
         local range = vim.treesitter.get_range(node, text, metadata[id])
-        if range[1] == 0 and range[4] == 0 then
-          local priority = tonumber((metadata[id] or {}).priority or metadata.priority) or 100
-          add(spans, range[2], range[5], "@" .. capture .. "." .. lang, 130 + math.min(50, math.max(0, priority - 100)))
+        if range[1] == 0 and range[4] == 0 and range[2] < range[5] then
+          local query_priority = math.floor(tonumber(metadata.priority or (metadata[id] or {}).priority) or 100)
+          local priority = 130 + math.min(50, math.max(0, query_priority - 100))
+          local captures = by_priority[priority] or {}
+          captures[#captures + 1] = { range[2], range[5], "@" .. capture .. "." .. lang, query_priority }
+          by_priority[priority] = captures
         end
       end
+    end
+
+    local priorities = vim.tbl_keys(by_priority)
+    table.sort(priorities)
+    for _, priority in ipairs(priorities) do
+      stack_captures(spans, by_priority[priority], priority)
     end
   end)
 
