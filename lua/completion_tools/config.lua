@@ -36,6 +36,7 @@ local optional_callback = V.optional(callback)
 local nonnegative_integer, positive_integer = V.integer(0), V.integer(1)
 local nonempty_string = V.nonempty_string()
 local source_list = V.list_of(nonempty_string)
+local supported_cmdline_types = { ":", "/", "?" }
 
 local function at_least(minimum)
   return function(value)
@@ -151,7 +152,7 @@ local function cmdline_types(value)
     return false, "must be a table"
   end
   for _, cmdtype in ipairs(value) do
-    if not vim.tbl_contains(M.defaults.cmdline.types, cmdtype) then
+    if not vim.tbl_contains(supported_cmdline_types, cmdtype) then
       return false, "contains an unsupported command-line type"
     end
   end
@@ -159,7 +160,7 @@ local function cmdline_types(value)
 end
 
 local cmdline_sources = V.map_of(source_list, function(cmdtype)
-  return vim.tbl_contains(M.defaults.cmdline.types, cmdtype), "is not a supported command-line type"
+  return vim.tbl_contains(supported_cmdline_types, cmdtype), "is not a supported command-line type"
 end)
 
 local function copilot_command(value)
@@ -350,7 +351,7 @@ local definition = {
       auto_show = { default = true, validate = boolean },
       fuzzy = { default = true, validate = boolean },
       min_keyword_length = { default = 1, validate = nonnegative_integer },
-      types = { default = { ":", "/", "?" }, validate = cmdline_types, replace = true },
+      types = { default = supported_cmdline_types, validate = cmdline_types, replace = true },
       sources = {
         validate = cmdline_sources,
         fields = {
@@ -377,15 +378,10 @@ local definition = {
   },
 }
 
-local defaults, rules = config.compile_definition(definition)
-M.defaults = defaults
-
-local instance
+local instance = config.new(definition)
+M.defaults = instance:resolve()
 
 function M.instance()
-  if not instance then
-    instance = config.new(M.defaults, rules)
-  end
   return instance
 end
 
@@ -404,9 +400,7 @@ function M.validate(opts)
 end
 
 function M.reset()
-  if instance then
-    instance:reset()
-  end
+  instance:reset()
 end
 
 return M
