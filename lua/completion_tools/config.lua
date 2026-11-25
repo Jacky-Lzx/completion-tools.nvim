@@ -393,10 +393,7 @@ end
 
 function M.validate(opts)
   assert(type(opts) == "table", "completion-tools: setup expects a table")
-  local store = M.instance()
-  local candidate = store:resolve(opts)
-  store:check(candidate)
-  return M.compile(candidate)
+  return M.compile(M.instance():resolve(opts))
 end
 
 function M.reset()
