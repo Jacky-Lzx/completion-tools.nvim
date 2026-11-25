@@ -136,7 +136,7 @@ function M.setup(opts)
   local config = require("completion_tools.config")
   local timer = require("base_tools.timer")
   local store = config.instance()
-  store:commit(store:resolve(opts), function(candidate)
+  store:configure(opts, function(candidate)
     apply_config(config.compile(candidate), timer)
   end)
   return M
