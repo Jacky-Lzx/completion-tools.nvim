@@ -422,21 +422,6 @@ local rules = {
   snippets = table_value,
 }
 
-local function add_fields(fields, ruleset, prefix)
-  local keys = vim.tbl_keys(ruleset)
-  table.sort(keys)
-  for _, key in ipairs(keys) do
-    local rule = ruleset[key]
-    local path = vim.list_extend(vim.list_slice(prefix), { key })
-    if type(rule) == "table" then
-      fields[#fields + 1] = { path = path, validate = table_value }
-      add_fields(fields, rule, path)
-    else
-      fields[#fields + 1] = { path = path, validate = rule }
-    end
-  end
-end
-
 local function menu_widths(menu)
   return menu.min_width <= menu.max_width, "min_width must not exceed max_width"
 end
@@ -445,11 +430,9 @@ local instance
 
 function M.instance()
   if not instance then
-    local fields = {}
-    add_fields(fields, rules, {})
-    fields[#fields + 1] = { path = { "menu" }, validate = menu_widths }
     instance = require("base_tools.config").new(M.defaults, {
-      fields = fields,
+      schema = rules,
+      fields = { { path = { "menu" }, validate = menu_widths } },
       replace = {
         { "sources" },
         { "trigger_characters" },
